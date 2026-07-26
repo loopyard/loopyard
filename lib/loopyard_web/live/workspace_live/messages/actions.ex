@@ -21,7 +21,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Actions do
       phx-hook="CopySource"
       data-source={@raw_url}
       data-copy="fetch"
-      class={"p-1 rounded-md cursor-pointer text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 #{@extra_class}"}
+      class={"tap-target p-1 rounded-md cursor-pointer text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 #{@extra_class}"}
       title="Copy"
     >
       <.icon name={:copy} class="w-3.5 h-3.5 copy-icon" />
@@ -39,7 +39,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Actions do
       href={@url}
       target="_blank"
       rel="noopener"
-      class={"p-1 rounded-md text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 #{@extra_class}"}
+      class={"tap-target p-1 rounded-md text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 #{@extra_class}"}
       title="Open"
     >
       <.icon name={:external} class="w-3.5 h-3.5" />

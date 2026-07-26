@@ -201,7 +201,7 @@ defmodule LoopyardWeb.Components.Birdseye do
       href={@url}
       target="_blank"
       rel="noopener"
-      class="group/port inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-mono text-emerald-600/90 dark:text-emerald-400/90 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
+      class="group/port tap-target inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-mono text-emerald-600/90 dark:text-emerald-400/90 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
       title={"Open the running app (#{@url})"}
       onclick="event.stopPropagation()"
     >

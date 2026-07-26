@@ -654,7 +654,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                 phx-value-index={i}
                 aria-label="Cancel this queued message"
                 title="Cancel — remove from the queue"
-                class="focus-ring flex-none w-6 h-6 rounded-md flex items-center justify-center text-violet-500/50 dark:text-violet-300/40 hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                class="focus-ring tap-target flex-none w-6 h-6 rounded-md flex items-center justify-center text-violet-500/50 dark:text-violet-300/40 hover:text-red-500 hover:bg-red-500/10 transition-colors"
               >
                 <.icon name={:x_mark} class="w-4 h-4" />
               </button>

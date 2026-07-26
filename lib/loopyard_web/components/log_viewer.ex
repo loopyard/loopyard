@@ -124,7 +124,7 @@ defmodule LoopyardWeb.Components.LogViewer do
         <button
           type="button"
           data-expand
-          class="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors hidden flex-none"
+          class="tap-target p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors hidden flex-none"
           title="Show full output"
         >
           <%!-- Chevron-down = "show more"; LogExpand ROTATES it when expanded
@@ -185,7 +185,7 @@ defmodule LoopyardWeb.Components.LogViewer do
             phx-hook="CopySource"
             data-source={@raw_url}
             data-copy="fetch"
-            class="p-1 text-zinc-400 hover:text-zinc-300 transition-colors cursor-pointer"
+            class="tap-target p-1 text-zinc-400 hover:text-zinc-300 transition-colors cursor-pointer"
             title="Copy"
           >
             <svg

@@ -93,7 +93,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                 phx-value-q={q.id}
                 phx-value-option={o.label}
                 class={[
-                  "focus-ring group/opt flex w-full items-start gap-3 rounded-lg border px-3 py-1.5 text-left transition-colors",
+                  "focus-ring group/opt flex w-full items-start gap-3 rounded-lg border px-3 py-2.5 md:py-1.5 text-left transition-colors",
                   if(q[:multi] && drafted?(@msg, q, o.label),
                     do:
                       "border-amber-400 bg-amber-100 dark:border-amber-500/60 dark:bg-amber-500/15",
@@ -144,7 +144,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                     else: "None of these"}
                 </button>
                 <details class="group/other min-w-0">
-                  <summary class="focus-ring chat-sub inline-flex rounded font-medium text-amber-700 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300 cursor-pointer select-none list-none">
+                  <summary class="focus-ring tap-target chat-sub inline-flex rounded font-medium text-amber-700 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300 cursor-pointer select-none list-none">
                     Other…
                   </summary>
                   <form phx-submit="answer_question_text" class="mt-2 flex items-center gap-2">
@@ -171,7 +171,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                   phx-click="skip_question"
                   phx-value-question_id={@msg.question_id}
                   phx-value-q={q.id}
-                  class="focus-ring chat-sub inline-flex rounded text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                  class="focus-ring tap-target chat-sub inline-flex rounded text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
                 >
                   Skip
                 </button>
