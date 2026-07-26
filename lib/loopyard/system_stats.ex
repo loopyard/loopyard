@@ -149,7 +149,7 @@ defmodule Loopyard.SystemStats do
     case System.cmd("vm_stat", [], stderr_to_stdout: true) do
       {output, 0} ->
         # macOS default on Apple Silicon (16KB)
-        page_size = 16384
+        page_size = 16_384
 
         pages =
           Regex.scan(~r/^(.+?):\s+(\d+)/m, output)
