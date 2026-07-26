@@ -203,7 +203,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
               >{idx}</td>
               <td
                 phx-no-format
-                class={"pr-4 pl-2 py-0 whitespace-pre-wrap break-all #{diff_line_text(line)}"}
+                class={"pr-4 pl-2 py-0 whitespace-pre #{diff_line_text(line)}"}
               >{highlight_diff_line(line, @language)}</td>
             </tr>
           </tbody>

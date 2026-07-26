@@ -576,14 +576,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
     assigns = assign(assigns, url: url, service: service, container_port: container_port)
 
     ~H"""
-    <div class={[gutter(), "py-1"]}>
-      <div class="inline-flex items-center gap-3 rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-2.5">
+    <div class="py-2">
+      <LoopyardWeb.Components.StreamCard.band tone={:needs_you}>
+        <LoopyardWeb.Components.StreamCard.header state={:needs_you}>
+          <:label>Port closed</:label>
+        </LoopyardWeb.Components.StreamCard.header>
         <a
           :if={@url}
           href={@url}
           target="_blank"
           rel="noopener"
-          class="text-lg md:text-base text-violet-600 dark:text-violet-400 hover:underline truncate"
+          class="chat-sub block truncate text-violet-600 dark:text-violet-400 hover:underline mb-3"
         >
           {@url}
         </a>
@@ -591,7 +594,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
           phx-click="open_port_from_chat"
           phx-value-service={@service}
           phx-value-container_port={@container_port}
-          class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium bg-violet-600 hover:bg-violet-700 text-white transition-colors flex-none"
+          class="focus-ring chat-sub inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 font-medium bg-violet-600 hover:bg-violet-700 text-white shadow-sm transition-colors flex-none"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -604,7 +607,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
           </svg>
           Open Port
         </button>
-      </div>
+      </LoopyardWeb.Components.StreamCard.band>
     </div>
     """
   end

@@ -334,7 +334,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
     ~H"""
     <div class="py-2">
       <LoopyardWeb.Components.StreamCard.band tone={(@msg.status == :pending && :needs_you) || :neutral}>
-        <LoopyardWeb.Components.StreamCard.header state={:needs_you}>
+        <LoopyardWeb.Components.StreamCard.header
+          state={:needs_you}
+          label_class={
+            (@msg.status == :pending && "text-amber-700 dark:text-amber-400") ||
+              "text-zinc-500 dark:text-zinc-400"
+          }
+        >
           <:label>
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -348,7 +354,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                 clip-rule="evenodd"
               />
             </svg>
-            Needs a secret
+            {case @msg.status do
+              :pending -> "Needs a secret"
+              :timeout -> "No secret"
+              _ -> "Secret received"
+            end}
           </:label>
         </LoopyardWeb.Components.StreamCard.header>
 
