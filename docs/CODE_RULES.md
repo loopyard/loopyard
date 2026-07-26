@@ -548,3 +548,12 @@ never walk the message list positionally.
 - **Never run `mix compile`/`mix test` (dev env) against the live checkout** —
   the dev server shares it; verify via curl. `MIX_ENV=test mix test <file>` is
   OK (separate build dir), one suite at a time.
+
+## URLs are resources, never query-string soup
+
+Every addressable thing gets a PATH, mirroring the existing grammar
+(`/projects/:project_id/workspaces/:workspace_id/...`,
+`/messages/:agent_id/:msg_id`, `/review/:agent_id/:msg_id`). Query strings are
+for OPTIONS on a resource (filters, legacy fallbacks), never for identity.
+Before adding a `?thing=id` param, add the route. A URL should read like it
+means something when pasted into a chat — that's the test.
