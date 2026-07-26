@@ -683,21 +683,27 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
              even when the LiveView is busy streaming (the ack can lag seconds).
              On ack the server band replaces it seamlessly; on failure the text
              returns to the box. phx-update="ignore": the hook owns it. --%>
-        <div
-          id="send-echo"
-          phx-update="ignore"
-          class="hidden -mx-3 md:-mx-4 2xl:-mx-4 2xl:mt-2 bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 lg:px-8 pt-3 pb-3"
-        >
-          <div class="chat-meta font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300 mb-1.5">
-            Queued
+          <div
+            id="send-echo"
+            phx-update="ignore"
+            class="hidden -mx-3 md:-mx-4 2xl:-mx-4 2xl:mt-2 bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 lg:px-8 pt-3 pb-3"
+          >
+            <div class="chat-meta font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300 mb-1.5">
+              Queued
+            </div>
+            <div
+              data-echo-text
+              class="chat-sub text-zinc-800 dark:text-zinc-100 whitespace-pre-wrap line-clamp-3"
+            >
+            </div>
           </div>
-          <div data-echo-text class="chat-sub text-zinc-800 dark:text-zinc-100 whitespace-pre-wrap line-clamp-3"></div>
         </div>
         <%!-- The composer divider: just ABOVE the message box, BELOW the queued
-             card — the queue reads as part of the stream; the line belongs to
-             the input. Full-bleed to the pane edges. --%>
-        <div class="border-t border-zinc-200 dark:border-zinc-700/80 -mx-3 md:-mx-4 mb-2"></div>
-        <div id="chat-form-wrapper" phx-update="ignore">
+            card. A DIRECT child of the pane (not the centered column), so it
+            spans the full width of the screen/pane. --%>
+        <div class="w-full border-t border-zinc-200 dark:border-zinc-700/80 mb-2"></div>
+        <div class="w-full max-w-2xl mx-auto px-3 md:px-4">
+          <div id="chat-form-wrapper" phx-update="ignore">
             <form
               id="chat-form"
               phx-submit="send_message"
