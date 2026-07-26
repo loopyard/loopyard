@@ -692,53 +692,6 @@ defmodule LoopyardWeb.OperatorLive do
   defp for_you_rail(assigns) do
     ~H"""
     <div class="flex flex-col">
-      <%!-- Blocking items (action required), grouped by workspace — no header,
-    the groups speak for themselves and lead the rail. --%>
-      <section :if={@groups != []} class="p-3 space-y-3">
-        <div :for={g <- @groups} class="space-y-1.5">
-          <div class="flex items-baseline gap-1.5 px-1">
-            <span class="text-sm font-semibold text-zinc-700 dark:text-zinc-200 truncate">
-              {g.name}
-            </span>
-            <span :if={g.project} class="text-xs text-zinc-400 dark:text-zinc-500 truncate">
-              {g.project}
-            </span>
-            <span class="ml-auto flex-none text-xs text-zinc-400 dark:text-zinc-500">
-              {length(g.items)} waiting
-            </span>
-          </div>
-
-          <div :for={item <- g.items}>
-            <%!-- Compact row — the full card is a wall in a rail. Tap to expand
-    it full-pane; answering settles it there, back returns here. --%>
-            <.link
-              :if={item.kind in [:question, :secret] and item.msg}
-              navigate={"/review?q=#{item.agent_id}:#{item.msg.id}"}
-              class="focus-ring flex w-full items-center gap-2 rounded-sm px-2.5 py-3 lg:py-2 text-left bg-brand-paper dark:bg-brand-ink border border-orange-300/60 dark:border-orange-500/30 hover:border-orange-400 dark:hover:border-orange-500/60 transition-colors"
-            >
-              <span class="flex-1 min-w-0 truncate chat-sub text-zinc-800 dark:text-zinc-100">
-                {attention_summary(item)}
-              </span>
-              <span class="flex-none chat-meta font-medium text-orange-700 dark:text-orange-400">
-                Answer →
-              </span>
-            </.link>
-            <.link
-              :if={item.kind == :approval or (item.kind != :question and is_nil(item.msg))}
-              navigate={(item.msg && "/review?q=#{item.agent_id}:#{item.msg.id}") || item.path}
-              class="focus-ring flex items-center gap-2 rounded-sm px-2.5 py-2 bg-brand-paper dark:bg-brand-ink border border-zinc-200 dark:border-zinc-800 hover:border-violet-300 dark:hover:border-violet-500/40"
-            >
-              <span class="flex-1 min-w-0 truncate text-sm text-zinc-700 dark:text-zinc-200">
-                {item.label}
-              </span>
-              <span class="flex-none text-xs font-medium text-violet-600 dark:text-violet-400">
-                open →
-              </span>
-            </.link>
-          </div>
-        </div>
-      </section>
-
       <%!-- IN MOTION — what's actually RUNNING right now, prominent. Delta sits
     INLINE next to the name (not floated across the rail), so it reads as
     one line. The row taps through to the workspace agent (the weeds). --%>
