@@ -37,7 +37,11 @@ defmodule LoopyardWeb.WorkstationToolLive do
         # Clip / OriginText hooks in app.js) so the command targets the host the
         # user actually reached this server through — LAN IP, Teleport tunnel — not
         # a hardcoded localhost the server can't reliably know behind a proxy.
-        mac = "curl -fsS __ORIGIN__/workstations/#{ws}/#{tool}/setup.sh | sh"
+        # ?token: PushAuth trusts bare loopback only — a LAN/tunnel browser
+        # (the normal case: this server is reached by IP) 403'd the tokenless
+        # command. The push token's whole job is authorizing exactly this.
+        mac =
+          "curl -fsS \"__ORIGIN__/workstations/#{ws}/#{tool}/setup.sh?token=#{Loopyard.PushToken.get()}\" | sh"
 
         doc =
           case Integration.doc(tool) do

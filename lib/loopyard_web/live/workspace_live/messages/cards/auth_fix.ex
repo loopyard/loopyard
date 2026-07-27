@@ -37,7 +37,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.AuthFix do
           </p>
           <LoopyardWeb.Components.Workstation.command_box
             id={"auth-fix-#{@msg.id}"}
-            command={"curl -fsS __ORIGIN__/workstations/#{@msg.workstation_id}/claude/setup.sh | sh"}
+            command={"curl -fsS \"__ORIGIN__/workstations/#{@msg.workstation_id}/claude/setup.sh?token=#{Loopyard.PushToken.get()}\" | sh"}
           />
           <p class="chat-meta text-zinc-500 dark:text-zinc-400 mt-2">
             Everything resumes on its own once the token lands — this card turns green.
