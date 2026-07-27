@@ -39,37 +39,9 @@ defmodule LoopyardWeb.OperatorLiveTest do
     assert Process.alive?(view.pid)
   end
 
-  describe "Claude-token mini-app (auth outage)" do
-    test "banner + form render when the fleet credential is dead", %{conn: conn} do
-      # Fabricate an auth-expired agent summary — the pure-ETS signal
-      # Workstation.claude_auth_broken?/0 reads.
-      Loopyard.StateKeeper.ensure_tables!()
-      id = "authdead-#{System.unique_integer([:positive])}"
-
-      :ets.insert(
-        :chat_agents,
-        {id, %{id: id, name: "AuthDead", status: :auth_expired, auth_error: "401", messages: []}}
-      )
-
-      on_exit(fn -> :ets.delete(:chat_agents, id) end)
-
-      {:ok, view, _html} = live(conn, "/operator")
-      # The signal rides refresh_rail — force one tick.
-      send(view.pid, :refresh_rail)
-      html = render(view)
-
-      assert html =~ "Claude token expired"
-      # Routes to the WORKSTATION SETUP flow (the existing machinery), not a
-      # hand-rolled form: the minting curl + the Claude page link.
-      assert html =~ "claude/setup.sh"
-      assert html =~ "/claude"
-      refute html =~ "submit_claude_token"
-    end
-
-    test "no banner when the fleet is healthy", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/operator")
-      send(view.pid, :refresh_rail)
-      refute render(view) =~ "Claude token expired"
-    end
+  test "no auth banner apparatus — the calm chat note owns auth recovery", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/operator")
+    send(view.pid, :refresh_rail)
+    refute render(view) =~ "Claude token expired"
   end
 end

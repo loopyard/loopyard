@@ -266,16 +266,15 @@ defmodule Loopyard.ChatAgent.StreamHandler.RateLimit do
 
     state =
       if first? do
+        # Calm, once per outage, with the ONE action as a link — never a wall
+        # of red ("calmly inform the person and just link to the page").
         auth_msg = %{
-          role: :error,
-          content:
-            "Claude authentication failed: #{error}. " <>
-              "WHY: the harness couldn't authenticate — usually an expired or rotated " <>
-              "CLAUDE_CODE_OAUTH_TOKEN in this workstation. " <>
-              "CONSEQUENCE: this turn was dropped; your conversation is preserved. " <>
-              "ACTION: run the one-line setup command on the Operator page banner (or " <>
-              "the workstation's Claude page) — it mints a 1-year token and pushes it; " <>
-              "every agent restarts and resumes automatically once it lands.",
+          role: :system,
+          content: "Claude needs a fresh token before agents can work.",
+          link: %{
+            href: "/workstations/#{Loopyard.Workstation.current()}/claude",
+            label: "Set it up on the Claude page →"
+          },
           timestamp: DateTime.utc_now()
         }
 

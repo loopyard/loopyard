@@ -422,6 +422,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
           id={"system-msg-#{@msg[:id] || hash_content(@msg.content)}"}
         >
           {@msg.content}
+          <.link
+            :if={is_map(@msg[:link])}
+            navigate={@msg.link.href}
+            class="not-italic text-violet-600 dark:text-violet-400 hover:underline"
+          >
+            {@msg.link.label}
+          </.link>
         </span>
       </div>
       """
