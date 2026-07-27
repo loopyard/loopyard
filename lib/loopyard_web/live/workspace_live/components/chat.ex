@@ -170,10 +170,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     the inner is the centered measure. Centering a BLOCK (mx-auto in
     normal flow) is what reliably lines the transcript's gutters up with
     the composer below — mx-auto on a direct flex-column child does NOT
-    center it. Prompt bands + input bleed to THIS column's edges (so on
-    wide screens they're same-width "bubbles"); prose stays 68ch inside. --%>
+    center it. The column is FULL-WIDTH (bands touch the pane edges via
+    negative margins that mirror this padding exactly) until the `wide`
+    ultrawide cutover, where it caps + centers — a full-bleed bar across
+    an ultrawide monitor is the only case that earns the side gap. --%>
         <div class="mt-auto w-full">
-          <div class="space-y-3 max-w-2xl xl:max-w-3xl mx-auto px-4 md:px-8">
+          <div class="space-y-3 w-full wide:max-w-3xl mx-auto px-4 md:px-6">
             <%!-- Progressive loader: while there's older history above the window,
     a soft shimmer sits at the very top. Scroll into it and load_more
     fetches the next batch (prepended below this, so it stays put);
@@ -276,7 +278,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                   (@agent.status == :thinking && not awaiting_answer?(@messages) &&
                      not awaiting_approval?(@messages) && not building?(@messages))
               }
-              class="-mx-4 md:-mx-6 2xl:-mx-4 px-4 md:px-6 lg:px-8 chat-live-rail-tail"
+              class="-mx-4 md:-mx-6 wide:-mx-4 px-4 md:px-6 chat-live-rail-tail"
             >
               <%!-- The lit violet left rail: this wrapper renders ONLY while the
     turn is live (streaming / thinking / restarting / compacting), so
@@ -323,7 +325,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       <%!-- pb-safe: the composer clears the home indicator in a standalone PWA
     while keeping its normal padding in the browser. --%>
       <div class="flex-none pb-safe">
-        <div class="w-full max-w-2xl xl:max-w-3xl mx-auto px-3 md:px-6">
+        <div class="w-full wide:max-w-3xl mx-auto px-3 md:px-6">
           <%!-- The queue is ONE card: a single "You" band (one name, one state) with
     every pending line INSIDE it, each line cancelable by its own ✕. Reads
     as one prompt-in-waiting — exactly how the transcript groups a batch —
@@ -333,7 +335,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     below — the ✕'s are gone because it's no longer editable. --%>
           <div
             :if={(@agent[:pending_count] || 0) > 0}
-            class="-mx-3 md:-mx-4 2xl:-mx-4 2xl:mt-2 bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 lg:px-8 pt-3 pb-3"
+            class="-mx-3 md:-mx-6 wide:-mx-4 wide:mt-2 bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 pt-3 pb-3"
           >
             <div class="flex items-baseline justify-between gap-2 mb-1.5">
               <div class="flex items-baseline gap-2 min-w-0">
@@ -408,7 +410,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           <div
             id="send-echo"
             phx-update="ignore"
-            class="hidden -mx-3 md:-mx-4 2xl:-mx-4 2xl:mt-2 bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 lg:px-8 pt-3 pb-3"
+            class="hidden -mx-3 md:-mx-6 wide:-mx-4 wide:mt-2 bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 pt-3 pb-3"
           >
             <div class="chat-meta font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300 mb-1.5">
               Queued
@@ -424,7 +426,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             card. A DIRECT child of the pane (not the centered column), so it
             spans the full width of the screen/pane. --%>
         <div class="w-full border-t border-zinc-200 dark:border-zinc-700/80 mb-2"></div>
-        <div class="w-full max-w-2xl xl:max-w-3xl mx-auto px-3 md:px-6">
+        <div class="w-full wide:max-w-3xl mx-auto px-3 md:px-6">
           <div id="chat-form-wrapper" phx-update="ignore">
             <form
               id="chat-form"

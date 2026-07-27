@@ -37,7 +37,7 @@ defmodule LoopyardWeb.Components.StreamCard do
   def band(assigns) do
     ~H"""
     <div class={[
-      "-mx-4 md:-mx-6 2xl:-mx-4 px-4 md:px-6 lg:px-8 pt-4 md:pt-5 pb-4 md:pb-5",
+      "-mx-4 md:-mx-6 wide:-mx-4 px-4 md:px-6 pt-4 md:pt-5 pb-4 md:pb-5",
       band_tone(@tone, @chrome),
       @class
     ]}>

@@ -134,14 +134,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     <div
       class={
         [
-          "-mx-4 md:-mx-6 2xl:-mx-4 px-4 md:px-6 lg:px-8 group/msg transition-colors",
+          # Full-bleed stripe: the negative margins mirror the document column's
+          # padding EXACTLY (px-4 md:px-6) so the band touches the pane edges.
+          # Only at the `wide` ultrawide cutover — where the column caps and
+          # centers — does the band retract into a block with side gaps.
+          "-mx-4 md:-mx-6 wide:-mx-4 px-4 md:px-6 group/msg transition-colors",
           # Pinned (data-stuck, set by the StickyShadow hook on #messages): square
           # the top — a rounded-sm corner smashed into the header edge looks broken.
-          "2xl:data-[stuck]:!rounded-t-none",
-          # In a centered column the band is a block, not an edge-to-edge stripe —
-          # hard corners read unfinished next to the rounded-sm listings. Round it;
-          # the ACTIVE band rounds only its top so it stays flush into the live
-          # tail below (which rounds the bottom).
+          "wide:data-[stuck]:!rounded-t-none",
           # The prompt being answered right now reads stronger (deeper wash).
           (@active? && "bg-violet-200 dark:bg-[#332a54]") ||
             "bg-violet-100 dark:bg-[#2b2348]",

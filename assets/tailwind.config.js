@@ -23,6 +23,13 @@ module.exports = {
   presets: [require("../packages/brand/tailwind.preset")],
   theme: {
     extend: {
+      // The ULTRAWIDE cutover. Below it the chat's prompt bands + composer run
+      // edge-to-edge of the pane (a bar touching the sides is the normal look);
+      // at/after it the document column breaks off the edges and centers —
+      // only because a full-bleed bar across an ultrawide monitor looks silly.
+      screens: {
+        wide: '1920px',
+      },
       // Raise the FLOOR of the type scale app-wide. Overriding these steps here
       // re-sizes every `text-xs`/`text-sm`/`text-base` in one place — no more
       // 12px chrome, and the small end is compressed toward base so the UI reads
