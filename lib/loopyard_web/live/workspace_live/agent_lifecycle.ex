@@ -178,9 +178,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
   of the "wakes on your next message" contract. The status card literally
   promises that an asleep (:crashed/:stopped) agent wakes when you message it;
   bouncing an error toast at the user instead (making THEM the retry loop) was
-  a contract violation. Wake (resume-spawn from ETS), wait briefly for the
-  GenServer to register, then enqueue with the same durability-confirmed call.
-  Only if all of that fails does the caller show an error.
+  a contract violation. One fast enqueue retry, then the wake boots in a
+  BACKGROUND task and the caller returns {:error, :waking} immediately — the
+  composer keeps the text and tells the user to press Send again in a few
+  seconds, which then lands on the live group. Never blocks the LiveView.
   """
   def wake_and_enqueue(id, text) do
     # Config-gated (off in test): the wake is a LIVE-system feature — it boots
@@ -195,61 +196,55 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
   end
 
   defp do_wake_and_enqueue(id, text) do
-    case ChatAgent.get_state(id) do
-      %{workspace_id: ws_id} when is_binary(ws_id) ->
-        case ensure_workspace_group(ws_id) do
-          :ok ->
-            start_agent_quiet(ws_id, id)
-            wait_alive(id, 40)
-            ChatAgent.enqueue_message(id, text)
-
-          :waking ->
-            # Group boot was kicked off but didn't finish inside the budget —
-            # it CONTINUES in the background, so the user's retry in a few
-            # seconds lands on a live group and succeeds.
-            {:error, :waking}
-
-          :error ->
-            {:error, :unavailable}
-        end
-
-      _ ->
-        {:error, :unavailable}
-    end
-  end
-
-  # Start the agent under its (now live) group. The supervisor call can time
-  # out while ChatAgent.init resumes state — registration happens at
-  # start_link BEFORE init, so wait_alive + the enqueue call still land; the
-  # enqueue rides the mailbox behind init. Never let the exit crash the LV.
-  defp start_agent_quiet(ws_id, id) do
-    Loopyard.WorkspaceGroup.start_agent(ws_id, id: id, resume: true)
-  catch
-    :exit, _ -> :ok
-  end
-
-  # Bounded wait (40 × 50ms = 2s max) for the woken agent's Registry entry.
-  # Registration happens at start_link, so this typically returns on the first
-  # check; the loop is a belt for supervisor scheduling under load.
-  defp wait_alive(_id, 0), do: :ok
-
-  defp wait_alive(id, n) do
-    case Registry.lookup(Loopyard.ChatAgentRegistry, id) do
-      [{pid, _}] when is_pid(pid) ->
+    # One cheap retry first: enqueue_message is a fast call when the agent is
+    # actually alive (races where it registered right after the caller's miss).
+    case ChatAgent.enqueue_message(id, text) do
+      :ok ->
         :ok
 
-      _ ->
-        Process.sleep(50)
-        wait_alive(id, n - 1)
+      {:error, :unavailable} ->
+        case ChatAgent.get_state(id) do
+          %{workspace_id: ws_id} when is_binary(ws_id) ->
+            wake_in_background(ws_id, id)
+
+          _ ->
+            {:error, :unavailable}
+        end
     end
   end
 
-  # Wake a sleeping agent — agent exists in ETS but its GenServer is gone
-  # (server restart without ServiceManager replay, user stopped it, crash).
-  # Spawns a new ChatAgent with resume: true; init_resume pulls the rest
-  # of the opts (working_dir, bind_mount, workspace_id) from
-  # the agent's saved ETS entry. No-op if the agent is already running
-  # or has no ETS entry at all.
+  # The wake itself NEVER runs in the caller: booting the group can take
+  # seconds (supervisors, compose, agent-log replay), and this is called from
+  # a LiveView handle_event — blocking there froze the tab for every viewer.
+  # The task boots everything in the background and the caller answers
+  # {:error, :waking} immediately ("press Send again in a few seconds"); the
+  # retry lands on a live group via the fast path above.
+  defp wake_in_background(ws_id, id) do
+    ws = Loopyard.WorkspaceRegistry.get_workspace(ws_id)
+
+    if ws && ws[:path] do
+      Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
+        case Loopyard.WorkspaceSupervisor.start_workspace(ws_id, ws.path) do
+          {:ok, _} ->
+            start_agent_quiet(ws_id, id)
+
+          {:error, reason} ->
+            Loopyard.EventLog.error(
+              "workspace:#{ws_id}",
+              "Wake for send failed: #{inspect(reason)}"
+            )
+
+          _ ->
+            start_agent_quiet(ws_id, id)
+        end
+      end)
+
+      {:error, :waking}
+    else
+      {:error, :unavailable}
+    end
+  end
+
   defp maybe_wake_agent(id) do
     case Registry.lookup(Loopyard.ChatAgentRegistry, id) do
       [{pid, _}] ->
@@ -270,11 +265,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
         :ok
 
       %{workspace_id: workspace_id} when is_binary(workspace_id) ->
-        # SELECT-path wake: instant, best-effort. Do NOT ensure the workspace
-        # group here — that carries a bounded (8s) boot wait that belongs only
-        # in the SEND path (wake_and_enqueue); on select it blocked every
-        # mount/select for dead-group workspaces (test timeouts, sluggish UI).
-        # If the group is down, mount's own async {:start_workspace} handles it.
+        # SELECT-path wake: instant, best-effort. If the group is down, mount's
+        # own async {:start_workspace} handles it — never boot the group here.
         start_agent_quiet(workspace_id, id)
 
       _ ->
@@ -282,43 +274,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
     end
   end
 
-  # Make sure the workspace's supervisor GROUP exists (`whereis`, not
-  # `workspace_healthy?` — that also demands a live ServiceManager, which an
-  # agent doesn't need just to accept a message). If it's down, kick
-  # start_workspace with a bounded wait: normally it returns within the budget;
-  # if compose drags past it, the start CONTINUES in the background
-  # (async_nolink + ignore) and we report :waking so the caller can tell the
-  # user to retry in a moment instead of blocking the LiveView for minutes.
-  defp ensure_workspace_group(workspace_id) do
-    case Loopyard.WorkspaceGroup.whereis(workspace_id) do
-      pid when is_pid(pid) ->
-        :ok
-
-      nil ->
-        ws = Loopyard.WorkspaceRegistry.get_workspace(workspace_id)
-
-        if ws && ws[:path] do
-          task =
-            Task.Supervisor.async_nolink(Loopyard.TaskSupervisor, fn ->
-              Loopyard.WorkspaceSupervisor.start_workspace(workspace_id, ws.path)
-            end)
-
-          case Task.yield(task, 8_000) do
-            {:ok, _} ->
-              :ok
-
-            nil ->
-              Task.ignore(task)
-              :waking
-
-            {:exit, _} ->
-              :error
-          end
-        else
-          :error
-        end
-    end
-  rescue
-    _ -> :error
+  # Start the agent under its (now live) group. The supervisor call can time
+  # out while ChatAgent.init resumes state — registration happens at
+  # start_link BEFORE init, so the user's retry still lands; the enqueue rides
+  # the mailbox behind init. Never let the exit crash the wake task.
+  defp start_agent_quiet(ws_id, id) do
+    Loopyard.WorkspaceGroup.start_agent(ws_id, id: id, resume: true)
+  catch
+    :exit, _ -> :ok
   end
 end

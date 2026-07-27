@@ -505,7 +505,12 @@ defmodule Loopyard.Workspace.ServiceManager do
       _ -> :ok
     end
   rescue
-    _ -> :ok
+    e ->
+      # Sync silently not starting/stopping is undiagnosable — log it.
+      Loopyard.EventLog.warning(
+        "workspace:#{workspace_id}",
+        "source on_container_up failed: #{Exception.message(e)}"
+      )
   end
 
   defp notify_source_container_down(workspace_id) do
@@ -517,7 +522,12 @@ defmodule Loopyard.Workspace.ServiceManager do
       _ -> :ok
     end
   rescue
-    _ -> :ok
+    e ->
+      # Sync silently not starting/stopping is undiagnosable — log it.
+      Loopyard.EventLog.warning(
+        "workspace:#{workspace_id}",
+        "source on_container_down failed: #{Exception.message(e)}"
+      )
   end
 
   # Fire a notification that a compose up/down attempt has completed —

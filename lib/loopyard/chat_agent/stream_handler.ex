@@ -13,11 +13,17 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   requires calling ChatAgent's private `send_message_normal/2`),
   the return value is `{:drain, text, state}` or `{:noreply, state}`
   so the caller can dispatch accordingly.
+
+  Cohesive clusters live in sub-modules, re-exposed here so call sites
+  are unchanged: rate-limit/auth/context-window in `RateLimit`,
+  tool-loop/runaway detection in `LoopGuard`, error/timeout recovery in
+  `Recovery`. Message appends go through the shared
+  `Loopyard.ChatAgent.MessageLog`.
   """
 
   alias Loopyard.Agent.Event
-  alias Loopyard.ChatAgent.{Persistence, SessionManager}
-  alias Loopyard.ChatAgent.StreamHandler.RateLimit
+  alias Loopyard.ChatAgent.{MessageLog, Persistence}
+  alias Loopyard.ChatAgent.StreamHandler.{LoopGuard, RateLimit, Recovery}
   alias Loopyard.Events
 
   # Rate-limit / auth-status / context-window helpers live in the RateLimit
@@ -27,21 +33,18 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   defdelegate format_reset(resets_at_ms), to: RateLimit
   defdelegate rate_limit_label(type), to: RateLimit
 
+  # Error/timeout recovery lives in the Recovery sub-module; ChatAgent's call
+  # sites keep saying StreamHandler.
+  defdelegate on_stream_error(state, reason), to: Recovery
+  defdelegate on_stream_timeout(state), to: Recovery
+  defdelegate finalize_partial_on_stream_interrupt(state, id, reason), to: Recovery
+
   @ets_table :chat_agents
-
-  # Loop-detection threshold: same tool + same input N times in a row.
-  @tool_loop_threshold 5
-
-  # Runaway cap: total tool calls in a single turn.
-  @turn_tool_limit 50
 
   # Proactively compact (summarize → fresh session) once a turn ends this far into
   # the window — BEFORE the next turn overflows and wedges. Sits above the warn so
   # the user sees the warning first.
   @context_compact_threshold 0.92
-
-  # Max in-memory messages (matching ChatAgent's cap).
-  @max_messages 1000
 
   # Streaming-delta publish cadence. Raw token deltas queue in
   # state.stream_pub_buffer and one combined publish per channel goes out
@@ -103,11 +106,11 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     }
 
     # Loop detection: same tool + same input N times in a row
-    state = maybe_detect_tool_loop(state, id, tool_name, tool_input)
+    state = LoopGuard.maybe_detect_tool_loop(state, id, tool_name, tool_input)
 
     # Runaway cap: even if individual calls differ, a 50+ tool-call
     # turn is almost always the agent flailing. Warn once.
-    state = maybe_detect_tool_runaway(state, id)
+    state = LoopGuard.maybe_detect_tool_runaway(state, id)
 
     Persistence.persist_message(state, tool_msg)
     Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: tool_msg})
@@ -376,7 +379,10 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   # clear these, or stale turn state leaks into the next turn (stuck spinner,
   # false "didn't go through" error, premature loop warnings, re-fired context
   # warning). Does NOT set :status — the caller picks the resting status.
-  defp reset_turn_state(state) do
+  # Public (@doc false) so the Recovery sub-module reuses the ONE canonical
+  # reset; not part of the API surface.
+  @doc false
+  def reset_turn_state(state) do
     %{
       drop_stream_deltas(state)
       | active_tool: nil,
@@ -404,31 +410,12 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     state = Map.put(state, :auth_retry_count, 0)
 
     cond do
-      # Proactive compaction: turn finished but we're deep into the window. Compact
-      # NOW (summarize → fresh session, no re-send — the turn already answered) so
-      # the NEXT turn starts fresh instead of overflowing and wedging. Only when the
-      # queue is empty, so we don't delay parked messages (they'll trip it next).
-      state.context_utilization >= @context_compact_threshold and state.pending_sends == [] ->
-        status_msg = %{
-          role: :system,
-          content:
-            "Compacting context (this session got large — summarizing so it can keep going)…",
-          timestamp: DateTime.utc_now()
-        }
-
-        {state, status_msg} = append_message(state, status_msg)
-
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-          agent_id: id,
-          msg: status_msg
-        })
-
-        :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
-        Persistence.persist_agent(state, &Loopyard.ChatAgent.summary/1)
-        {:auto_restart_context, nil, state}
-
-      # Recovery: context overflowed so hard the model returned NOTHING — compact
-      # AND re-send the user's message so they still get an answer.
+      # Recovery FIRST (order matters): context overflowed so hard the model
+      # returned NOTHING — compact AND re-send the user's message so they still
+      # get an answer. This must be checked BEFORE the proactive compact below:
+      # >= 1.0 also satisfies >= @context_compact_threshold, and with an empty
+      # queue the proactive branch would swallow this case with a nil re-send —
+      # the user's overflowed message would silently never be answered.
       state.context_utilization >= 1.0 && empty_last_response?(state) ->
         # Brief status so the user knows why there's a pause
         status_msg = %{
@@ -454,6 +441,29 @@ defmodule Loopyard.ChatAgent.StreamHandler do
         Persistence.persist_agent(state, &Loopyard.ChatAgent.summary/1)
 
         {:auto_restart_context, last_user_msg && last_user_msg.content, state}
+
+      # Proactive compaction: turn finished but we're deep into the window. Compact
+      # NOW (summarize → fresh session, no re-send — the turn already answered) so
+      # the NEXT turn starts fresh instead of overflowing and wedging. Only when the
+      # queue is empty, so we don't delay parked messages (they'll trip it next).
+      state.context_utilization >= @context_compact_threshold and state.pending_sends == [] ->
+        status_msg = %{
+          role: :system,
+          content:
+            "Compacting context (this session got large — summarizing so it can keep going)…",
+          timestamp: DateTime.utc_now()
+        }
+
+        {state, status_msg} = append_message(state, status_msg)
+
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+          agent_id: id,
+          msg: status_msg
+        })
+
+        :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
+        Persistence.persist_agent(state, &Loopyard.ChatAgent.summary/1)
+        {:auto_restart_context, nil, state}
 
       true ->
         # If the agent finished a turn without producing any visible
@@ -484,218 +494,6 @@ defmodule Loopyard.ChatAgent.StreamHandler do
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
         drain_pending_sends(state)
     end
-  end
-
-  @doc """
-  Handle a stream error. Returns `{:drain, text, state}` or `{:noreply, state}`.
-  """
-  def on_stream_error(state, reason) do
-    id = state.id
-    now = DateTime.utc_now()
-
-    Loopyard.EventLog.error("agent:#{state.name}", "Stream error: #{reason}")
-
-    # Finalize any partial assistant text so the user doesn't lose it
-    # on browser refresh.
-    state = finalize_partial_on_stream_interrupt(state, id, :error)
-
-    # Count recent auto-restarts (last 60s) so a deterministically dying CLI
-    # doesn't hot-loop. Must match the marker actually written below — the old
-    # literal ("Agent crashed — restarting...") was never emitted, so the
-    # breaker was dead (#42).
-    recent_crashes =
-      state.messages
-      |> Enum.count(fn m ->
-        m.role == :system && is_binary(m.content) &&
-          String.starts_with?(m.content, "Agent session restarted automatically") &&
-          DateTime.diff(now, m.timestamp, :second) < 60
-      end)
-
-    if is_binary(reason) && String.contains?(reason, "CLI session exited") && recent_crashes < 2 do
-      # CLI died — restart session and resume the same conversation
-      state =
-        SessionManager.note_cli_death(%{state | last_activity_at: now, errors: state.errors + 1})
-
-      restart_or_compact(state, id)
-    else
-      stream_error_no_restart(state, id, reason, now)
-    end
-  end
-
-  # Breaker tripped → don't resume the session that keeps killing its harness;
-  # funnel through :restart_session, whose gate compacts (summarize → fresh
-  # session). Otherwise: spawn a new CLI resuming the same conversation.
-  defp restart_or_compact(state, id) do
-    if Loopyard.ChatAgent.compaction_breaker_tripped?(state) do
-      GenServer.cast(self(), :restart_session)
-      state = Map.put(state, :active_tool, nil)
-      :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
-      {:noreply, state}
-    else
-      case SessionManager.start_session_safe(state) do
-        {:ok, new_session, live_id} ->
-          recovered_msg =
-            if is_binary(live_id) do
-              %{
-                role: :system,
-                content:
-                  "Agent session restarted automatically (resumed conversation #{String.slice(live_id, 0..7)}…).",
-                timestamp: DateTime.utc_now()
-              }
-            else
-              %{
-                role: :system,
-                content: "Agent session restarted automatically (fresh conversation).",
-                timestamp: DateTime.utc_now()
-              }
-            end
-
-          {state, recovered_msg} =
-            append_message(
-              SessionManager.track_os_pid(%{
-                state
-                | session: new_session,
-                  claude_session_id: live_id,
-                  status: :idle,
-                  active_tool: nil
-              }),
-              recovered_msg
-            )
-
-          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-            agent_id: id,
-            msg: recovered_msg
-          })
-
-          :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
-          Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
-
-          # A fresh session (no live id) needs its prior context replayed;
-          # a resumed one already has it.
-          if is_nil(live_id) do
-            {:build_resume, state}
-          else
-            drain_pending_sends(state)
-          end
-
-        {:error, reason, next_hint} ->
-          state = %{state | claude_session_id: next_hint}
-
-          fail_msg = %{
-            role: :error,
-            content:
-              "CLI session crashed and failed to restart: #{inspect(reason)}. " <>
-                "WHY: the CLI died mid-stream, and the second attempt to spawn a new one failed. " <>
-                "CONSEQUENCE: this agent can't respond until the CLI is restored. " <>
-                "ACTION: click Restart in the sidebar. If that also fails, the agent harness " <>
-                "may be misconfigured — verify the harness is installed in the container and re-authenticate.",
-            timestamp: DateTime.utc_now()
-          }
-
-          {state, fail_msg} = append_message(state, fail_msg)
-          state = reset_turn_state(%{state | status: :idle})
-
-          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-            agent_id: id,
-            msg: fail_msg
-          })
-
-          :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
-          Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
-          drain_pending_sends(state)
-      end
-    end
-  end
-
-  # Unrecoverable stream error: drop the turn, surface the
-  # WHY/CONSEQUENCE/ACTION error, settle to idle.
-  defp stream_error_no_restart(state, id, reason, now) do
-    error_msg = %{
-      role: :error,
-      content:
-        "Stream error: #{reason}. " <>
-          "WHY: the CLI reported an unrecoverable error mid-stream (common: MCP tool " <>
-          "crash, payload too big, malformed tool response). " <>
-          "CONSEQUENCE: the in-flight turn was dropped. Prior context is preserved. " <>
-          "ACTION: send another message — the agent will retry. If the same error " <>
-          "recurs, check /system/events for details.",
-      timestamp: now
-    }
-
-    {state, error_msg} = append_message(state, error_msg)
-
-    state =
-      reset_turn_state(%{
-        state
-        | status: :idle,
-          last_activity_at: now,
-          errors: state.errors + 1
-      })
-
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-      agent_id: id,
-      msg: error_msg
-    })
-
-    :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
-    Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
-    drain_pending_sends(state)
-  end
-
-  @doc """
-  Handle a stream timeout. Returns `{:drain, text, state}` or `{:noreply, state}`.
-  """
-  def on_stream_timeout(state) do
-    id = state.id
-
-    Loopyard.EventLog.warning(
-      "agent:#{state.name}",
-      "Stream timed out after 10m — rebooting the CLI and resuming the conversation"
-    )
-
-    # Finalize any partial text the stream produced before the timeout
-    state = finalize_partial_on_stream_interrupt(state, id, :timeout)
-
-    error_msg = %{
-      role: :system,
-      content: "CLI went unresponsive — auto-restarted, history kept.",
-      timestamp: DateTime.utc_now()
-    }
-
-    {state, error_msg} = append_message(state, error_msg)
-
-    # Clear stream_ref too: the wedged Task may still be alive, and dropping its
-    # ref means late events are ignored, not applied to a now-"idle" agent (if
-    # the reboot below fails and leaves us resting).
-    state = reset_turn_state(%{state | status: :idle, errors: state.errors + 1, stream_ref: nil})
-
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-      agent_id: id,
-      msg: error_msg
-    })
-
-    :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
-    Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
-
-    # Reboot the harness (keeps history, resumes via claude_session_id). Queued
-    # messages drain onto the fresh CLI inside the restart path — NOT here, so we
-    # never drain onto the wedged session we're about to replace.
-    {:reboot, state}
-  end
-
-  @doc """
-  Finalize any partial text accumulated from TextDelta events when a stream is
-  interrupted (error, timeout, user stop). Delegates to
-  `Loopyard.ChatAgent.PartialText` — kept as a thin passthrough so existing
-  callers (StreamHandler + ChatAgent) don't need to change. Queued delta
-  chunks are dropped first: the finalized partial Message carries the full
-  accumulated text, and a flush landing after it would ghost a stale
-  streaming bubble in every viewer.
-  """
-  def finalize_partial_on_stream_interrupt(state, id, reason) do
-    state
-    |> drop_stream_deltas()
-    |> Loopyard.ChatAgent.PartialText.finalize(id, reason)
   end
 
   @doc """
@@ -749,6 +547,19 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     state |> Map.put(:stream_pub_buffer, []) |> Map.put(:stream_pub_timer, nil)
   end
 
+  # Drain the whole parked flurry at once. Returns `{:drain, list, state}` with
+  # the FULL queued list (or `{:noreply, state}` when empty). The caller
+  # (ChatAgent.send_batch) shows the individual messages but streams them as ONE
+  # framed turn — batched, not one-per-turn, so a flurry queued while
+  # rate-limited isn't N separate trips through the limit.
+  # Public (@doc false) so the Recovery sub-module reuses it; not API surface.
+  @doc false
+  def drain_pending_sends(%{pending_sends: []} = state), do: {:noreply, state}
+
+  def drain_pending_sends(%{pending_sends: pending} = state) do
+    {:drain, pending, %{state | pending_sends: []}}
+  end
+
   # --- Private helpers ---
 
   # Queue a streaming chunk for the next flush tick, coalescing onto the
@@ -768,113 +579,6 @@ defmodule Loopyard.ChatAgent.StreamHandler do
         Process.send_after(self(), :flush_stream_deltas, @delta_flush_ms)
 
     state |> Map.put(:stream_pub_buffer, buffer) |> Map.put(:stream_pub_timer, timer)
-  end
-
-  # Fingerprint a tool call for loop detection.
-  defp tool_call_hash(tool_name, tool_input) do
-    raw = :erlang.term_to_binary({tool_name, tool_input})
-    :crypto.hash(:sha256, raw) |> Base.encode16(case: :lower) |> binary_part(0, 16)
-  end
-
-  # Detect same-tool+same-input loops.
-  defp maybe_detect_tool_loop(state, id, tool_name, tool_input) do
-    hash = tool_call_hash(tool_name, tool_input)
-
-    {new_count, warn?} =
-      case state.last_tool_call do
-        {^hash, count} when count + 1 == @tool_loop_threshold ->
-          {count + 1, true}
-
-        {^hash, count} ->
-          {count + 1, false}
-
-        _ ->
-          {1, false}
-      end
-
-    state = %{state | last_tool_call: {hash, new_count}}
-
-    if warn? do
-      :telemetry.execute(
-        [:loopyard, :agent, :tool_loop_detected],
-        %{consecutive: new_count},
-        %{agent_id: id, tool: tool_name}
-      )
-
-      Loopyard.EventLog.warning(
-        "agent:#{state.name}",
-        "Tool-call loop — `#{tool_name}` called #{new_count}× with same input"
-      )
-
-      warn_msg = %{
-        role: :system,
-        content:
-          "⚠ Agent called `#{tool_name}` #{new_count} times in a row with the same input — " <>
-            "it may be stuck in a retry loop. Consider stopping the agent and providing a " <>
-            "different hint, or check whether the tool is returning a consistent error.",
-        timestamp: DateTime.utc_now()
-      }
-
-      {state, warn_msg} = append_message(state, warn_msg)
-      Persistence.persist_message(state, warn_msg)
-
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-        agent_id: id,
-        msg: warn_msg
-      })
-
-      state
-    else
-      state
-    end
-  end
-
-  # Detect tool-call runaway (too many tool calls in a single turn).
-  defp maybe_detect_tool_runaway(%{tool_runaway_warned: true} = state, _id), do: state
-
-  defp maybe_detect_tool_runaway(%{tool_calls_this_turn: n} = state, id)
-       when n >= @turn_tool_limit do
-    :telemetry.execute(
-      [:loopyard, :agent, :tool_runaway],
-      %{tool_calls_this_turn: n},
-      %{agent_id: id}
-    )
-
-    Loopyard.EventLog.warning(
-      "agent:#{state.name}",
-      "Tool-call runaway — #{n} tool calls in a single turn"
-    )
-
-    warn_msg = %{
-      role: :system,
-      content:
-        "⚠ Agent has made #{n} tool calls in this single turn. " <>
-          "WHY: that's far past the usual 5–20 — either it's stuck exploring or it's " <>
-          "looping with slightly-different inputs each time. " <>
-          "CONSEQUENCE: every tool call costs tokens and time. If the agent isn't making " <>
-          "visible progress, it's wasting both. " <>
-          "ACTION: click Stop to interrupt. Give the agent a more specific hint " <>
-          "(e.g. 'the file is in lib/foo.ex') and restart.",
-      timestamp: DateTime.utc_now()
-    }
-
-    {state, warn_msg} = append_message(state, warn_msg)
-    Persistence.persist_message(state, warn_msg)
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: warn_msg})
-    %{state | tool_runaway_warned: true}
-  end
-
-  defp maybe_detect_tool_runaway(state, _id), do: state
-
-  # Drain the whole parked flurry at once. Returns `{:drain, list, state}` with
-  # the FULL queued list (or `{:noreply, state}` when empty). The caller
-  # (ChatAgent.send_batch) shows the individual messages but streams them as ONE
-  # framed turn — batched, not one-per-turn, so a flurry queued while
-  # rate-limited isn't N separate trips through the limit.
-  defp drain_pending_sends(%{pending_sends: []} = state), do: {:noreply, state}
-
-  defp drain_pending_sends(%{pending_sends: pending} = state) do
-    {:drain, pending, %{state | pending_sends: []}}
   end
 
   defp empty_last_response?(state) do
@@ -903,19 +607,6 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     end
   end
 
-  # Inline append_message — same logic as ChatAgent's private version.
-  # Prepends to reversed list for O(1) append, assigns ID if missing.
-  defp append_message(state, msg) do
-    msg =
-      Map.put_new_lazy(msg, :id, fn ->
-        :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
-      end)
-
-    reversed = [msg | state.messages]
-
-    reversed =
-      if length(reversed) > @max_messages, do: Enum.take(reversed, @max_messages), else: reversed
-
-    {%{state | messages: reversed}, msg}
-  end
+  # Append via the ONE shared MessageLog (id assignment + message cap).
+  defp append_message(state, msg), do: MessageLog.append(state, msg)
 end

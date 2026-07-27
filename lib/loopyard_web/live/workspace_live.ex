@@ -555,6 +555,12 @@ defmodule LoopyardWeb.WorkspaceLive do
   def handle_async(:changes, {:ok, {:ok, status}}, socket) when is_map(status),
     do: {:noreply, assign(socket, :changes, status)}
 
+  def handle_async(:changes, {:ok, {:error, reason}}, socket) do
+    # A FAILED fetch must not be indistinguishable from "clean tree".
+    Loopyard.EventLog.warning("workspace", "changes fetch failed: #{inspect(reason)}")
+    {:noreply, assign(socket, :changes, %{staged: [], unstaged: []})}
+  end
+
   def handle_async(:changes, _other, socket),
     do: {:noreply, assign(socket, :changes, %{staged: [], unstaged: []})}
 
@@ -670,6 +676,7 @@ defmodule LoopyardWeb.WorkspaceLive do
       result =
         case ChatAgent.enqueue_message(id, message) do
           :ok -> :ok
+          {:error, :queue_full} = e -> e
           {:error, :unavailable} -> AgentLifecycle.wake_and_enqueue(id, message)
         end
 
@@ -689,6 +696,13 @@ defmodule LoopyardWeb.WorkspaceLive do
           # still [] (the message sent immediately) → nothing rendered here.
           socket = AgentEvents.refresh_selected_from_agents(socket, id, socket.assigns.agents)
           {:reply, %{ok: true}, socket}
+
+        {:error, :queue_full} ->
+          {:reply,
+           %{
+             ok: false,
+             note: "The agent's queue is full — wait for it to catch up, then resend."
+           }, socket}
 
         {:error, :waking} ->
           # The workspace is booting in the background — a retry in a few

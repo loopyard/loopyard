@@ -138,7 +138,11 @@ defmodule Loopyard.Operator do
         {[], nil}
     end
   rescue
-    _ -> {[], nil}
+    e ->
+      # Booting amnesic is the "conversation survives restart" invariant
+      # failing — it must never be invisible.
+      Loopyard.EventLog.error("operator", "history restore failed: #{Exception.message(e)}")
+      {[], nil}
   end
 
   # Liveness = a LIVE GenServer process, not just an ETS row. `get_state/1`
@@ -171,7 +175,9 @@ defmodule Loopyard.Operator do
       _ -> %{}
     end
   rescue
-    _ -> %{}
+    e ->
+      Loopyard.EventLog.warning("operator", "marker unreadable (#{Exception.message(e)}) — fresh")
+      %{}
   end
 
   defp save(identity, map) do
@@ -179,7 +185,9 @@ defmodule Loopyard.Operator do
     File.mkdir_p!(Path.dirname(path))
     File.write(path, Jason.encode!(map))
   rescue
-    _ -> :ok
+    e ->
+      Loopyard.EventLog.warning("operator", "marker not saved: #{Exception.message(e)}")
+      :ok
   end
 
   # ── prompt ──────────────────────────────────────────────────────────────────

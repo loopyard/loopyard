@@ -91,8 +91,11 @@ defmodule Loopyard.Workspace.Destructor do
         end)
 
       for agent <- matches do
-        try_silently(fn -> Loopyard.ChatAgent.stop_agent(agent.id) end)
-        try_silently(fn -> Loopyard.ChatAgent.remove_agent(agent.id) end)
+        try_silently("stop agent #{agent.id}", fn -> Loopyard.ChatAgent.stop_agent(agent.id) end)
+
+        try_silently("remove agent #{agent.id}", fn ->
+          Loopyard.ChatAgent.remove_agent(agent.id)
+        end)
       end
 
       :ok
@@ -160,7 +163,7 @@ defmodule Loopyard.Workspace.Destructor do
       prefix = "loopyard-#{workspace_id}"
 
       for %{name: name} <- volumes, String.starts_with?(name, prefix) do
-        try_silently(fn -> VolumeManager.delete_volume(name) end)
+        try_silently("delete volume #{name}", fn -> VolumeManager.delete_volume(name) end)
       end
 
       :ok
@@ -207,7 +210,7 @@ defmodule Loopyard.Workspace.Destructor do
            ]) do
         {:ok, output} ->
           for id <- String.split(output, "\n", trim: true) do
-            try_silently(fn -> Docker.docker(["rm", "-f", id]) end)
+            try_silently("remove container #{id}", fn -> Docker.docker(["rm", "-f", id]) end)
           end
 
           :ok
@@ -259,13 +262,21 @@ defmodule Loopyard.Workspace.Destructor do
     end
   end
 
-  defp try_silently(fun) do
-    try do
-      fun.()
-    rescue
-      _ -> :ok
-    catch
-      _, _ -> :ok
+  # Non-fatal, but NEVER invisible: a failed volume/container removal during
+  # teardown is a resource LEAK — log what didn't die so it's diagnosable.
+  defp try_silently(label, fun) do
+    case fun.() do
+      {:error, reason} ->
+        Loopyard.EventLog.warning("workspace", "destroy: #{label} failed: #{inspect(reason)}")
+
+      _ ->
+        :ok
     end
+  rescue
+    e ->
+      Loopyard.EventLog.warning("workspace", "destroy: #{label} raised: #{Exception.message(e)}")
+  catch
+    kind, reason ->
+      Loopyard.EventLog.warning("workspace", "destroy: #{label} #{kind}: #{inspect(reason)}")
   end
 end

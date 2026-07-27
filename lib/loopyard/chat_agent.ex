@@ -16,14 +16,18 @@ defmodule Loopyard.ChatAgent do
   require Logger
 
   alias Loopyard.ChatAgent.{
+    Client,
     IdleReaper,
     Initializer,
     Lifecycle,
+    MessageLog,
     MessageWindow,
     Persistence,
     Prompt,
+    Restart,
     SessionManager,
-    StreamHandler
+    StreamHandler,
+    TurnHelpers
   }
 
   alias Loopyard.Events
@@ -205,6 +209,10 @@ defmodule Loopyard.ChatAgent do
   # the Claude API bill. Configurable via Application env for tests
   # that want to exercise the reject path with smaller inputs.
   @max_message_bytes Application.compile_env(:loopyard, :max_message_bytes, 1_048_576)
+  # The pending queue is user-bounded by design, but "bounded by user
+  # behavior" is unbounded in multiplayer: a stuck agent + several eager
+  # senders can balloon GenServer state without a ceiling.
+  @max_pending_sends 50
 
   # Compact-instead-of-resume breaker: after this many unexpected CLI deaths
   # since the last clean turn (see midturn_crashes on the struct), recovery
@@ -239,109 +247,27 @@ defmodule Loopyard.ChatAgent do
   # text the whole way through and must never be killed for taking its time.
   @stream_stall_ms 600_000
 
-  # Warm-interrupt deadline. The SDK's interrupt only blocks when the CLI is
-  # wedged (stdin pipe full); a healthy interrupt acks in microseconds. If the
-  # warm interrupt doesn't land within this window the CLI is wedged, so we
-  # preempt the SDK's own 5s self-crash with a hard restart (kill + resume).
-  # Keep it well under that 5s so we always win the race.
-  @interrupt_deadline_ms 1_500
-
   # --- Public API ---
+  #
+  # The thin client wrappers (call/cast via the Registry, ETS read
+  # fallbacks) live in Loopyard.ChatAgent.Client; every public name is
+  # re-exposed here so external callers keep saying ChatAgent.foo.
 
-  def start_link(opts) do
-    id = Keyword.fetch!(opts, :id)
-    GenServer.start_link(__MODULE__, opts, name: via(id))
-  end
+  defdelegate start_link(opts), to: Client
+  defdelegate send_message(id, text), to: Client
 
-  def send_message(id, text) do
-    GenServer.cast(via(id), {:send_message, text})
-  end
+  @doc "Durability-confirmed send for the interactive UI (see `Client.enqueue_message/2`)."
+  defdelegate enqueue_message(id, text), to: Client
 
-  @doc """
-  Durability-confirmed send for the interactive UI. Unlike `send_message/2`
-  (fire-and-forget cast — fine for internal/eval callers), this is a **call**
-  that returns `:ok` only AFTER the agent has actually received and processed
-  the message (appended + persisted, or durably queued in `pending_sends`).
-
-  Returns `{:error, :unavailable}` when the agent's GenServer is down or dies
-  mid-handling. The LiveView send path keys the input-clear on this: no `:ok`,
-  no clear — so a message sent into a crashed/reloading agent is NEVER silently
-  lost with the box wiped. This closes the "acked before it was safe" gap.
-  """
-  @spec enqueue_message(String.t(), String.t()) :: :ok | {:error, :unavailable}
-  def enqueue_message(id, text) do
-    GenServer.call(via(id), {:send_message, text}, 15_000)
-  catch
-    :exit, _ -> {:error, :unavailable}
-  end
-
-  def get_state(id) do
-    # Try live GenServer first, fall back to ETS. Short timeout (500ms)
-    # because this is a read path from the UI: a wedged agent doesn't
-    # deserve a 5-second UI hang when the ETS summary is right there.
-    # The fall-through via `catch :exit, _` handles both "no such
-    # agent" (noproc) and "agent wedged / took >500ms" — both recover
-    # cleanly from ETS.
-    try do
-      GenServer.call(via(id), :get_state, 500)
-    catch
-      :exit, _ ->
-        case :ets.lookup(@ets_table, id) do
-          [{^id, summary}] -> summary
-          [] -> nil
-        end
-    end
-  end
-
-  def stop_agent(id) do
-    case Registry.lookup(Loopyard.ChatAgentRegistry, id) do
-      [{pid, _}] ->
-        # Update ETS and broadcast before stopping, since terminate(:normal) is a no-op
-        case :ets.lookup(@ets_table, id) do
-          [{^id, summary}] ->
-            stopped = %{summary | status: :stopped}
-            :ets.insert(@ets_table, {id, stopped})
-            Events.ChatAgent.publish(%Events.ChatAgent.Stopped{summary: stopped})
-
-          [] ->
-            :ok
-        end
-
-        # Force-stop the GenServer (kills linked streaming task too).
-        # Guard with Process.alive? so already-dead pids short-circuit
-        # — without the guard, GenServer.stop/3 on a noproc raises an
-        # exit that callers have to rescue. Matters most for AgentBoot
-        # rollback, where the agent is often already dying; the stop
-        # used to wait 5s for a no-op.
-        if Process.alive?(pid) do
-          GenServer.stop(pid, :normal, 5_000)
-        else
-          :ok
-        end
-
-      [] ->
-        :ok
-    end
-  end
-
-  def rename(id, new_name) do
-    GenServer.cast(via(id), {:rename, new_name})
-  end
+  defdelegate get_state(id), to: Client
+  defdelegate stop_agent(id), to: Client
+  defdelegate rename(id, new_name), to: Client
 
   @doc "Get a specific message by ID from the agent's ETS state."
-  def get_message(agent_id, msg_id) do
-    case get_state(agent_id) do
-      %{messages: messages} -> Enum.find(messages, &(&1[:id] == msg_id))
-      _ -> nil
-    end
-  end
+  defdelegate get_message(agent_id, msg_id), to: Client
 
-  @doc """
-  Get a page of messages for an agent. Returns `{messages_slice, total_count}`.
-
-  Delegates to `Loopyard.ChatAgent.MessageWindow` (ETS-backed pagination).
-  """
-  def get_messages(agent_id, opts \\ []), do: MessageWindow.get_messages(agent_id, opts)
+  @doc "Get a page of messages — `{messages_slice, total_count}` (see MessageWindow)."
+  defdelegate get_messages(agent_id, opts \\ []), to: Client
 
   @doc "Append a message from outside the GenServer (see MessageWindow.append_message_ets/2)."
   defdelegate append_message_ets(agent_id, msg), to: MessageWindow
@@ -349,33 +275,11 @@ defmodule Loopyard.ChatAgent do
   @doc "Update a message by ID; GenServer if alive, ETS fallback (see MessageWindow.update_message/3)."
   defdelegate update_message(agent_id, msg_id, update_fn), to: MessageWindow
 
-  @doc """
-  Restart the CLI session without losing the agent or its messages.
-
-  `reason` decides what the CHAT says about it — a real crash recovery is
-  worth a marker; deliberate maintenance is not (the user asked why their
-  healthy idle agent kept announcing "CLI crashed" — it was credential
-  reloads):
-
-    * `:user` — someone clicked Restart; confirm with a quiet marker.
-    * `:reload` — someone clicked "Restart agent" wanting a FULL restart:
-      rebuild session_opts first (fresh MCP tool config + a system prompt
-      re-read from disk) so a dropped/changed tool comes back, THEN restart
-      like `:user` (conversation kept). This is the button's reason.
-    * `:credentials` — token pushed (`Workstation.reload_agents`); silent.
-    * `:memory_reclaim` — MemoryMonitor reclaiming an idle bloated harness;
-      silent (it already EventLogs the why).
-    * `:recovery` — actual crash recovery (internal casts); keeps the loud
-      marker.
-  """
-  def restart_session(id, reason \\ :user)
-      when reason in [:user, :reload, :credentials, :memory_reclaim, :recovery] do
-    GenServer.cast(via(id), {:restart_session, reason})
-  end
+  @doc "Restart the CLI session, keeping the agent + messages (see `Client.restart_session/2` for reasons)."
+  defdelegate restart_session(id, reason \\ :user), to: Client
 
   @doc "Switch the agent's model (Usage-panel Model row); see ChatAgent.ModelControl."
-  def set_model(id, model_id) when is_binary(model_id),
-    do: GenServer.cast(via(id), {:set_model, model_id})
+  defdelegate set_model(id, model_id), to: Client
 
   @doc "Start a stopped/crashed agent — starts a new GenServer and resumes from saved state"
   defdelegate start_agent(id), to: Lifecycle
@@ -384,8 +288,7 @@ defmodule Loopyard.ChatAgent do
   defdelegate remove_agent(id), to: Lifecycle
 
   @doc "Register an agent as booting in ETS so all viewers can see it"
-  def register_booting(id, name, working_dir, opts \\ []),
-    do: Lifecycle.register_booting(id, name, working_dir, opts)
+  defdelegate register_booting(id, name, working_dir, opts \\ []), to: Client
 
   @doc "Update boot status in ETS and broadcast to all viewers"
   defdelegate update_boot_status(id, status_text), to: Lifecycle
@@ -405,17 +308,9 @@ defmodule Loopyard.ChatAgent do
   @doc "Cheap yes/no: any agent for this workspace already in ETS? No GenServer calls."
   defdelegate workspace_loaded?(workspace_id), to: Lifecycle
 
-  def subscribe do
-    Loopyard.Events.ChatAgent.subscribe()
-  end
-
-  def subscribe(agent_id) do
-    Loopyard.Events.ChatAgentMessage.subscribe(agent_id)
-  end
-
-  def unsubscribe(agent_id) do
-    Loopyard.Events.ChatAgentMessage.unsubscribe(agent_id)
-  end
+  defdelegate subscribe(), to: Client
+  defdelegate subscribe(agent_id), to: Client
+  defdelegate unsubscribe(agent_id), to: Client
 
   # --- GenServer init and session startup ---
   #
@@ -576,13 +471,13 @@ defmodule Loopyard.ChatAgent do
       # let it fall into the busy-enqueue clause below, the message parks
       # behind a turn that can never complete or drain → the agent silently
       # wedges and every send vanishes. Self-heal to idle and send for real.
-      ghost_thinking?(state) ->
+      TurnHelpers.ghost_thinking?(state) ->
         Logger.warning(
           "[#{state.id}] recovering ghost :thinking (no stream, no live session) on send"
         )
 
         :telemetry.execute([:loopyard, :agent, :ghost_turn_recovered], %{}, %{agent_id: state.id})
-        send_message_normal(reset_ghost_turn(state), text)
+        send_message_normal(TurnHelpers.reset_ghost_turn(state), text)
 
       # Agent-sanity #15. If a turn is already in flight (:thinking)
       # or pending restart (:backoff), starting a second stream Task
@@ -598,7 +493,12 @@ defmodule Loopyard.ChatAgent do
         # turn-EXECUTION concern; it must not block the inbox. So park the message
         # in the queue (shown in the queue panel) instead of slapping it into the
         # chat stream — it enters the history only when actually sent on drain.
-        state = %{state | pending_sends: state.pending_sends ++ [text]}
+        state =
+          case park_send(state, text) do
+            {:ok, state} -> state
+            :full -> queue_full_note(state)
+          end
+
         # Refresh the ETS summary so the live queue panel updates.
         :ets.insert(@ets_table, {state.id, summary(state)})
 
@@ -704,11 +604,11 @@ defmodule Loopyard.ChatAgent do
       # not loop). So a mid-turn crash becomes: compact → fresh session → the
       # user's question re-runs and answers itself, no "tap Send" needed.
       handle_cast(
-        {:auto_restart_context, pending_user_prompt(state)},
+        {:auto_restart_context, Restart.pending_user_prompt(state)},
         Map.put(state, :midturn_crashes, 0)
       )
     else
-      restart_session_now(state, reason)
+      Restart.restart_session_now(state, reason)
     end
   end
 
@@ -916,7 +816,7 @@ defmodule Loopyard.ChatAgent do
     # session self-crashes at 5s. So we run cancel_turn under a short deadline; if
     # it doesn't ack, the CLI is wedged and we hard-restart (kill + resume),
     # preempting that crash. Fast when healthy, reliable when wedged, no work lost.
-    warm_ok? = warm_interrupt(state)
+    warm_ok? = TurnHelpers.warm_interrupt(state)
 
     state = StreamHandler.finalize_partial_on_stream_interrupt(state, state.id, :stopped_by_user)
 
@@ -991,251 +891,8 @@ defmodule Loopyard.ChatAgent do
     {:noreply, state}
   end
 
-  # The chat marker for a session restart, or nil for silence. Only events the
-  # user should KNOW about earn a line: a real crash recovery, or their own
-  # Restart click (confirmation). Maintenance reasons are EventLog-only.
-  # `resumed?` — did we actually resume the prior harness session, or start fresh
-  # and rebuild context from Loopyard's durable log? A non-nil live_id does NOT
-  # mean "resumed" (session/new returns a fresh id too), so the copy keys off
-  # resumed?, never off the id.
-  # Successful crash recovery is SILENT (EventLog carries the details): the
-  # user is told only when recovery fails or keeps failing — "it worked" is
-  # not news (Brad, twice). The user's own Restart click still confirms.
-  defp restart_note(:recovery, _resumed?, _live_id), do: nil
-
-  defp restart_note(:user, true, _), do: "Session restarted (conversation resumed)."
-  defp restart_note(:user, false, _), do: "Session restarted; rebuilding context from history."
-
-  defp restart_note(:reload, true, _),
-    do: "Restarted — tools reloaded, conversation resumed."
-
-  defp restart_note(:reload, false, _),
-    do: "Restarted — tools reloaded, rebuilding context from history."
-
-  defp restart_note(_maintenance, _resumed?, _live_id), do: nil
-
-  # The user's last message with NO assistant reply after it — the in-flight
-  # turn a mid-turn crash interrupted. nil when the last turn already completed
-  # (nothing to re-run) OR when we've compacted repeatedly in a short window (a
-  # fresh session that keeps crashing too — stop auto-retrying, let the user see
-  # it's stuck rather than spin forever).
-  defp pending_user_prompt(state) do
-    if compaction_looping?(state) do
-      nil
-    else
-      Enum.reduce_while(Enum.reverse(state.messages || []), nil, fn m, _ ->
-        cond do
-          m[:role] == :assistant ->
-            {:halt, nil}
-
-          m[:role] == :user and is_binary(m[:content]) and m[:content] != "" ->
-            {:halt, m[:content]}
-
-          true ->
-            {:cont, nil}
-        end
-      end)
-    end
-  end
-
-  # ≥3 compactions in 3 minutes = even fresh sessions keep dying, so the problem
-  # isn't the resumed history — don't auto-retry into an infinite loop.
-  defp compaction_looping?(state) do
-    now = DateTime.utc_now()
-
-    Enum.count(state.messages || [], fn m ->
-      m[:role] == :system and is_binary(m[:content]) and
-        String.contains?(m[:content], "Compacting instead") and
-        match?(%DateTime{}, m[:timestamp]) and DateTime.diff(now, m[:timestamp], :second) < 180
-    end) >= 3
-  end
-
-  defp restart_session_now(state, reason) do
-    # A full ("reload tools") restart rebuilds session_opts from the agent's boot
-    # opts BEFORE restarting, so the fresh CLI picks up a changed MCP tool set +
-    # a system prompt re-read from disk. Falls back to the frozen opts if the
-    # rebuild fails (e.g. workspace config momentarily unreadable) — the button
-    # still recovers a wedged harness. Everything downstream is the normal
-    # restart, so the conversation resumes just like `:user`.
-    state =
-      if reason == :reload do
-        case Initializer.rebuild_session_opts(state) do
-          {:ok, fresh_opts, prompt_hash} ->
-            %{state | session_opts: fresh_opts, prompt_hash: prompt_hash}
-
-          {:error, _} ->
-            state
-        end
-      else
-        state
-      end
-
-    # A credential/account switch invalidates the native session id — the NEW
-    # account can't resume the old session, so resuming would boot the agent
-    # amnesic ("switched accounts and it forgot everything"). Drop it → start
-    # fresh and reconstruct from Loopyard's durable log (the seed below + the
-    # recall_conversation tool). Every other reason keeps the id and resumes.
-    state = if reason == :credentials, do: %{state | claude_session_id: nil}, else: state
-
-    # Stop the current session
-    if state.session do
-      # Wrap backend.stop in a Task + Task.yield with timeout so a
-      # hung CLI stop doesn't block the GenServer indefinitely. Also
-      # wrap in try/catch so a raise inside backend.stop (or a crashed
-      # Task) doesn't take down the caller — Task.yield EXITS the
-      # caller with the task's exit reason if the task crashes.
-      SessionManager.stop_backend(state.session, state.backend)
-    end
-
-    # Start a fresh session with the same opts. When we have a Claude
-    # session_id captured from prior turns, pass it as `resume:` so the
-    # CLI picks up the same conversation.
-    prior_sid = state.claude_session_id
-
-    case SessionManager.start_session_safe(state) do
-      {:ok, new_session, live_id} ->
-        # Did we actually RESUME prior context, or start fresh? Fresh = we passed
-        # no resume id (a credential switch nulled it above, or first boot) OR we
-        # passed one but the adapter fell back to session/new (oversized/expired
-        # resume). Either way the session's context is EMPTY and must be re-seeded;
-        # a non-nil live_id does NOT imply "has history" (session/new returns a
-        # fresh id too — that was the amnesia bug: the old gate seeded only when
-        # live_id was nil, so a fresh-but-id'd session booted empty).
-        resumed? = is_binary(prior_sid) and live_id == prior_sid
-
-        # A reboot is a full reset-to-idle — clear EVERY piece of transient turn
-        # state, or the agent looks idle while the stream machinery thinks a turn
-        # is live (stale stream_ref), and the next send is silently swallowed.
-        # `claude_session_id: live_id` ADOPTS the harness's real current id — if a
-        # stale/oversized resume failed and the connection fell back to a fresh
-        # session/new, we track the new id instead of re-resuming the dead one.
-        state =
-          SessionManager.track_os_pid(%{
-            state
-            | session: new_session,
-              claude_session_id: live_id,
-              status: :idle,
-              stream_ref: nil,
-              active_tool: nil,
-              in_flight_partial: "",
-              tool_calls_this_turn: 0,
-              tool_runaway_warned: false,
-              last_tool_call: nil,
-              context_warning_sent: false,
-              # A fresh session re-sourced credentials — clear the auth block so
-              # the UI leaves the red auth_expired state. The retry counter is
-              # kept (only a genuinely successful turn resets it) so a still-bad
-              # token keeps its growing backoff instead of hot-looping.
-              auth_error: nil
-          })
-
-        :ets.insert(@ets_table, {state.id, summary(state)})
-        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
-
-        # What the CHAT says depends on WHY we restarted. Deliberate
-        # maintenance (credential reload, memory reclaim) on a healthy agent
-        # is SILENT — announcing "CLI crashed" for every token push made an
-        # idle agent look broken. Those reasons go to the EventLog only; the
-        # harness-status sidebar block already covers the in-between state.
-        state =
-          case restart_note(reason, resumed?, live_id) do
-            nil ->
-              Loopyard.EventLog.info(
-                "agent:#{state.name}",
-                "Session restarted (#{reason}), " <>
-                  if(resumed?,
-                    do: "resumed #{String.slice(live_id, 0..7)}…",
-                    else: "rebuilt context from history"
-                  )
-              )
-
-              state
-
-            note ->
-              restart_msg = %{role: :system, content: note, timestamp: DateTime.utc_now()}
-              {state, restart_msg} = append_message(state, restart_msg)
-
-              Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-                agent_id: state.id,
-                msg: restart_msg
-              })
-
-              state
-          end
-
-        # Started fresh (switch, first boot, or a resume that fell back to
-        # session/new) → seed the empty session with recent context verbatim so
-        # the model isn't amnesic; the rest is a recall_conversation call away.
-        # A genuinely resumed session already has its history.
-        unless resumed? do
-          if seed = Loopyard.ChatAgent.ResumeMessage.build(state.messages) do
-            GenServer.cast(self(), {:resume_prompt, seed})
-          end
-        end
-
-        # Drain a message the user queued while the harness was wedged onto the
-        # fresh CLI (one at a time — the rest pop on turn completion, which
-        # batches). NOT batched here: if the backend is permanently dead, this
-        # recovery path loops, and batching would nest the queue exponentially.
-        #
-        # DELAYED, not immediate: right after session/load the adapter's
-        # underlying CLI subprocess can still be spinning up — prompting in
-        # that window dies with "ProcessTransport is not ready for writing"
-        # (observed with claude-code-acp 0.16.2 on large-session resumes). A
-        # few seconds of settle time lets the resumed subprocess become
-        # writable before the queued send hits it. Reuses the existing
-        # :drain_resumed_pending handler (batch-drains only when :idle).
-        if state.pending_sends != [] do
-          settle_ms = Application.get_env(:loopyard, :pending_drain_settle_ms, 4_000)
-          Process.send_after(self(), :drain_resumed_pending, settle_ms)
-        end
-
-        {:noreply, state}
-
-      {:error, reason, next_hint} ->
-        # DON'T give up — a spawn failure is often transient (docker exec racing
-        # a container restart, a config file mid-rewrite, a momentary API blip).
-        # Schedule a backoff retry through the existing :retry_session machinery;
-        # the crash-loop breaker (@max_consecutive_crashes) still bounds it.
-        # ADOPT next_hint: one-strike resume — if this failure was a resume, the
-        # hint is now nil so the retry is a guaranteed-fresh session/new.
-        state = %{state | claude_session_id: next_hint}
-        consecutive = Map.get(state, :consecutive_crashes, 0) + 1
-        base = Application.get_env(:loopyard, :crash_backoff_base_ms, 2_000)
-        backoff_ms = Loopyard.Retry.backoff_ms(consecutive, {:exponential, base})
-        Process.send_after(self(), {:retry_session, consecutive, state.session}, backoff_ms)
-
-        error_msg = %{
-          role: :error,
-          content:
-            "Failed to restart the agent session: #{inspect(reason)}. " <>
-              "WHY: the agent harness failed to start — usually a transient spawn race, " <>
-              "auth, or the harness missing in the container. " <>
-              "CONSEQUENCE: no turn is running right now; your messages are preserved. " <>
-              "ACTION: none — retrying automatically in #{div(backoff_ms, 1000)}s. " <>
-              "If it keeps failing, check the harness in the container, then click Restart.",
-          timestamp: DateTime.utc_now()
-        }
-
-        {state, error_msg} = append_message(state, error_msg)
-
-        state =
-          %{state | errors: state.errors + 1, status: :backoff}
-          |> Map.put(:consecutive_crashes, consecutive)
-          |> Map.put(:retry_from_session, state.session)
-
-        :ets.insert(@ets_table, {state.id, summary(state)})
-
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-          agent_id: state.id,
-          msg: error_msg
-        })
-
-        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :backoff})
-
-        {:noreply, state}
-    end
-  end
+  # restart_note/pending_user_prompt/compaction_looping?/restart_session_now —
+  # extracted to Loopyard.ChatAgent.Restart.
 
   # Replace the pending queue + push the fresh summary to the live queue panel.
   defp set_pending(state, pending) do
@@ -1281,9 +938,14 @@ defmodule Loopyard.ChatAgent do
         {:reply, :ok, new_state}
 
       true ->
-        state = %{state | pending_sends: state.pending_sends ++ [text]}
-        GenServer.cast(self(), :restart_session)
-        {:reply, :ok, state}
+        case park_send(state, text) do
+          {:ok, state} ->
+            GenServer.cast(self(), :restart_session)
+            {:reply, :ok, state}
+
+          :full ->
+            {:reply, {:error, :queue_full}, state}
+        end
     end
   end
 
@@ -1771,63 +1433,36 @@ defmodule Loopyard.ChatAgent do
   # fresh. Called on every code path that restarts the session —
   # :restart_session cast, crash-recovery, retry-after-backoff,
   # ensure_session_alive.
-  # A turn is only genuinely in flight if its stream is live. A real
-  # :thinking turn always carries a stream_ref (set with the status flip in
-  # start_turn) backed by a live session. :thinking with NO stream_ref AND
-  # NO live session is a ghost — the turn died without resetting to idle.
-  defp ghost_thinking?(%{status: :thinking, stream_ref: nil} = state),
-    do: not live_session?(state)
+  # ghost_thinking?/reset_ghost_turn/warm_interrupt — extracted to
+  # Loopyard.ChatAgent.TurnHelpers.
 
-  defp ghost_thinking?(_), do: false
-
-  defp live_session?(%{session: nil}), do: false
-
-  defp live_session?(%{session: session, backend: backend}) do
-    backend.session_alive?(session)
-  rescue
-    _ -> false
-  catch
-    _, _ -> false
-  end
-
-  # Clear all transient turn state and return to idle — same fields the
-  # interrupt/stream-done resets clear (agent-sanity: every reset-to-idle
-  # path clears transient state). Used to recover a ghost :thinking before
-  # re-sending, so the fresh turn starts clean.
-  defp reset_ghost_turn(state) do
-    %{
-      state
-      | status: :idle,
-        stream_ref: nil,
-        active_tool: nil,
-        in_flight_partial: "",
-        tool_calls_this_turn: 0,
-        tool_runaway_warned: false,
-        last_tool_call: nil,
-        context_warning_sent: false,
-        turn_retry_count: 0,
-        pending_turn_error: nil,
-        current_turn_prompt: nil
-    }
-  end
-
-  # The normal (non-rate-limited, non-auth-expired) path of
-  # handle_cast({:send_message, text}). Kept as a defp so the cast
-  # clauses stay contiguous (Elixir warns on non-grouped clauses) and
-  # the cond in send_message stays readable.
-  # Run the backend's warm interrupt under @interrupt_deadline_ms. Returns true if
-  # it acked cleanly, false if it errored or timed out (CLI wedged → caller hard-
-  # restarts). cancel_turn is exit-safe (it catches the SDK's own exits), so the
-  # linked Task can't take us down; a timeout just means "wedged".
-  defp warm_interrupt(%{session: nil}), do: true
-
-  defp warm_interrupt(%{session: session, backend: backend}) do
-    task = Task.async(fn -> backend.cancel_turn(session) end)
-
-    case Task.yield(task, @interrupt_deadline_ms) || Task.shutdown(task, :brutal_kill) do
-      {:ok, :ok} -> true
-      _ -> false
+  # Park a message on the pending queue, bounded. :full means the caller must
+  # SAY so — a silently dropped message is the one unforgivable outcome.
+  defp park_send(state, text) do
+    if length(state.pending_sends) >= @max_pending_sends do
+      :full
+    else
+      {:ok, %{state | pending_sends: state.pending_sends ++ [text]}}
     end
+  end
+
+  defp queue_full_note(state) do
+    note = %{
+      role: :error,
+      content:
+        "Message NOT queued — #{@max_pending_sends} are already waiting. " <>
+          "Wait for the agent to catch up (or Clear all in the queue panel), then resend.",
+      timestamp: DateTime.utc_now()
+    }
+
+    {state, note} = append_message(state, note)
+
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+      agent_id: state.id,
+      msg: note
+    })
+
+    state
   end
 
   defp send_message_normal(state, text) do
@@ -1860,7 +1495,12 @@ defmodule Loopyard.ChatAgent do
         msg: note
       })
 
-      state = %{state | pending_sends: state.pending_sends ++ [text]}
+      state =
+        case park_send(state, text) do
+          {:ok, state} -> state
+          :full -> queue_full_note(state)
+        end
+
       Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
       GenServer.cast(self(), :restart_session)
       {:noreply, state}
@@ -1969,24 +1609,8 @@ defmodule Loopyard.ChatAgent do
      |> Map.put(:last_stream_event_at, System.monotonic_time(:millisecond))}
   end
 
-  @max_messages 1000
-
-  defp append_message(state, msg) do
-    msg = Map.put_new_lazy(msg, :id, fn -> generate_msg_id() end)
-    # Store as reverse list for O(1) prepend. Trim to cap.
-    reversed = [msg | state.messages]
-
-    reversed =
-      if length(reversed) > @max_messages, do: Enum.take(reversed, @max_messages), else: reversed
-
-    {%{state | messages: reversed}, msg}
-  end
-
-  defp generate_msg_id do
-    :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
-  end
-
-  defp via(id), do: {:via, Registry, {Loopyard.ChatAgentRegistry, id}}
+  # Append via the ONE shared MessageLog (id assignment + message cap).
+  defp append_message(state, msg), do: MessageLog.append(state, msg)
 
   @doc false
   def summary(state) do
@@ -2031,14 +1655,13 @@ defmodule Loopyard.ChatAgent do
   end
 
   @doc "Drop all queued (pending) messages without stopping the current turn."
-  def clear_pending(id), do: GenServer.cast(via(id), :clear_pending)
+  defdelegate clear_pending(id), to: Client
 
   @doc "Warm-interrupt the in-flight turn (keep the session); sleep the agent if idle."
-  def interrupt(id), do: GenServer.cast(via(id), :interrupt)
+  defdelegate interrupt(id), to: Client
 
   @doc "Remove a single queued message by its index in the pending queue."
-  def remove_pending(id, index) when is_integer(index),
-    do: GenServer.cast(via(id), {:remove_pending, index})
+  defdelegate remove_pending(id, index), to: Client
 
   # All broadcast from ChatAgent is done through the typed publisher
   # modules `Loopyard.Events.ChatAgent` (topic `"chat_agents"`) and

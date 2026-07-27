@@ -151,8 +151,7 @@ Test file: `test/loopyard/service_manager_terminate_test.exs`
 | `lib/loopyard/terminal.ex` | `test/loopyard/terminal_test.exs` |
 | `lib/loopyard/workspace/service_manager.ex` | `test/loopyard/service_manager_terminate_test.exs` |
 | `lib/loopyard_web/live/message_live.ex` | `test/loopyard_web/live/message_live_test.exs` |
-| `lib/loopyard_web/live/workspace_live/agent_events.ex` | `test/loopyard_web/live/workspace_live/agent_events_test.exs` |
-| `lib/loopyard_web/live/workspace_live/docker_events.ex` | `test/loopyard_web/live/workspace_live/docker_events_test.exs` |
+| `lib/loopyard_web/live/workspace_live/agent_lifecycle.ex` | `test/loopyard_web/live/workspace_live/agent_lifecycle_test.exs` |
 | `lib/loopyard_web/channels/terminal_channel.ex` | `test/loopyard_web/channels/terminal_channel_test.exs` |
 
 ## Rules

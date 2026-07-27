@@ -14,8 +14,6 @@ defmodule Loopyard.ChatAgent.PartialText do
   alias Loopyard.ChatAgent.Persistence
   alias Loopyard.Events
 
-  @max_messages 1000
-
   @doc """
   Persist the in-flight partial as a truncated assistant message. No-op when
   there's no partial. Returns the state with `in_flight_partial` cleared.
@@ -58,19 +56,5 @@ defmodule Loopyard.ChatAgent.PartialText do
 
   def finalize(state, _id, _reason), do: state
 
-  # Same O(1) prepend + cap as ChatAgent.append_message (the shared-helper
-  # dedup across the ChatAgent modules is separately tracked).
-  defp append(state, msg) do
-    msg =
-      Map.put_new_lazy(msg, :id, fn ->
-        :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
-      end)
-
-    reversed = [msg | state.messages]
-
-    reversed =
-      if length(reversed) > @max_messages, do: Enum.take(reversed, @max_messages), else: reversed
-
-    {%{state | messages: reversed}, msg}
-  end
+  defp append(state, msg), do: Loopyard.ChatAgent.MessageLog.append(state, msg)
 end

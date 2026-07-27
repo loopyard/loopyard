@@ -4,15 +4,13 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 ## Simplicity (less to read, less to misunderstand)
 
-1. **Split the over-cap modules.** The Reviewer/attention sprint pushed seven
-   files past the size ratchet; they got explicit allowances in
-   `test/loopyard/invariants_test.exs` (`@size_allowlist`) with the split plan
-   noted per file: `cards.ex` (approval/secret cards out of question cards),
-   `operator_live.ex` (rail/attention rows component), `chat.ex` (composer
-   module), `stream_handler.ex` (rate-limit/usage handling),
-   `acp/connection.ex` (elicitation/permission round-trip), plus `chat_agent.ex`
-   and `workspace_live.ex` allowance bumps. When you split one, lower its
-   allowance — the ratchet only ratchets if allowances come back down.
+1. **Split workspace_live.ex (the last over-cap module).** The Jul 2026 audit
+   split cards/chat/operator_live/stream_handler/acp-connection back under the
+   800 default and brought chat_agent.ex under its 1700 allowance; only
+   `workspace_live.ex` (~1840, allowance 1900) remains. The mapped seams: the
+   `on_*` PubSub wrapper cluster → `WorkspaceLive.EventRouter`; the
+   `handle_async/3` cluster → `WorkspaceLive.AsyncResults`; the
+   service/port/sync handle_events → `WorkspaceLive.ServiceEvents`.
 
 2. **Continue splitting workspace_live handler clusters (if they grow).** Git diff and file browser are out (`DiffLoader`, `FileBrowser`). Sync and cluster-control clusters were reviewed and judged too thin to earn modules — section comments are enough. Revisit if either grows meaningfully.
 
@@ -169,3 +167,24 @@ waiterless card records + informs the agent on its next turn. Also: Digest
 should append a "needs input" entry when a question posts, and the operator
 prompt should tell it to surface unanswered questions proactively — the chief
 of staff hunts so the human doesn't.
+
+## Source-audit follow-ups (Jul 2026 audit)
+
+1. **Unify the two session-restart paths.** `restart_session_now/2` and the
+   `:auto_restart_context` cast do the same job (stop → fresh session → seed →
+   re-drive) through different primitives: only the former tracks the OS pid,
+   clears `auth_error`, and schedules a backoff retry on failure; the latter
+   hand-rolls `backend.stop` and just resets to `:idle` with no retry. A fix
+   applied to one will not reach the other — the highest structural drift risk
+   in ChatAgent. Collapse `:auto_restart_context` onto the `restart_session_now`
+   path (it only additionally needs the re-send prompt + seed).
+2. **Case-table complexity**: `LoopyardWeb.Components.ToolSummary.summarize`
+   (CC 74) and `Viewers.FileType` (CC 45) are giant case trees — convert to
+   data (module-attribute maps) so adding a tool/extension is a row, not a
+   clause. Low risk, cosmetic-mechanical.
+3. **Property-based tests still absent** despite TESTING.md prescribing
+   StreamData for `StreamBuffer`, `AgentLog` replay, `StateMachine`, and tool
+   input validators. Zero `ExUnitProperties` usages in test/.
+4. **Operator.Digest has no tests** — the notify-when-done GenServer (watch
+   registration, TTL sweep, dedup, pending-flush-on-idle) is the operator's
+   money path; needs a focused GenServer test with fabricated Activity events.

@@ -460,7 +460,12 @@ defmodule Loopyard.ProjectRegistry do
         try do
           Loopyard.VolumeManager.delete_volume(vol)
         rescue
-          _ -> :ok
+          e ->
+            # A failed delete LEAKS the volume — log it so the leak is
+            # diagnosable (the silent version is how 700 volumes piled up).
+            Logger.warning(
+              "[ProjectRegistry] canonical volume #{vol} not deleted: #{Exception.message(e)}"
+            )
         end
       end
 

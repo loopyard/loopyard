@@ -37,19 +37,26 @@ defmodule Loopyard.Peering do
 
   @doc "Grant both directions between two workspaces (the standard approval outcome)."
   def grant_pair(ws_a, ws_b) when is_binary(ws_a) and is_binary(ws_b) do
-    grants =
+    locked(fn ->
       load()
       |> Kernel.++([%{"from" => ws_a, "to" => ws_b}, %{"from" => ws_b, "to" => ws_a}])
       |> Enum.uniq()
-
-    write(grants)
+      |> write()
+    end)
   end
 
   def revoke(from_ws, to_ws) do
-    load()
-    |> Enum.reject(&(&1["from"] == from_ws and &1["to"] == to_ws))
-    |> write()
+    locked(fn ->
+      load()
+      |> Enum.reject(&(&1["from"] == from_ws and &1["to"] == to_ws))
+      |> write()
+    end)
   end
+
+  # Serialize read-modify-write cycles: two concurrent grants (or a grant
+  # racing a revoke) were last-writer-wins — one mutation silently vanished.
+  # Single-node app; a global lock is ownership enough without a GenServer.
+  defp locked(fun), do: :global.trans({{__MODULE__, :store}, self()}, fun)
 
   @doc "Workspace ids this workspace may send to."
   def peers_of(ws_id), do: load() |> Enum.filter(&(&1["from"] == ws_id)) |> Enum.map(& &1["to"])

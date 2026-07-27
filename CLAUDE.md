@@ -118,7 +118,10 @@ browser vanish on refresh.
 - While `:rate_limited` or `:auth_expired`: record the message but
   don't hit the CLI; surface an explanation.
 - While `:thinking` or `:backoff`: enqueue on `state.pending_sends`.
-  FIFO drain via `drain_pending_sends/1` on turn completion.
+  FIFO drain via `drain_pending_sends/1` on turn completion. The queue is
+  CAPPED (`@max_pending_sends`, 50): a full queue rejects the message
+  LOUDLY (inline error / `{:error, :queue_full}` on the ack path) —
+  never silently, never unbounded.
 
 **Catchalls on every callback.** `handle_cast(msg, state)`,
 `handle_call(msg, _from, state)`, and `handle_info(msg, state)` all

@@ -417,24 +417,14 @@ defmodule Loopyard.InvariantsTest do
 
   @default_max_lines 800
   @size_allowlist %{
-    # These are known-large and have active split plans (the batch below is
-    # tracked in docs/IMPROVEMENTS.md → "Split the over-cap modules").
+    # These are known-large and have active split plans.
     # When you split one, lower its allowance or remove it.
-    "lib/loopyard/chat_agent.ex" => 2100,
+    # (The Jul 2026 audit split cards/chat/operator_live/stream_handler/
+    # connection back under the default — their allowances are gone.)
+    "lib/loopyard/chat_agent.ex" => 1700,
     "lib/loopyard_web/live/workspace_live.ex" => 1900,
     "lib/loopyard/eval_runner.ex" => 1200,
-    "lib/loopyard_web/live/project_live.ex" => 850,
-    # Reviewer/attention sprint growth (Jul 2026):
-    # cards.ex → split approval/secret cards from question cards
-    "lib/loopyard_web/live/workspace_live/messages/cards.ex" => 1000,
-    # operator_live.ex → extract the rail (attention rows) component module
-    "lib/loopyard_web/live/operator_live.ex" => 1000,
-    # chat.ex → extract the composer (queue band + form) component module
-    "lib/loopyard_web/live/workspace_live/components/chat.ex" => 950,
-    # stream_handler.ex → extract rate-limit/usage event handling
-    "lib/loopyard/chat_agent/stream_handler.ex" => 1000,
-    # acp/connection.ex → extract elicitation/permission round-trip handling
-    "lib/loopyard/harness/acp/connection.ex" => 950
+    "lib/loopyard_web/live/project_live.ex" => 850
   }
 
   describe "module size invariants" do

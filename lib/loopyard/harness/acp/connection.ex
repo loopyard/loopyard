@@ -13,10 +13,14 @@ defmodule Loopyard.Harness.ACP.Connection do
   Permission handling is pluggable via `:permission_mode` — today `:auto_allow`
   (and we still surface a `%Event.PermissionRequest{}` so the #7 UI can later
   intercept); `:ask` (block on a UI decision) is future work.
+
+  Cohesive helper clusters live in sub-modules: stderr diagnostics in
+  `Connection.Diagnostics`, model/session wire helpers in `Connection.Models`.
   """
   use GenServer
   require Logger
 
+  alias Loopyard.Harness.ACP.Connection.{Diagnostics, Models}
   alias Loopyard.Harness.ACP.Translator
   alias Loopyard.Agent.Event
 
@@ -97,7 +101,7 @@ defmodule Loopyard.Harness.ACP.Connection do
     # Abnormal closes deliberately KEEP their stderr file (it's the diagnosis),
     # which under a crash loop accumulated hundreds of them. Sweep old ones
     # here — by the time a new session boots, day-old dying words are stale.
-    sweep_stale_stderr_logs()
+    Diagnostics.sweep_stale_stderr_logs()
 
     transport_opts = Keyword.put(transport_opts, :stderr_log, stderr_log)
 
@@ -252,14 +256,14 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   # Live model switch (UI-driven). Optimistic display; :set_model error reverts.
   def handle_cast({:set_model, model_id}, %{session_id: sid} = state) when is_binary(sid) do
-    {state, id} = request_model_switch(state, model_id)
+    {state, id} = Models.request_model_switch(state, model_id)
 
     {:noreply,
      %{
        state
        | pending: Map.put(state.pending, id, :set_model),
          fallback_model: state.model,
-         model: model_name(state.available_models, model_id) || model_id
+         model: Models.model_name(state.available_models, model_id) || model_id
      }}
   end
 
@@ -315,7 +319,7 @@ defmodule Loopyard.Harness.ACP.Connection do
         "(resume=#{inspect(state.resume != nil)}); closing connection"
     )
 
-    surface_dying_words(state, :handshake_timeout)
+    Diagnostics.surface_dying_words(state, :handshake_timeout)
     state = reply_waiters(state, {:error, :handshake_timeout})
     {:stop, :normal, %{state | status: :closed}}
   end
@@ -324,7 +328,7 @@ defmodule Loopyard.Harness.ACP.Connection do
     # The adapter died — its stderr is the diagnosis. Read the tail back and
     # log it LOUDLY (server log + /system/events); without this, failures like
     # the inotify EMFILE storm are invisible ("session/new never answered").
-    stderr_tail = surface_dying_words(state, reason)
+    stderr_tail = Diagnostics.surface_dying_words(state, reason)
 
     state = reply_waiters(state, {:error, {:closed, reason}})
 
@@ -364,7 +368,7 @@ defmodule Loopyard.Harness.ACP.Connection do
     # conversation-continuity invariant across restarts. Only if the adapter
     # advertises the capability; otherwise fall back to a new session so we
     # still boot.
-    if load_supported?(msg) do
+    if Models.load_supported?(msg) do
       {state, _} =
         request(state, "session/load", %{
           "sessionId" => sid,
@@ -477,20 +481,20 @@ defmodule Loopyard.Harness.ACP.Connection do
   # of either wire shape.
   defp maybe_set_model(state, result) do
     desired = state.desired_model
-    {_models, current, _dialect} = extract_models(result)
+    {_models, current, _dialect} = Models.extract_models(result)
 
     # Only when the adapter TOLD us the current model (is_binary current) and it
     # differs — otherwise we can't confirm a switch is needed, and firing blind
     # would emit a spurious request (and break callers that don't expect one).
     if is_binary(desired) and desired != "" and is_binary(current) and desired != current and
          is_binary(state.session_id) do
-      {state, id} = request_model_switch(state, desired)
+      {state, id} = Models.request_model_switch(state, desired)
 
       %{
         state
         | pending: Map.put(state.pending, id, :set_model),
           fallback_model: state.model,
-          model: model_name(state.available_models, desired) || desired
+          model: Models.model_name(state.available_models, desired) || desired
       }
     else
       state
@@ -529,9 +533,13 @@ defmodule Loopyard.Harness.ACP.Connection do
          state
        ) do
     state =
-      case extract_models(%{"configOptions" => update["configOptions"]}) do
+      case Models.extract_models(%{"configOptions" => update["configOptions"]}) do
         {models, current, :config_option} when is_binary(current) ->
-          %{state | available_models: models, model: model_name(models, current) || current}
+          %{
+            state
+            | available_models: models,
+              model: Models.model_name(models, current) || current
+          }
 
         _ ->
           state
@@ -622,16 +630,30 @@ defmodule Loopyard.Harness.ACP.Connection do
          {:ok, questions} <- AcpElicitation.parse(params) do
       conn = self()
 
-      Task.start(fn ->
+      # Supervised, and the JSON-RPC response is guaranteed: if ANYTHING in the
+      # ask/render path raises (malformed selection, broker hiccup), we still
+      # answer with a decline — an unanswered elicitation wedges the agent's
+      # whole turn on a request that will never resolve.
+      Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
         result =
-          case Loopyard.Harness.Questions.ask(agent_id, questions) do
-            {:ok, selections} ->
-              %{
-                "action" => "accept",
-                "content" => AcpElicitation.render_content(questions, selections)
-              }
+          try do
+            case Loopyard.Harness.Questions.ask(agent_id, questions) do
+              {:ok, selections} ->
+                %{
+                  "action" => "accept",
+                  "content" => AcpElicitation.render_content(questions, selections)
+                }
 
-            {:error, :timeout} ->
+              {:error, :timeout} ->
+                %{"action" => "decline"}
+            end
+          rescue
+            e ->
+              Logger.warning("ACP elicitation crashed: #{Exception.message(e)} — declining")
+              %{"action" => "decline"}
+          catch
+            kind, reason ->
+              Logger.warning("ACP elicitation #{kind}: #{inspect(reason)} — declining")
               %{"action" => "decline"}
           end
 
@@ -672,9 +694,12 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   # ---- jsonrpc plumbing ----
 
-  defp request(state, method, params) do
+  # Public (@doc false) so Connection.Models can issue the dialect-appropriate
+  # model-switch request through the same plumbing; not API surface.
+  @doc false
+  def request(state, method, params) do
     id = state.next_id
-    kind = method_kind(method)
+    kind = Models.method_kind(method)
     send_msg(state, %{"jsonrpc" => "2.0", "id" => id, "method" => method, "params" => params})
     {%{state | next_id: id + 1, pending: Map.put(state.pending, id, kind)}, id}
   end
@@ -714,170 +739,26 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   defp send_msg(state, msg), do: state.transport_mod.send_msg(state.transport, msg)
 
-  defp method_kind("initialize"), do: :initialize
-  defp method_kind("session/new"), do: :session_new
-  defp method_kind("session/load"), do: :session_load
-  defp method_kind("session/prompt"), do: :session_prompt
-  defp method_kind(other), do: other
-
-  # Whether the adapter advertised it can replay a saved session (session/load).
-  # Absent → false → we use session/new. Guards against booting session/load
-  # against an adapter that doesn't support it.
-  defp load_supported?(msg) do
-    caps = get_in(msg, ["result", "agentCapabilities"]) || %{}
-    caps["loadSession"] == true
-  end
-
   # Session became ready: capture the id, the adapter's model list (drives the
   # UI switcher + name resolution), and the current model's HUMAN name — the
   # adapter reports currentModelId "default" (useless in the UI); its
   # availableModels descriptions carry the real mapping, e.g. default →
   # "Sonnet 4.5 · Best for everyday tasks" → "Sonnet 4.5".
   #
-  # Two wire dialects: legacy claude-code-acp puts a `models` map
-  # (`availableModels`/`currentModelId`) in the session result and switches
-  # via `session/set_model`; claude-agent-acp (0.60+) reports `configOptions`
-  # (the `"model"` entry: `options`/`currentValue`) and switches via
-  # `session/set_config_option`. We normalize both into the legacy internal
-  # shape and remember which dialect to speak (`:model_dialect`).
+  # Wire-dialect normalization lives in Connection.Models — we remember which
+  # dialect to speak (`:model_dialect`) for later model switches.
   defp session_ready(state, sid, result) do
-    {models, current, dialect} = extract_models(result)
-    name = model_name(models, current) || current || state.model
+    {models, current, dialect} = Models.extract_models(result)
+    name = Models.model_name(models, current) || current || state.model
 
     state
     |> Map.put(:model_dialect, dialect)
     |> Map.merge(%{session_id: sid, status: :ready, available_models: models, model: name})
   end
 
-  defp extract_models(result) when is_map(result) do
-    case find_model_config_option(result["configOptions"]) do
-      %{"options" => opts} = opt when is_list(opts) ->
-        models =
-          Enum.map(opts, fn o ->
-            %{"modelId" => o["value"], "name" => o["name"], "description" => o["description"]}
-          end)
-
-        {models, opt["currentValue"], :config_option}
-
-      _ ->
-        {get_in(result, ["models", "availableModels"]) || [],
-         get_in(result, ["models", "currentModelId"]), :set_model}
-    end
-  end
-
-  defp extract_models(_result), do: {[], nil, :set_model}
-
-  defp find_model_config_option(options) when is_list(options),
-    do: Enum.find(options, &(is_map(&1) and &1["id"] == "model"))
-
-  defp find_model_config_option(_), do: nil
-
-  # The dialect-appropriate model-switch request. Response handling is shared
-  # (pending tag :set_model): success needs nothing, error reverts the display.
-  defp request_model_switch(%{model_dialect: :config_option} = state, model_id) do
-    request(state, "session/set_config_option", %{
-      "sessionId" => state.session_id,
-      "configId" => "model",
-      "value" => model_id
-    })
-  end
-
-  defp request_model_switch(state, model_id) do
-    request(state, "session/set_model", %{
-      "sessionId" => state.session_id,
-      "modelId" => model_id
-    })
-  end
-
-  # id → human name from the adapter's model list (description's leading
-  # segment before "·", else the entry's name). nil when unknown.
-  defp model_name(models, id) when is_list(models) and is_binary(id) do
-    case Enum.find(models, &(&1["modelId"] == id)) do
-      %{"description" => d} when is_binary(d) and d != "" ->
-        d |> String.split("·") |> hd() |> String.trim()
-
-      %{"name" => n} when is_binary(n) and n != "" ->
-        n
-
-      _ ->
-        nil
-    end
-  end
-
-  defp model_name(_models, _id), do: nil
-
   defp reply_waiters(state, reply) do
     Enum.each(state.waiters, &GenServer.reply(&1, reply))
     %{state | waiters: []}
-  end
-
-  # On abnormal close, read the adapter's captured stderr tail and log it —
-  # then keep the file for post-mortem. On clean shutdown, remove it.
-  # Returns the tail (or nil) so the caller can classify the death — e.g.
-  # a rate-limit rejection that killed the adapter.
-  @stderr_tail_bytes 2_000
-
-  defp surface_dying_words(%{stderr_log: path}, reason) when is_binary(path) do
-    tail =
-      case File.read(path) do
-        {:ok, ""} ->
-          nil
-
-        {:ok, out} ->
-          binary_part(
-            out,
-            max(byte_size(out) - @stderr_tail_bytes, 0),
-            min(byte_size(out), @stderr_tail_bytes)
-          )
-
-        _ ->
-          nil
-      end
-
-    if tail do
-      Logger.warning(
-        "[ACP] adapter closed (#{inspect(reason)}); stderr tail (full: #{path}):\n#{tail}"
-      )
-
-      short = binary_part(tail, max(byte_size(tail) - 400, 0), min(byte_size(tail), 400))
-
-      Loopyard.EventLog.error(
-        "harness:acp",
-        "Adapter closed (#{inspect(reason)}). Stderr: #{short}"
-      )
-    else
-      # An EMPTY stderr on abnormal close is itself a diagnosis: the shell
-      # inside the container never ran — the container is likely down or
-      # restarting (docker exec failed before the redirect existed). Without
-      # this line that failure mode was completely silent.
-      Loopyard.EventLog.error(
-        "harness:acp",
-        "Adapter closed (#{inspect(reason)}) with NO stderr captured — " <>
-          "the workspace container may be down or restarting."
-      )
-    end
-
-    tail
-  end
-
-  defp surface_dying_words(_state, _reason), do: nil
-
-  # Delete stderr capture files older than a day — abnormal closes keep theirs
-  # for diagnosis, and a crash loop used to accumulate hundreds. Best-effort.
-  defp sweep_stale_stderr_logs do
-    cutoff = System.os_time(:second) - 24 * 3600
-
-    System.tmp_dir!()
-    |> Path.join("loopyard-acp-*.stderr")
-    |> Path.wildcard()
-    |> Enum.each(fn f ->
-      case File.stat(f, time: :posix) do
-        {:ok, %{mtime: m}} when m < cutoff -> File.rm(f)
-        _ -> :ok
-      end
-    end)
-  rescue
-    _ -> :ok
   end
 
   @impl true
