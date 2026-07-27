@@ -29,6 +29,18 @@ defmodule Loopyard.WorkspaceSupervisor do
 
   @doc "Start a workspace subtree. Returns {:ok, pid} or {:error, reason}."
   def start_workspace(workspace_id, project_dir) do
+    # SERIALIZED per workspace: concurrent callers (multiple tests / LV mounts /
+    # wake paths hitting the same workspace) each saw an unhealthy group and
+    # each fired rebuild_saga — the rebuilds then killed each other's fresh
+    # ServiceManagers in a LIVELOCK (the "group alive but ServiceManager
+    # missing" storm + :noproc bursts that cascaded CI setup timeouts). Under
+    # the lock the first caller rebuilds; the rest re-check and see healthy.
+    :global.trans({{__MODULE__, workspace_id}, self()}, fn ->
+      do_start_workspace(workspace_id, project_dir)
+    end)
+  end
+
+  defp do_start_workspace(workspace_id, project_dir) do
     case Loopyard.WorkspaceGroup.whereis(workspace_id) do
       nil ->
         start_child(workspace_id, project_dir)
