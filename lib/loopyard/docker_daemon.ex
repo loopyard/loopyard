@@ -204,6 +204,9 @@ defmodule Loopyard.DockerDaemon do
             ]),
           File.exists?(compose) do
         Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
+          # Group first: an unregistered ServiceManager silently swallows the
+          # resync ({:error, :service_manager_not_running}).
+          _ = Loopyard.WorkspaceSupervisor.start_workspace(ws.id, ws.path)
           Loopyard.Workspace.ServiceManager.resync_services(ws.path)
         end)
       end

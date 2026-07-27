@@ -181,6 +181,12 @@ defmodule Loopyard.Workspace.ServiceManager do
 
   @impl true
   def handle_call(:resync_services, _from, state) do
+    # A HARD kill (daemon crash, power) leaves stale runtime cruft in the code
+    # volume that blocks the very restart we're attempting — Rails'
+    # tmp/pids/server.pid ("A server is already running"), dead unix sockets.
+    # Same scrub recipe as the fork copy (CanonicalRepo). Best-effort.
+    scrub_stale_runtime(state.workspace_id)
+
     # Unconditional do_start — see resync_services/1. Compose up is idempotent.
     case do_start(state) do
       {:ok, new_state} -> {:reply, {:ok, []}, %{new_state | running: true}}
@@ -679,6 +685,30 @@ defmodule Loopyard.Workspace.ServiceManager do
       {:error, reason} ->
         Loopyard.EventLog.warning("workspace", "Failed to replay agent log: #{inspect(reason)}")
     end
+  end
+
+  # Remove pidfiles/sockets a hard kill left in the volume — they block the
+  # restart (Rails: "A server is already running"). Via the work container
+  # (always cheap to have); best-effort, never blocks the resync.
+  defp scrub_stale_runtime(workspace_id) do
+    case Loopyard.Workspace.WorkContainer.ensure_up(workspace_id) do
+      {:ok, name} ->
+        _ =
+          Loopyard.Docker.exec_in(
+            name,
+            "cd /workspace && rm -f tmp/pids/*.pid 2>/dev/null; " <>
+              "find tmp -name '*.sock' -delete 2>/dev/null; true"
+          )
+
+        :ok
+
+      _ ->
+        :ok
+    end
+  rescue
+    _ -> :ok
+  catch
+    _, _ -> :ok
   end
 
   # Migrate log file from old version to @log_version. No migration steps
