@@ -16,7 +16,9 @@ defmodule Loopyard.DockerDaemon do
         the server manages the instance, not the human.
   * Recovery: silent in chat (the outage line promised auto-resume); the
     inotify limit is re-applied inside the VM (lost on every VM restart —
-    without it ACP `session/new` hangs once 128 watchers saturate).
+    without it ACP `session/new` hangs once 128 watchers saturate), and every
+    workspace's compose cluster is re-upped (a daemon restart kills all
+    containers and compose never restarts itself).
   * Heal exhausted → one decisive line + push with the human's single move.
 
   Test seams: `:docker_probe_fun` / `:docker_heal_fun` app config (same
@@ -75,6 +77,7 @@ defmodule Loopyard.DockerDaemon do
     :persistent_term.put({__MODULE__, :up}, true)
     Loopyard.EventLog.info("docker", "daemon recovered — agents resume on their own")
     reapply_inotify()
+    revive_services()
     %{state | status: :up, fails: 0, heal_attempts: 0, announced: false}
   end
 
@@ -182,6 +185,35 @@ defmodule Loopyard.DockerDaemon do
         :error
       end
     end)
+  end
+
+  # A daemon restart kills every container, and compose clusters don't come
+  # back on their own — "everything is crashed out" in the sidebar. Re-up
+  # every workspace that HAS a compose config (idempotent; ServiceManager
+  # no-ops when already running). Agents/work containers self-heal separately.
+  defp revive_services do
+    Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
+      for p <- Loopyard.ProjectRegistry.list_projects(),
+          ws <- Loopyard.WorkspaceRegistry.list_workspaces(p.id),
+          compose =
+            Path.join([
+              Loopyard.Workspace.compose_dir(ws.id),
+              ".loopyard",
+              "workspace",
+              "docker-compose.yml"
+            ]),
+          File.exists?(compose) do
+        Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
+          Loopyard.Workspace.ServiceManager.start_services(ws.path)
+        end)
+      end
+
+      :ok
+    end)
+
+    :ok
+  rescue
+    _ -> :ok
   end
 
   defp reapply_inotify do
