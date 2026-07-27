@@ -259,10 +259,13 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   def retryable_turn_error?(subtype), do: subtype not in @non_retryable_turn_errors
 
   # Auto-retry a transient turn failure this many times before giving the
-  # message back to the human. DEFAULT 0 — the contract the user wants is
-  # "never lose my text": on failure, put it back in the box, don't silently
-  # retry. Opt into auto-retry by setting :agent_turn_retries > 0.
-  defp max_turn_retries, do: Application.get_env(:loopyard, :agent_turn_retries, 0)
+  # message back to the human. DEFAULT 3 — the SYSTEM is the retry loop, never
+  # the human ("Turn failed — tap Send to retry" made the user redo what the
+  # machine should have; Brad called it "a level of indirection"). The text is
+  # never lost either way: retries re-drive the SAME prompt, and the final
+  # give-up still hands it back to the box. Set :agent_turn_retries 0 to opt
+  # out (tests do, to exercise the give-up path deterministically).
+  defp max_turn_retries, do: Application.get_env(:loopyard, :agent_turn_retries, 3)
 
   @doc """
   Handle a stream completion.
@@ -304,9 +307,12 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     end
   end
 
-  # Auto-retry (opt-in): re-issue the prompt after a backoff with an honest note.
+  # Auto-retry: re-issue the prompt after a backoff. ONE quiet chat line on the
+  # first attempt (so the pause is explained); repeats are EventLog-only —
+  # three "Retrying…" lines for one hiccup is noise, not news.
   defp schedule_turn_retry(state) do
     attempt = state.turn_retry_count + 1
+    reason = state.pending_turn_error
 
     state = %{
       drop_stream_deltas(state)
@@ -316,21 +322,33 @@ defmodule Loopyard.ChatAgent.StreamHandler do
         in_flight_partial: ""
     }
 
-    msg = %{
-      role: :system,
-      content:
-        "Anthropic's API returned a transient error (their servers, not your " <>
-          "message). Retrying (#{attempt}/#{max_turn_retries()})…",
-      timestamp: DateTime.utc_now()
-    }
+    Loopyard.EventLog.warning(
+      "agent:#{state.name}",
+      "transient turn error (#{inspect(reason)}) — retry #{attempt}/#{max_turn_retries()}"
+    )
 
-    {state, msg} = append_message(state, msg)
-    Persistence.persist_message(state, msg)
+    state =
+      if attempt == 1 do
+        msg = %{
+          role: :system,
+          content:
+            "Hit a transient API error (their servers, not your message) — " <>
+              "retrying automatically (up to #{max_turn_retries()}×)…",
+          timestamp: DateTime.utc_now()
+        }
 
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-      agent_id: state.id,
-      msg: msg
-    })
+        {state, msg} = append_message(state, msg)
+        Persistence.persist_message(state, msg)
+
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+          agent_id: state.id,
+          msg: msg
+        })
+
+        state
+      else
+        state
+      end
 
     :ets.insert(@ets_table, {state.id, Loopyard.ChatAgent.summary(state)})
 
@@ -344,12 +362,25 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     id = state.id
     prompt = state.current_turn_prompt
 
-    # Terse on purpose: the input box already has the text back (the UI restores
-    # it), so DON'T narrate "we kept your text" — the user can see it. Just say
-    # it failed and how to retry.
+    # WHY / CONSEQUENCE / ACTION — never a bare "turn failed" (that's a level
+    # of indirection: the system already retried; say what actually happened
+    # and what the human's one remaining move is).
+    attempts = max_turn_retries()
+
+    why =
+      if attempts > 0 do
+        "This turn kept failing on Anthropic's side (#{attempts} automatic " <>
+          "retries, all failed: #{inspect(state.pending_turn_error)})."
+      else
+        "This turn failed on Anthropic's side (#{inspect(state.pending_turn_error)})."
+      end
+
     err = %{
       role: :error,
-      content: "Turn failed — tap Send to retry.",
+      content:
+        why <>
+          " Your message is back in the composer — Send retries it. " <>
+          "If this keeps happening, check the harness status in the sidebar.",
       timestamp: DateTime.utc_now()
     }
 

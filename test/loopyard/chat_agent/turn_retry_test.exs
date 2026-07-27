@@ -3,11 +3,12 @@ defmodule Loopyard.ChatAgent.TurnRetryTest do
   A turn that fails on a transient upstream error (529 / overload /
   `error_during_execution`) must NEVER silently lose the user's text.
 
-  Default behavior (`:agent_turn_retries` = 0): preserve the prompt, surface a
-  clear error, and hand the text back to the box (`{:restore_input, ...}`) — the
-  human hits Send to retry, manually, as many times as they like.
+  DEFAULT behavior (`:agent_turn_retries` = 3): the SYSTEM retries with
+  backoff — the human is never the retry loop.
 
-  Opt-in (`:agent_turn_retries` > 0): bounded auto-retry with backoff.
+  Opted OUT (`:agent_turn_retries` = 0): preserve the prompt, surface a clear
+  WHY/CONSEQUENCE/ACTION error, and hand the text back to the box
+  (`{:restore_input, ...}`).
   """
   use ExUnit.Case, async: false
 
@@ -83,8 +84,26 @@ defmodule Loopyard.ChatAgent.TurnRetryTest do
     end
   end
 
-  describe "default (no auto-retry): preserve + hand back the text" do
-    test "a transient failure goes idle, preserves the prompt, surfaces a retry error",
+  describe "default: the system IS the retry loop" do
+    test "a transient failure auto-retries (stays thinking, counter bumps)",
+         %{id: id, pid: pid} do
+      # No env override — this asserts the DEFAULT is retries > 0.
+      ref = in_turn(pid)
+      fail_turn(pid, id, ref, "error_during_execution")
+
+      state = :sys.get_state(pid)
+      assert state.status == :thinking
+      assert state.turn_retry_count == 1
+    end
+  end
+
+  describe "opted out (0): preserve + hand back the text" do
+    setup do
+      Application.put_env(:loopyard, :agent_turn_retries, 0)
+      :ok
+    end
+
+    test "a transient failure goes idle, preserves the prompt, surfaces a clear error",
          %{id: id, pid: pid} do
       ref = in_turn(pid)
       fail_turn(pid, id, ref, "error_during_execution")
@@ -94,10 +113,10 @@ defmodule Loopyard.ChatAgent.TurnRetryTest do
       assert state.turn_retry_count == 0
       assert state.failed_prompt == "make the thing"
 
-      # Terse copy — the UI already shows the restored text; the error just needs
-      # to say it failed and how to retry (no "we kept your text" narration).
+      # WHY/CONSEQUENCE/ACTION: names the failure, says the text is back in
+      # the composer, and what Send does — never a bare "turn failed".
       assert Enum.any?(state.messages, fn m ->
-               m.role == :error and String.contains?(m.content, "tap Send to retry")
+               m.role == :error and String.contains?(m.content, "back in the composer")
              end)
     end
 
@@ -140,8 +159,9 @@ defmodule Loopyard.ChatAgent.TurnRetryTest do
       assert state.turn_retry_count == 1
       assert state.status == :thinking
 
+      # ONE quiet note on the first attempt (repeats are EventLog-only).
       assert Enum.any?(state.messages, fn m ->
-               m.role == :system and String.contains?(m.content, "Retrying (1/2)")
+               m.role == :system and String.contains?(m.content, "retrying automatically")
              end)
     end
 
