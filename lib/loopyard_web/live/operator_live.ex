@@ -102,6 +102,7 @@ defmodule LoopyardWeb.OperatorLive do
       # can't both fit a phone, so we show ONE at a time with a top toggle.
       # Desktop (lg+) ignores this and shows both side-by-side.
       |> assign(:mobile_view, :chat)
+      |> assign(:vapid_key, Loopyard.WebPush.public_key())
       # The rail (needs-you groups + working jobs + count) computed IN the
       # LiveView and stored as real assigns, so it's part of the reactive graph —
       # NOT recomputed inside the component (which LiveView memoizes when @tree/
@@ -338,6 +339,25 @@ defmodule LoopyardWeb.OperatorLive do
 
   def handle_event("mobile_view", %{"v" => v}, socket) when v in ~w(chat rail) do
     {:noreply, assign(socket, :mobile_view, String.to_existing_atom(v))}
+  end
+
+  # Question push notifications: the PushBell hook owns permission/subscription
+  # client-side; the server just stores/deletes. Value is a standard
+  # PushSubscription JSON (endpoint + keys) — no secrets of ours.
+  def handle_event("push_subscribe", %{"subscription" => sub}, socket) do
+    case Loopyard.WebPush.subscribe(sub) do
+      :ok ->
+        Loopyard.EventLog.info("operator", "push notifications enabled for a device")
+        {:reply, %{ok: true}, socket}
+
+      _ ->
+        {:reply, %{ok: false}, socket}
+    end
+  end
+
+  def handle_event("push_unsubscribe", %{"endpoint" => endpoint}, socket) do
+    Loopyard.WebPush.unsubscribe(endpoint)
+    {:reply, %{ok: true}, socket}
   end
 
   # Scroll-up paging: the ScrollBottom hook fires this near the top. Prepend the
@@ -698,6 +718,7 @@ defmodule LoopyardWeb.OperatorLive do
               groups={@attention_groups}
               active={@active_jobs}
               done_buckets={@done_buckets}
+              vapid_key={@vapid_key}
             />
           </div>
           <.sound_player id="rail-sound" tracks={@tracks} current_track={@current_track} />

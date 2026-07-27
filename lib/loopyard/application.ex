@@ -9,6 +9,9 @@ defmodule Loopyard.Application do
     secret = :crypto.strong_rand_bytes(16) |> Base.url_encode64(padding: false)
     Application.put_env(:loopyard, :launch_secret, secret)
 
+    # Web Push VAPID keys: load-or-mint + hand to :ex_nudge (see WebPush).
+    Loopyard.WebPush.ensure_keys()
+
     # Reap ACP exec clients orphaned by a previous VM. `docker exec -i …
     # claude-agent-acp` clients survive BEAM death (quiet pipes never EPIPE),
     # pile up across restarts, and hold kernel resources (they saturated the

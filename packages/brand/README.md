@@ -51,3 +51,23 @@ CSS-invert the mark; stroke is `currentColor` (dark-on-light /
 light-on-dark). Minimum 24px on screen; clear space = ¼ mark height.
 Motion on the mark is reserved for the `animated` thinking variant — it
 MEANS "working".
+
+
+## Platform app icons (`priv/icons/`)
+
+The flame app-icon treatment — flame ground (`#ea580c`, ≡ orange-600), paper
+trefoil (`#fafaf9`) — pre-rendered to each platform's spec, ready for a native
+wrapper:
+
+- `ios/` — full-bleed squares: `AppIcon-1024` (App Store, no alpha) +
+  180 / 167 / 152 / 120 (home screen @2x/@3x, iPad).
+- `macos/` — Big Sur grammar: rounded-rect tile (~824/1024 content,
+  ~185px corner radius) on a transparent canvas; 16 → 1024 for an `.icns`.
+- `android/` — adaptive icon layers at 432×432 (`ic_launcher_background`
+  solid flame, `ic_launcher_foreground` mark inside the 66% safe zone) +
+  `play_store-512` (no alpha).
+- `windows/` — Square 44/71/150/310 tiles + `Wide310x150`.
+
+The PWA set the app serves lives in the app repo (`priv/static/icons/`) and
+uses the same treatment; regenerate both from `icon.svg` (QuickLook
+rasterizes the stroked mark correctly; ImageMagick's SVG renderer does not).

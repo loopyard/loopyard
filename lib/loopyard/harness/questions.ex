@@ -61,6 +61,18 @@ defmodule Loopyard.Harness.Questions do
       {qid, %{agent_id: agent_id, msg_id: msg_id, waiter: self(), questions: questions}}
     )
 
+    # Push the question to subscribed devices — tapping opens THIS card's
+    # Reviewer slide. Fire-and-forget; never blocks the ask.
+    if is_binary(msg_id) do
+      first_prompt = questions |> List.first() |> then(&(&1 && &1[:prompt])) |> to_string()
+
+      Loopyard.WebPush.notify_question(
+        "Needs your input#{(msg[:source] && " — #{msg.source}") || ""}",
+        first_prompt,
+        "/review/#{agent_id}/#{msg_id}"
+      )
+    end
+
     # Signal "the agent needs YOU" so the chime bridge can play its distinct
     # attention sound (vs the turn-finished "done" chime). Observability only —
     # crash-safe, no-op if activity/sound is off.

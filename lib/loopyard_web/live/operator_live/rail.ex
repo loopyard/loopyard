@@ -66,6 +66,7 @@ defmodule LoopyardWeb.OperatorLive.Rail do
   attr :groups, :list, required: true
   attr :active, :list, required: true
   attr :done_buckets, :list, required: true
+  attr :vapid_key, :string, default: nil
 
   # One-line gist for a rail row: the first question's prompt (or the secret's
   # name) — enough to recognize, not the whole card.
@@ -205,6 +206,18 @@ defmodule LoopyardWeb.OperatorLive.Rail do
             </span>
           </div>
         </div>
+        <%!-- Question push notifications: subscribe THIS device (installed
+             PWA). The PushBell hook owns permission + subscription state
+             client-side; the server only stores/deletes subscriptions. --%>
+        <button
+          type="button"
+          id="push-bell"
+          phx-hook="PushBell"
+          data-vapid={@vapid_key}
+          class="mt-4 flex items-center gap-2 -mx-1 px-1 py-2 chat-meta text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+        >
+          <span data-bell-label>Notify me about questions</span>
+        </button>
         <%!-- Workstations — the operator's own identities/creds live in this
              mode (plans/ia-two-modes.md). A quiet footer destination. --%>
         <.link

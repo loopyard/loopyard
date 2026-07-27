@@ -49,6 +49,8 @@ defmodule Loopyard.MixProject do
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:jason, "~> 1.2"},
+      # Web Push (question notifications to installed PWAs) — pure-Elixir VAPID/aes128gcm
+      {:ex_nudge, "~> 1.0"},
       {:bandit, "~> 1.6"},
       {:claude_code, "~> 0.34"},
       {:dotenvy, "~> 1.1"},

@@ -569,6 +569,62 @@ Hooks.AppBadge = {
   },
 }
 
+// PushBell: subscribe THIS device to question push notifications. The click
+// is the required user gesture: permission → pushManager.subscribe with the
+// server's VAPID key → hand the subscription to the LV. Label reflects state.
+Hooks.PushBell = {
+  async mounted() {
+    this.label = this.el.querySelector("[data-bell-label]")
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !this.el.dataset.vapid) {
+      this.el.classList.add("hidden")
+      return
+    }
+    this.sub = await this.currentSub()
+    this.render()
+    this.el.addEventListener("click", () => this.toggle())
+  },
+  async currentSub() {
+    try {
+      const reg = await navigator.serviceWorker.ready
+      return await reg.pushManager.getSubscription()
+    } catch (_) { return null }
+  },
+  render() {
+    if (this.label) this.label.textContent = this.sub
+      ? "Question notifications on ✓ (tap to turn off)"
+      : "Notify me about questions"
+  },
+  async toggle() {
+    if (this.sub) {
+      const endpoint = this.sub.endpoint
+      await this.sub.unsubscribe().catch(() => {})
+      this.sub = null
+      this.pushEvent("push_unsubscribe", { endpoint })
+      this.render()
+      return
+    }
+    try {
+      const perm = await Notification.requestPermission()
+      if (perm !== "granted") return
+      const reg = await navigator.serviceWorker.ready
+      this.sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: this.urlB64ToUint8(this.el.dataset.vapid),
+      })
+      this.pushEvent("push_subscribe", { subscription: this.sub.toJSON() })
+      this.render()
+    } catch (e) {
+      if (this.label) this.label.textContent = "Couldn't enable notifications"
+    }
+  },
+  urlB64ToUint8(base64) {
+    const padding = "=".repeat((4 - (base64.length % 4)) % 4)
+    const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/")
+    const raw = atob(b64)
+    return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)))
+  },
+}
+
 Hooks.QuestionOptions = {
   mounted() {
     this.pending = null
