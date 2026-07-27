@@ -359,7 +359,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
           <select
             name="model"
             aria-label="Agent model"
-            class="focus-ring rounded-sm border-0 bg-transparent py-0 pl-1 pr-6 text-sm font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400"
+            class="focus-ring rounded-sm border-0 bg-transparent py-0 pl-1 pr-6 text-sm text-right font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400"
           >
             <%!-- The container CLI's set_model passes FULL model ids through, so
     we offer the latest frontier models by id — not just the
