@@ -199,3 +199,11 @@ of staff hunts so the human doesn't.
    (`colima start`), auto-resume when the daemon returns. Same shape as the
    auth-outage flow. Also: re-apply `fs.inotify.max_user_instances=1024`
    inside the VM automatically on reconnect (lost on every VM restart).
+
+6. **Detail-panel action buttons feel dominant.** Brad's parked call
+   (Jul 2026): keep the labeled slabs for now — icon-only + tooltips is
+   mobile-hostile (no hover), and the labels are the safety on Restart/Remove.
+   If they get revisited: icon + one-word label compacts, and/or demote the
+   rare actions (Console, Close Port) behind a "⋯" overflow so frequency sets
+   the hierarchy. The workspace agent already covers these ops via
+   docker_compose/ports, so the buttons are the fast path, not the only path.
