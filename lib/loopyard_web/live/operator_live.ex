@@ -348,6 +348,16 @@ defmodule LoopyardWeb.OperatorLive do
     case Loopyard.WebPush.subscribe(sub) do
       :ok ->
         Loopyard.EventLog.info("operator", "push notifications enabled for a device")
+
+        # Instant proof-of-life: the device gets a push right now (and the
+        # badge stamps with the current waiting count).
+        Loopyard.WebPush.notify_one(
+          sub,
+          "Notifications on",
+          "You'll get questions here — tapping one opens it in the Reviewer.",
+          "/review"
+        )
+
         {:reply, %{ok: true}, socket}
 
       _ ->

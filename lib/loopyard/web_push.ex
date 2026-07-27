@@ -91,7 +91,10 @@ defmodule Loopyard.WebPush do
           title: title,
           body: String.slice(body || "", 0, 160),
           url: url,
-          tag: url
+          tag: url,
+          # Stamped on the app icon by the service worker — the only context
+          # that can badge a CLOSED app (iOS included).
+          badge: waiting_count()
         })
 
       Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
@@ -127,6 +130,44 @@ defmodule Loopyard.WebPush do
     e ->
       Logger.warning("[WebPush] notify failed: #{Exception.message(e)}")
       :ok
+  end
+
+  @doc """
+  Push to ONE just-subscribed device — the instant "it works" confirmation
+  (also stamps the current badge, so the count appears without waiting for
+  the next question).
+  """
+  def notify_one(sub, title, body, url) do
+    payload =
+      Jason.encode!(%{title: title, body: body, url: url, badge: waiting_count()})
+
+    Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
+      struct = %WebPushEx.Subscription{
+        endpoint: URI.parse(sub["endpoint"]),
+        keys: %{p256dh: get_in(sub, ["keys", "p256dh"]), auth: get_in(sub, ["keys", "auth"])}
+      }
+
+      req = WebPushEx.request(struct, payload)
+
+      case deliver(URI.to_string(req.endpoint), req.headers, req.body) do
+        {:ok, status} when status in 200..299 -> :ok
+        other -> Logger.warning("[WebPush] welcome push failed: #{inspect(other)}")
+      end
+    end)
+
+    :ok
+  rescue
+    e ->
+      Logger.warning("[WebPush] notify_one failed: #{Exception.message(e)}")
+      :ok
+  end
+
+  defp waiting_count do
+    Loopyard.Attention.count()
+  rescue
+    _ -> 1
+  catch
+    _, _ -> 1
   end
 
   # :httpc POST with verified TLS (OS trust store) — the endpoints are the

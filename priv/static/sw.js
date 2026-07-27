@@ -12,6 +12,11 @@ self.addEventListener("fetch", () => {})
 self.addEventListener("push", (event) => {
   let data = {}
   try { data = event.data ? event.data.json() : {} } catch (_) {}
+  // App badge from the payload: with the app CLOSED, the service worker is the
+  // only context that can stamp the icon (iOS included).
+  if (typeof data.badge === "number" && "setAppBadge" in self.navigator) {
+    self.navigator.setAppBadge(data.badge).catch(() => {})
+  }
   event.waitUntil(
     self.registration.showNotification(data.title || "Loopyard", {
       body: data.body || "",
