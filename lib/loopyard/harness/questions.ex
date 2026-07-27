@@ -45,9 +45,11 @@ defmodule Loopyard.Harness.Questions do
         role: :question,
         question_id: qid,
         questions: questions,
-        # A memo's attribution — "project · workspace" this decision is about.
-        # nil for questions asked without a source (workspace agents' own asks).
-        source: source,
+        # A memo's attribution — "project · workspace" this question comes
+        # from. When the caller didn't say (native AskUserQuestion, tool calls
+        # that skip it), DERIVE it from the asking agent — the card must
+        # always name its origin; that can't depend on the model remembering.
+        source: source || derive_source(agent_id),
         status: :pending,
         timestamp: DateTime.utc_now()
       })
@@ -446,6 +448,22 @@ defmodule Loopyard.Harness.Questions do
     Loopyard.ChatAgent.MessageWindow.update_message_now(agent_id, msg_id, fn m ->
       Map.merge(m, changes)
     end)
+  end
+
+  # "Project · workspace" for the asking agent, or nil (operator — no
+  # workspace; its cards carry their own context).
+  defp derive_source(agent_id) do
+    with %{workspace_id: ws_id} when is_binary(ws_id) <- ChatAgent.get_state(agent_id),
+         %{name: ws_name, project_id: pid} <- Loopyard.WorkspaceRegistry.get_workspace(ws_id),
+         %{name: project} <- Loopyard.ProjectRegistry.get_project(pid) do
+      "#{project} · #{ws_name}"
+    else
+      _ -> nil
+    end
+  rescue
+    _ -> nil
+  catch
+    _, _ -> nil
   end
 
   defp gen_id, do: :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)

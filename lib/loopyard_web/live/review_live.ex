@@ -35,8 +35,9 @@ defmodule LoopyardWeb.ReviewLive do
     # Resource routes: /review · /review/:agent_id/:msg_id ·
     # /projects/:project_id/workspaces/:workspace_id/review.
     scope = params["workspace_id"]
-    socket = assign(socket, :scope, scope)
-    slides = slides(scope)
+    history? = socket.assigns.live_action == :history
+    socket = socket |> assign(:scope, scope) |> assign(:history?, history?)
+    slides = if history?, do: history_slides(), else: slides(scope)
 
     current =
       with aid when is_binary(aid) <- params["agent_id"],
@@ -95,6 +96,53 @@ defmodule LoopyardWeb.ReviewLive do
   catch
     _, _ -> []
   end
+
+  # The TIME MACHINE deck: every question/approval/secret ever asked (recent
+  # tail per agent), any status, newest first — one slide per CARD (settled
+  # receipts render whole). "We have them around anyway, so might as well."
+  defp history_slides do
+    ws_names =
+      for p <- Loopyard.ProjectRegistry.list_projects(),
+          ws <- Loopyard.WorkspaceRegistry.list_workspaces(p.id),
+          into: %{} do
+        {ws.id, %{project_name: p.name, workspace_name: ws.name, project_id: p.id}}
+      end
+
+    for %{id: aid} = st <- Loopyard.ChatAgent.list_agent_summaries(),
+        not String.contains?(to_string(st[:name] || ""), "test"),
+        msg <- st |> Map.get(:messages, []) |> Enum.take(-200),
+        msg[:role] in [:question, :approval, :secret_request] do
+      ws = Map.get(ws_names, st[:workspace_id], %{})
+
+      item = %{
+        kind: history_kind(msg.role),
+        agent_id: aid,
+        msg: msg,
+        workspace_id: st[:workspace_id],
+        project_name: ws[:project_name],
+        workspace_name: ws[:workspace_name],
+        agent_name: st[:name] || "Agent",
+        path: history_path(ws, st),
+        asked_at: msg[:timestamp] || DateTime.from_unix!(0)
+      }
+
+      slide(item, nil)
+    end
+    |> Enum.sort_by(& &1.asked_at, {:desc, DateTime})
+  rescue
+    _ -> []
+  catch
+    _, _ -> []
+  end
+
+  defp history_kind(:question), do: :question
+  defp history_kind(:secret_request), do: :secret
+  defp history_kind(:approval), do: :approval
+
+  defp history_path(%{project_id: pid}, st) when is_binary(pid),
+    do: "/projects/#{pid}/workspaces/#{st[:workspace_id]}/agents/#{st[:id]}"
+
+  defp history_path(_ws, _st), do: "/operator"
 
   defp item_slides(%{kind: :question, msg: %{} = msg} = item) do
     for q <- msg[:questions] || [], q.id not in (msg[:done] || []) do
@@ -175,7 +223,11 @@ defmodule LoopyardWeb.ReviewLive do
   # If the CURRENT slide just settled (left the deck), hold it for a beat so
   # the answer visibly takes, then advance.
   defp refresh(socket) do
-    slides = slides(socket.assigns.scope)
+    slides =
+      if socket.assigns.history?,
+        do: history_slides(),
+        else: slides(socket.assigns.scope)
+
     cur = socket.assigns.current
 
     cond do
@@ -186,6 +238,11 @@ defmodule LoopyardWeb.ReviewLive do
         |> sync_secret_scope()
 
       Enum.any?(slides, &(&1.key == cur)) ->
+        assign(socket, :slides, slides)
+
+      socket.assigns.history? ->
+        # The time machine never auto-advances — a settled card staying put
+        # IS the point.
         assign(socket, :slides, slides)
 
       true ->
@@ -280,11 +337,27 @@ defmodule LoopyardWeb.ReviewLive do
 
     ~H"""
     <FocusedView.layout
-      label="Review"
+      label={(@history? && "Time machine") || "Review"}
       position={@count > 0 && "#{(@idx || 0) + 1} of #{@count}"}
       mode={:operator}
     >
       <:nav>
+        <%!-- Flip between the pending deck and the TIME MACHINE (all past
+    questions — they're durable anyway, so they're traversable). --%>
+        <.link
+          navigate={(@history? && "/review") || "/review/history"}
+          class="focus-ring tap-target inline-flex items-center justify-center w-9 h-9 rounded-sm text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          aria-label={(@history? && "Back to pending") || "Question history"}
+          title={(@history? && "Back to pending") || "Question history"}
+        >
+          <svg viewBox="0 0 20 20" fill="currentColor" class="w-4.5 h-4.5" aria-hidden="true">
+            <path
+              fill-rule="evenodd"
+              d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-13a.75.75 0 0 0-1.5 0v5c0 .27.144.518.378.651l3.5 2a.75.75 0 1 0 .744-1.302L10.75 9.565V5Z"
+              clip-rule="evenodd"
+            />
+          </svg>
+        </.link>
         <button
           :if={@count > 1}
           type="button"
@@ -364,6 +437,10 @@ defmodule LoopyardWeb.ReviewLive do
         </p>
       </div>
 
+      <div :if={is_nil(@q) && @msg && @msg.role == :question}>
+        <Cards.question_card msg={@msg} />
+      </div>
+
       <div :if={is_nil(@q) && @msg && @msg.role == :approval}>
         <Cards.approval_card msg={@msg} />
       </div>
@@ -373,7 +450,16 @@ defmodule LoopyardWeb.ReviewLive do
       </div>
 
       <div :if={is_nil(@msg)} class="flex flex-col items-center justify-center gap-4 py-24">
-        <p class="chat-sub text-zinc-400 dark:text-zinc-500">Nothing waiting on you.</p>
+        <p class="chat-sub text-zinc-400 dark:text-zinc-500">
+          {(@history? && "No questions asked yet.") || "Nothing waiting on you."}
+        </p>
+        <.link
+          :if={!@history?}
+          navigate="/review/history"
+          class="chat-sub font-medium text-violet-600 dark:text-violet-400 hover:underline"
+        >
+          Flip through past questions →
+        </.link>
         <.link
           navigate="/operator"
           class="chat-sub font-medium text-violet-600 dark:text-violet-400 hover:underline"

@@ -47,6 +47,7 @@ defmodule LoopyardWeb.Router do
       # The town hall — every blocking question/secret/approval across all agents
       # in one tear-out line. Self-decaying (Loopyard.Attention).
       live "/review", ReviewLive, :index
+      live "/review/history", ReviewLive, :history
       live "/review/:agent_id/:msg_id", ReviewLive, :item
       live "/projects/:project_id/workspaces/:workspace_id/review", ReviewLive, :workspace
       # Full-page ambient-sound control. In the live_session so navigating here
