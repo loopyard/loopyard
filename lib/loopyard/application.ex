@@ -34,6 +34,10 @@ defmodule Loopyard.Application do
       # any subsystem that calls Resources.track/4 (PortRegistry,
       # WorkspaceSupervisor). Plan: Move #7b.
       Loopyard.Resources.Janitor,
+      # The container runtime's keeper: probes the Docker daemon, notifies
+      # (operator line + web push) and AUTOHEALS colima when it dies —
+      # including a stopped runtime at server boot. Userland only.
+      Loopyard.DockerDaemon,
       {Phoenix.PubSub, name: Loopyard.PubSub},
       {Registry, keys: :unique, name: Loopyard.ChatAgentRegistry},
       # Per-workspace RestartController registry — one controller per
