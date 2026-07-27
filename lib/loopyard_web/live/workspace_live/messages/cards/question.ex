@@ -123,6 +123,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
     as "Answer the Other text" and buried the hierarchy. --%>
       <form
         :if={@msg.status == :pending && !locked?(@msg, @q)}
+        id={"qopts-#{@msg[:id] || @msg.question_id}-#{@q.id}"}
+        phx-hook="QuestionOptions"
         phx-submit="answer_question_text"
         class="group/qform flex flex-col gap-1"
       >

@@ -572,6 +572,18 @@ input[type="range"].volume-slider:focus-visible {
 .q-option:active .q-dot {
   @apply border-orange-500;
 }
+/* A tap captured while disconnected (QuestionOptions hook) — held until the
+   socket returns and the draft replays. */
+.q-option.q-held {
+  @apply bg-orange-500/15;
+}
+.q-option.q-held .q-dot {
+  @apply border-orange-500;
+}
+.q-option.q-held .q-dot::after {
+  content: "";
+  @apply block h-2 w-2 rounded-full bg-orange-500;
+}
 .q-option.phx-click-loading .q-dot {
   @apply border-orange-500;
 }

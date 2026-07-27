@@ -550,6 +550,37 @@ Hooks.BottomSheet = {
 
 // Clip: copy this element's data-copy to the clipboard, with a brief
 // "Copied — paste on your Mac" confirmation. Used by the per-tool "Copy for Mac".
+// QuestionOptions: a tap while the websocket is DOWN (phone-wake reconnect)
+// would otherwise be silently DROPPED — the user re-taps "like crazy" until
+// one lands. Capture the tap, mark the row held, and replay it the moment the
+// socket reconnects. Client-side only for the click→receipt sliver; the
+// server draft remains the multiplayer truth.
+Hooks.QuestionOptions = {
+  mounted() {
+    this.pending = null
+    this.el.addEventListener("click", (e) => {
+      const btn = e.target.closest(".q-option[phx-click]")
+      if (!btn) return
+      const main = document.querySelector("[data-phx-main]")
+      if (main && main.classList.contains("phx-connected")) return // normal path
+      this.el.querySelectorAll(".q-held").forEach((n) => n.classList.remove("q-held"))
+      btn.classList.add("q-held")
+      this.pending = {
+        event: btn.getAttribute("phx-click"),
+        question_id: btn.getAttribute("phx-value-question_id"),
+        q: btn.getAttribute("phx-value-q"),
+        option: btn.getAttribute("phx-value-option"),
+      }
+    })
+  },
+  reconnected() {
+    if (!this.pending) return
+    const { event, ...values } = this.pending
+    this.pending = null
+    if (event) this.pushEvent(event, values)
+  },
+}
+
 Hooks.Clip = {
   mounted() {
     // Fill the real browser origin into any __ORIGIN__ placeholder — the command
