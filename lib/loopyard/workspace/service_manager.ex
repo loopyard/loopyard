@@ -42,6 +42,25 @@ defmodule Loopyard.Workspace.ServiceManager do
     end
   end
 
+  @doc """
+  Force a compose re-up regardless of what this GenServer BELIEVES: after a
+  Docker-daemon crash the SM survives with `running: true` while every
+  container is exited — `start_services/1` then no-ops and the cluster stays
+  dead. `docker compose up -d` is idempotent (starts only exited/missing
+  containers), so resync is safe against a healthy cluster too.
+  """
+  def resync_services(project_dir) do
+    case RegistryHelper.call(
+           Loopyard.ServiceManagerRegistry,
+           project_dir,
+           :resync_services,
+           600_000
+         ) do
+      {:ok, result} -> result
+      {:error, :not_found} -> {:error, :service_manager_not_running}
+    end
+  end
+
   def stop_services(project_dir) do
     case RegistryHelper.call(
            Loopyard.ServiceManagerRegistry,
@@ -157,6 +176,15 @@ defmodule Loopyard.Workspace.ServiceManager do
         {:ok, new_state} -> {:reply, {:ok, []}, new_state}
         {:error, reason} -> {:reply, {:error, reason}, state}
       end
+    end
+  end
+
+  @impl true
+  def handle_call(:resync_services, _from, state) do
+    # Unconditional do_start — see resync_services/1. Compose up is idempotent.
+    case do_start(state) do
+      {:ok, new_state} -> {:reply, {:ok, []}, %{new_state | running: true}}
+      {:error, reason} -> {:reply, {:error, reason}, state}
     end
   end
 

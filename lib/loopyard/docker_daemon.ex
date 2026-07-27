@@ -204,7 +204,7 @@ defmodule Loopyard.DockerDaemon do
             ]),
           File.exists?(compose) do
         Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
-          Loopyard.Workspace.ServiceManager.start_services(ws.path)
+          Loopyard.Workspace.ServiceManager.resync_services(ws.path)
         end)
       end
 
