@@ -134,12 +134,24 @@ defmodule Loopyard.ChatAgent.MessageWindow do
   + broadcast instantly; the cast re-applies the same merge (idempotent) so
   the GenServer's own state catches up.
   """
-  def update_message_now(agent_id, msg_id, update_fn) do
-    result = patch_ets_and_broadcast(agent_id, msg_id, update_fn)
+  def update_message_now(agent_id, msg_id, changes) when is_map(changes) do
+    # Monotonic version so a stale state can never win over this patch.
+    changes = Map.put(changes, :card_v, System.monotonic_time())
+
+    # Record FIRST: any summary write racing us re-applies via
+    # reconcile_card_patches, so the interaction can't be clobbered.
+    :ets.insert(:card_patches, {{agent_id, msg_id}, changes})
+
+    result = patch_ets_and_broadcast(agent_id, msg_id, &Map.merge(&1, changes))
 
     case Registry.lookup(Loopyard.ChatAgentRegistry, agent_id) do
-      [{pid, _}] -> GenServer.cast(pid, {:update_message, msg_id, update_fn})
-      [] -> :ok
+      [{pid, _}] ->
+        GenServer.cast(pid, {:card_patch, msg_id, changes})
+
+      [] ->
+        # No GenServer to converge — the patch was applied to ETS directly;
+        # drop the record so the table stays tiny.
+        :ets.delete(:card_patches, {agent_id, msg_id})
     end
 
     result

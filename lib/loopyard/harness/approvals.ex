@@ -278,9 +278,7 @@ defmodule Loopyard.Harness.Approvals do
   def resolve(agent_id, msg_id, changes) do
     # Card state renders instantly for every viewer (see MessageWindow
     # .update_message_now — the plain cast lags behind a streaming mailbox).
-    Loopyard.ChatAgent.MessageWindow.update_message_now(agent_id, msg_id, fn m ->
-      Map.merge(m, changes)
-    end)
+    Loopyard.ChatAgent.MessageWindow.update_message_now(agent_id, msg_id, changes)
 
     :ok
   end

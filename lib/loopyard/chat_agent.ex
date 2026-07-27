@@ -652,6 +652,30 @@ defmodule Loopyard.ChatAgent do
     {:noreply, state}
   end
 
+  # Card-patch convergence: merge the broker's card-state changes into OUR
+  # state, then retire the patch record (unless a newer patch superseded it).
+  # From here on, plain summary writes carry the change natively.
+  @impl true
+  def handle_cast({:card_patch, msg_id, changes}, state) do
+    messages =
+      Enum.map(state.messages, fn msg ->
+        if msg[:id] == msg_id, do: Map.merge(msg, changes), else: msg
+      end)
+
+    state = %{state | messages: messages}
+
+    case :ets.lookup(:card_patches, {state.id, msg_id}) do
+      [{_key, %{card_v: v}}] when v <= changes.card_v ->
+        :ets.delete(:card_patches, {state.id, msg_id})
+
+      _ ->
+        :ok
+    end
+
+    :ets.insert(@ets_table, {state.id, summary(state)})
+    {:noreply, state}
+  end
+
   @impl true
   def handle_cast({:update_message, msg_id, update_fn}, state) do
     # Guard update_fn against raising. A bad caller (or a tool that
@@ -1651,7 +1675,7 @@ defmodule Loopyard.ChatAgent do
       started_by: state.started_by,
       last_activity_at: state.last_activity_at,
       status: state.status,
-      messages: Enum.reverse(state.messages),
+      messages: reconcile_card_patches(state.id, Enum.reverse(state.messages)),
       tool_calls: state.tool_calls,
       errors: state.errors,
       service_name: state.service_name,
@@ -1676,6 +1700,37 @@ defmodule Loopyard.ChatAgent do
       pending_count: length(state.pending_sends),
       pending_messages: state.pending_sends
     }
+  end
+
+  # Re-apply outstanding card patches (see MessageWindow.update_message_now):
+  # a summary built from state that predates a card interaction must not undo
+  # it. Fast path (no patches) is one ETS match on a tiny table.
+  defp reconcile_card_patches(agent_id, messages) do
+    case :ets.match_object(:card_patches, {{agent_id, :_}, :_}) do
+      [] ->
+        messages
+
+      patches ->
+        by_msg = Map.new(patches, fn {{_aid, msg_id}, changes} -> {msg_id, changes} end)
+
+        Enum.map(messages, fn msg ->
+          case Map.get(by_msg, msg[:id]) do
+            nil ->
+              msg
+
+            changes ->
+              # NB: monotonic time is NEGATIVE on most systems — no numeric
+              # sentinel; nil msg card_v means "never patched", always apply.
+              msg_v = msg[:card_v]
+
+              if is_nil(msg_v) or (changes[:card_v] && changes[:card_v] > msg_v),
+                do: Map.merge(msg, changes),
+                else: msg
+          end
+        end)
+    end
+  rescue
+    _ -> messages
   end
 
   @doc "Drop all queued (pending) messages without stopping the current turn."

@@ -704,12 +704,6 @@ defmodule LoopyardWeb.WorkspaceLive do
              note: "The agent's queue is full — wait for it to catch up, then resend."
            }, socket}
 
-        {:error, :waking} ->
-          # The workspace is booting in the background — a retry in a few
-          # seconds lands on a live group. Calm, actionable, no drama.
-          {:reply, %{ok: false, note: "Waking the workspace… press Send again in a few seconds."},
-           socket}
-
         {:error, :unavailable} ->
           {:reply,
            %{ok: false, note: "⚠ Couldn't wake the agent — your text is kept; try Send again."},
@@ -1296,6 +1290,8 @@ defmodule LoopyardWeb.WorkspaceLive do
   # Move #3, each LV writes its own dispatch (no macro magic).
 
   @impl true
+  def handle_info(:flush_stream_buffer, socket), do: AgentEvents.flush_stream_buffer(socket)
+
   def handle_info(%Events.ChatAgent.Started{} = e, socket), do: on_started(e, socket)
   def handle_info(%Events.ChatAgent.Resumed{} = e, socket), do: on_resumed(e, socket)
   def handle_info(%Events.ChatAgent.Booting{} = e, socket), do: on_booting(e, socket)
@@ -1730,7 +1726,7 @@ defmodule LoopyardWeb.WorkspaceLive do
     <div
       id="chat-page"
       phx-hook="ScrollBottom"
-      class="h-screen flex flex-col bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100"
+      class="h-screen flex flex-col bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x safe-area-top"
     >
       <.chat_header
         workspace={@workspace}

@@ -457,9 +457,7 @@ defmodule Loopyard.Harness.Questions do
     # update_message_NOW: card state must render instantly for every viewer —
     # the plain cast rides the agent's mailbox, which during a streaming turn
     # made a draft tap take seconds to highlight.
-    Loopyard.ChatAgent.MessageWindow.update_message_now(agent_id, msg_id, fn m ->
-      Map.merge(m, changes)
-    end)
+    Loopyard.ChatAgent.MessageWindow.update_message_now(agent_id, msg_id, changes)
   end
 
   # "Project · workspace" for the asking agent, or nil (operator — no

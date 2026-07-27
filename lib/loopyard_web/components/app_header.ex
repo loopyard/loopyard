@@ -34,9 +34,8 @@ defmodule LoopyardWeb.Components.AppHeader do
     assigns = assign(assigns, :breadcrumbs, with_root(assigns.breadcrumbs))
 
     ~H"""
-    <%!-- safe-area-top so this top bar clears the notch / Dynamic Island in a
-    standalone PWA; no-op in the browser. --%>
-    <LoopyardWeb.Components.Nav.bar height="h-14" gap="gap-3" class="safe-area-top">
+    <%!-- Insets: the page shell owns them (docs/CODE_RULES.md). --%>
+    <LoopyardWeb.Components.Nav.bar height="h-14" gap="gap-3">
       {render_slot(@back)}
       <.breadcrumbs crumbs={@breadcrumbs} />
       <.iex_indicator :if={@iex_session.level} session={@iex_session} />

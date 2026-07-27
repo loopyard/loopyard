@@ -439,17 +439,37 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentEvents do
   def on_stream_output(%Events.ChatAgentMessage.StreamOutput{}, socket), do: {:noreply, socket}
 
   # Shared by on_stream_output AND WorkspaceLive's docker-build stream path.
+  # COALESCED: appending to the buffer is cheap (not rendered); the expensive
+  # @messages upsert + transcript re-diff runs at most every 150ms via the
+  # :flush_stream_buffer tick (see flush_stream_buffer/1). Per-chunk upserts
+  # re-diffed the whole transcript for every line of command output —
+  # saturating the LV so taps/clicks queued for seconds behind the backlog.
   def upsert_stream_message(socket, data, title, msg_id) do
     stream_buffer =
       socket.assigns.stream_buffer
       |> StreamBuffer.append(data, title: title, msg_id: msg_id)
 
-    messages = StreamBuffer.upsert_message(stream_buffer, socket.assigns.messages)
+    socket =
+      socket
+      |> assign(:stream_buffer, stream_buffer)
+      |> assign(:building, true)
+
+    if socket.assigns[:stream_flush_armed] do
+      {:noreply, socket}
+    else
+      Process.send_after(self(), :flush_stream_buffer, 150)
+      {:noreply, assign(socket, :stream_flush_armed, true)}
+    end
+  end
+
+  @doc "The 150ms flush: apply the buffered stream chunks to @messages once."
+  def flush_stream_buffer(socket) do
+    messages = StreamBuffer.upsert_message(socket.assigns.stream_buffer, socket.assigns.messages)
 
     {:noreply,
      socket
      |> assign(:messages, messages)
-     |> assign(:stream_buffer, stream_buffer)
-     |> assign(:building, true)}
+     |> assign(:stream_flush_armed, false)
+     |> Phoenix.LiveView.push_event("scroll_bottom", %{})}
   end
 end

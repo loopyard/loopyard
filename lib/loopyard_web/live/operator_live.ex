@@ -573,18 +573,11 @@ defmodule LoopyardWeb.OperatorLive do
         socket
       )
       when id == socket.assigns.selected_id do
-    stream_buffer =
-      StreamBuffer.append(socket.assigns.stream_buffer, data, title: title, msg_id: msg_id)
-
-    messages = StreamBuffer.upsert_message(stream_buffer, socket.assigns.messages)
-
-    {:noreply,
-     socket
-     |> assign(:messages, messages)
-     |> assign(:stream_buffer, stream_buffer)
-     |> assign(:building, true)
-     |> push_event("scroll_bottom", %{})}
+    AgentEvents.upsert_stream_message(socket, data, title, msg_id)
   end
+
+  @impl true
+  def handle_info(:flush_stream_buffer, socket), do: AgentEvents.flush_stream_buffer(socket)
 
   def handle_info(%Events.ChatAgentMessage.StreamOutput{}, socket), do: {:noreply, socket}
 
@@ -643,7 +636,7 @@ defmodule LoopyardWeb.OperatorLive do
     <div
       id="operator-page"
       phx-hook="ScrollBottom"
-      class="h-screen flex flex-col bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x"
+      class="h-screen flex flex-col bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x safe-area-top"
     >
       <Nav.bar height="h-14" gap="gap-3">
         <.breadcrumbs crumbs={[{"Loopyard", "/"}, {"Operator", nil}]} />

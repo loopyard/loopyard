@@ -433,7 +433,7 @@ defmodule LoopyardWeb.Components.Common do
     assigns = assign(assigns, :width_class, width_class)
 
     ~H"""
-    <div class="min-h-screen bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x">
+    <div class="min-h-screen bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x safe-area-top">
       <.header
         breadcrumbs={@breadcrumbs}
         iex_session={@iex_session}

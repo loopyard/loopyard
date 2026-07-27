@@ -112,4 +112,38 @@ defmodule LoopyardWeb.DesignSystemTest do
     assert offenders == [],
            "ad-hoc text sizes in chat surfaces (use chat-body/chat-sub/chat-meta): #{inspect(offenders)}"
   end
+
+  test "safe-area-top lives on page shells ONLY (one inset per page, ever)" do
+    # THE RULE (docs/CODE_RULES.md): the outermost page shell owns
+    # safe-area-top exactly once; bars/components never apply it. A second
+    # application stacked a giant dead band on top of the PWA ("safe insets
+    # is all fucked"). New page shell → add its file here deliberately.
+    allowed =
+      MapSet.new([
+        "lib/loopyard_web/components/common.ex",
+        "lib/loopyard_web/components/focused_view.ex",
+        "lib/loopyard_web/live/dashboard_live.ex",
+        "lib/loopyard_web/live/message_live.ex",
+        "lib/loopyard_web/live/operator_live.ex",
+        "lib/loopyard_web/live/sound_live.ex",
+        "lib/loopyard_web/live/workspace_live.ex"
+      ])
+
+    offenders =
+      Path.wildcard("lib/loopyard_web/**/*.ex")
+      |> Enum.filter(&String.contains?(File.read!(&1), "safe-area-top"))
+      |> Enum.reject(&MapSet.member?(allowed, &1))
+
+    assert offenders == [],
+           "safe-area-top outside the page-shell allowlist (components/bars " <>
+             "must never apply it — the shell already does): #{inspect(offenders)}"
+
+    # And never twice in one file.
+    doubled =
+      Enum.filter(allowed, fn f ->
+        length(String.split(File.read!(f), "safe-area-top")) - 1 > 1
+      end)
+
+    assert doubled == [], "safe-area-top applied more than once in: #{inspect(doubled)}"
+  end
 end

@@ -577,3 +577,14 @@ owners:
 When adding an input, ask BOTH: what does the clicker see at 200ms, and what
 does everyone ELSE see while it processes? "Nothing changed" is a bug in
 either seat.
+
+
+## Safe-area insets: the page shell owns them, once
+
+`safe-area-top` (and `safe-area-x`) belong on the OUTERMOST page shell —
+exactly one application per page. Components, nav bars, and wrappers must
+never add them: a bar applying its own inset on a page whose shell already
+has one stacks a ~2× dead band at the top of the installed PWA. Enforced by
+`design_system_test.exs` ("safe-area-top lives on page shells ONLY"); adding
+a new page shell means adding its file to that allowlist deliberately. The
+`#conn-banner` overlay uses `safe-pt` (fixed-position, separate concern).

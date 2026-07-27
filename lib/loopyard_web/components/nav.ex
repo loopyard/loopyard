@@ -56,7 +56,7 @@ defmodule LoopyardWeb.Components.Nav do
     ~H"""
     <div
       class={[
-        "flex-none flex items-center justify-between gap-2 safe-area-top",
+        "flex-none flex items-center justify-between gap-2",
         @height,
         @pad,
         @border && "border-b border-zinc-200 dark:border-zinc-700/80",

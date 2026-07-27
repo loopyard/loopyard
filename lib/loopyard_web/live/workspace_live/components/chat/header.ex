@@ -86,9 +86,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
       assign(assigns, :app_port, current_ws_port(assigns[:global_tree], assigns.workspace.id))
 
     ~H"""
-    <%!-- safe-area-top: in a standalone PWA the header sits under the Dynamic
-    Island / notch without it. No-op in the browser (inset is 0). --%>
-    <div class="md:hidden safe-area-top">
+    <%!-- Insets: the PAGE SHELL owns the top inset (never components — a
+    second application here once doubled the top gap). --%>
+    <div class="md:hidden">
       <%!-- Row 1: WHERE you are — back out + Project / Workspace + sound. Tapping
     either name throws open ONE full-screen switcher of every project and
     its workspaces (pick any to jump; ✕ / backdrop to bail). No pop-overs. --%>

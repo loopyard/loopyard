@@ -19,6 +19,13 @@ defmodule Loopyard.StateKeeper do
 
   @tables [
     {:chat_agents, [:named_table, :public, :set]},
+    # Outstanding CARD-STATE patches (question drafts/answers, approval and
+    # secret status flips) applied to the ETS summary ahead of the owning
+    # GenServer's mailbox. summary/1 re-applies them so a busy agent's stale
+    # summary write can never CLOBBER a card interaction the user just made
+    # (the check appearing then vanishing read as "questions are busted").
+    # Keyed {agent_id, msg_id}; the agent deletes on convergence.
+    {:card_patches, [:named_table, :public, :set]},
     # Loopyard.Markdown render cache, keyed by content. Chat bubbles render
     # Markdown server-side; without this, LiveView re-runs MDEx for every
     # visible bubble on every chat re-render (hundreds per streaming turn),
