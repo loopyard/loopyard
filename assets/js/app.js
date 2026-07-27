@@ -555,6 +555,20 @@ Hooks.BottomSheet = {
 // one lands. Capture the tap, mark the row held, and replay it the moment the
 // socket reconnects. Client-side only for the click→receipt sliver; the
 // server draft remains the multiplayer truth.
+// AppBadge: mirror the "needs you" count onto the installed PWA's app icon
+// (Badging API — supported on iOS 16.4+ Home Screen web apps and desktop
+// Chrome/Edge; silently a no-op elsewhere).
+Hooks.AppBadge = {
+  mounted() { this.apply() },
+  updated() { this.apply() },
+  apply() {
+    if (!("setAppBadge" in navigator)) return
+    const n = parseInt(this.el.dataset.count || "0", 10)
+    if (n > 0) navigator.setAppBadge(n).catch(() => {})
+    else navigator.clearAppBadge().catch(() => {})
+  },
+}
+
 Hooks.QuestionOptions = {
   mounted() {
     this.pending = null

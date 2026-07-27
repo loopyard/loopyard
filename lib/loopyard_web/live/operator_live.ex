@@ -604,10 +604,12 @@ defmodule LoopyardWeb.OperatorLive do
       assign(
         assigns,
         :needs_count,
-        Enum.sum(Enum.map(assigns.attention_groups, &length(&1.items)))
+        length(assigns.operator_attention) +
+          Enum.sum(Enum.map(assigns.attention_groups, &length(&1.items)))
       )
 
     ~H"""
+    <div id="app-badge" phx-hook="AppBadge" data-count={@needs_count} class="hidden"></div>
     <div
       id="operator-page"
       phx-hook="ScrollBottom"
