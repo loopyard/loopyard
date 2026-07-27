@@ -42,10 +42,11 @@ defmodule LoopyardWeb.Components.SideNav do
     <%!-- pb-0: the between-groups gap is the NEXT section's pt-4 alone (16px),
     matching the workspace rail's group_label pt-4 — pb-1 + pt-4 gave the
     details zone a visibly looser rhythm than the rail above it. The LAST
-    section gets pb-4 so the zone's bottom breathes like its top (the
+    section gets pb-4 (last-of-type — the action bar is a sibling DIV,
+    so :last-child never matches) so the zone's bottom breathes like its top (the
     connection block sat flush against the action bar). --%>
     <section class={[
-      @variant == :section && "pt-4 first:pt-3 last:pb-4",
+      @variant == :section && "pt-4 first:pt-3 last-of-type:pb-4",
       @variant == :sub && "pt-2.5 md:pt-2",
       "px-3 pb-0",
       @class
