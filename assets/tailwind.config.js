@@ -36,7 +36,7 @@ module.exports = {
         // .chat-meta in app.css — they @apply these). ONE place to tune how big
         // the chat reads; a future per-user font-size preference scales these.
         'chat-body': ['1.125rem', '1.7'],     // 18px — prose, prompts, question heroes, composer (mobile)
-        'chat-body-md': ['1.0625rem', '1.7'],  // 17px — chat-body on md+ (sidebars visible → a tad smaller)
+        'chat-body-md': ['1rem', '1.7'], // 16px — chat-body on md+ (17px read HUGE on desktop)
         'chat-sub': ['1rem', '1.55'],         // 16px — options, card details, buttons (mobile)
         'chat-sub-md': ['0.9375rem', '1.55'], // 15px — chat-sub on md+ screens
         'chat-meta': ['0.8125rem', '1.4'],    // 13px — eyebrows, timestamps, footers

@@ -211,7 +211,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     ~H"""
     <div class="group/msg" id={"msg-#{@msg[:id] || hash_content(@msg.content)}"}>
       <div class={[gutter(), "py-0.5"]}>
-        <div class="markdown-body text-zinc-800 dark:text-zinc-100 max-w-2xl">
+        <div class="markdown-body text-zinc-800 dark:text-zinc-100">
           {Loopyard.Markdown.to_html(@rendered_content)}
         </div>
         <div :if={@port_info && !@port_info.exposed} class="mt-1.5 flex items-center gap-2 py-1">
@@ -513,7 +513,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     # this element.
     ~H"""
     <div class="py-0.5 mt-2" id="streaming-msg" phx-update="ignore" phx-hook="StreamMarkdown">
-      <div class="markdown-body text-zinc-800 dark:text-zinc-100 max-w-2xl">
+      <div class="markdown-body text-zinc-800 dark:text-zinc-100">
         <div data-stream-blocks></div>
         <div data-stream-tail></div>
       </div>
