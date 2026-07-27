@@ -56,10 +56,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.QuestionCardTest do
     [other_row_tail, _] = String.split(after_other, "</div>", parts: 2)
     refute other_row_tail =~ "<button"
 
-    # The footer (after the Other row) carries Skip + the Answer submit.
+    # The footer (after the Other row) carries Skip + the commit submit.
     assert after_other =~ ~s(type="submit")
     assert after_other =~ "Skip"
-    assert after_other =~ "Answer"
+    assert after_other =~ "Confirm answer"
   end
 
   test "pending card offers Skip, Other free text, and the chat hint" do

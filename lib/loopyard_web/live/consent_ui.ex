@@ -70,6 +70,15 @@ defmodule LoopyardWeb.Live.ConsentUI do
        ),
        do: settle(socket, Questions.draft_option(qid, q_id, option))
 
+  # Focusing the "Other" box IS selecting it: clear any drafted option so the
+  # rows deselect (broadcast — every viewer sees the switch).
+  defp handle_consent(
+         "draft_question_other",
+         %{"question_id" => qid, "q" => q_id},
+         socket
+       ),
+       do: settle(socket, Loopyard.Harness.Questions.clear_draft(qid, q_id))
+
   defp handle_consent("skip_question", %{"question_id" => qid, "q" => q_id}, socket),
     do: settle(socket, Questions.answer_partial(qid, q_id, []))
 

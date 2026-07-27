@@ -124,7 +124,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
       <form
         :if={@msg.status == :pending && !locked?(@msg, @q)}
         phx-submit="answer_question_text"
-        class="flex flex-col gap-0.5"
+        class="group/qform flex flex-col gap-1"
       >
         <input type="hidden" name="question_id" value={@msg.question_id} />
         <input type="hidden" name="q" value={@q.id} />
@@ -136,18 +136,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
           phx-value-q={@q.id}
           phx-value-option={o.label}
           class={[
-            "focus-ring group/opt flex w-full items-start gap-3 rounded-sm px-3 py-2.5 md:py-2 text-left transition-colors",
+            "q-option focus-ring group/opt flex w-full items-start gap-3 rounded-sm px-3 py-2.5 md:py-2 text-left transition-colors",
             if(drafted?(@msg, @q, o.label),
-              do: "bg-orange-500/15 dark:bg-orange-500/20",
-              else:
-                "bg-zinc-500/[0.06] dark:bg-white/[0.05] hover:bg-orange-500/10 dark:hover:bg-orange-500/10"
+              do: "bg-orange-500/15 dark:bg-orange-500/20 ring-1 ring-orange-500/70",
+              else: "hover:bg-orange-500/[0.07] dark:hover:bg-orange-500/10"
             )
           ]}
         >
           <span
             aria-hidden="true"
             class={[
-              "mt-px flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border-2 transition-colors",
+              "q-dot mt-px flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border-2 transition-colors",
               if(drafted?(@msg, @q, o.label),
                 do: "border-orange-500 bg-orange-500 text-white",
                 else:
@@ -158,7 +157,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
             <.check :if={drafted?(@msg, @q, o.label)} />
           </span>
           <span class="min-w-0 flex-1">
-            <span class="chat-sub block font-medium text-zinc-900 dark:text-zinc-100">
+            <span class={[
+              "chat-sub block font-medium",
+              if(drafted?(@msg, @q, o.label),
+                do: "text-orange-900 dark:text-orange-100 font-semibold",
+                else: "text-zinc-900 dark:text-zinc-100"
+              )
+            ]}>
               {o.label}
             </span>
             <span
@@ -173,16 +178,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
         <%!-- "Other" is another draftable row: same grammar as the options —
     click in, type your own answer. Enter or the footer's Answer
     submits it (typed text wins over a drafted option). --%>
-        <div class="group/opt flex w-full items-center gap-3 rounded-sm px-3 py-1 bg-zinc-500/[0.06] dark:bg-white/[0.05] focus-within:bg-orange-500/10 dark:focus-within:bg-orange-500/10 transition-colors">
+        <div class="group/opt flex w-full items-center gap-3 rounded-sm px-3 py-1 transition-all focus-within:bg-orange-500/15 dark:focus-within:bg-orange-500/20 focus-within:ring-1 focus-within:ring-orange-500/70">
           <span
             aria-hidden="true"
-            class="flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border-2 border-zinc-300 dark:border-zinc-600 group-focus-within/opt:border-orange-400"
+            class="flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border-2 border-zinc-300 dark:border-zinc-600 group-focus-within/opt:border-orange-500 group-focus-within/opt:bg-orange-500 transition-colors"
           ></span>
           <input
             type="text"
             name="text"
             autocomplete="off"
             placeholder="Other…"
+            phx-focus="draft_question_other"
+            data-qother
+            phx-value-question_id={@msg.question_id}
+            phx-value-q={@q.id}
             class="chat-sub min-w-0 flex-1 border-0 bg-transparent px-0 py-2 font-medium text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-none focus:ring-0"
           />
         </div>
@@ -207,9 +216,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
           <button
             :if={!@q[:multi]}
             type="submit"
-            class="focus-ring chat-sub flex-none inline-flex items-center rounded-sm bg-orange-700 hover:bg-orange-800 text-white font-medium px-4 py-2 transition-colors"
+            class={[
+              "focus-ring chat-sub flex-none inline-flex items-center rounded-sm font-medium px-4 py-2 transition-all",
+              if(draft_count(@msg, @q) > 0,
+                do: "bg-orange-600 hover:bg-orange-700 text-white shadow-md shadow-orange-600/30",
+                else:
+                  "bg-zinc-200 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400 " <>
+                    "group-has-[[data-qother]:not(:placeholder-shown)]/qform:bg-orange-600 " <>
+                    "group-has-[[data-qother]:not(:placeholder-shown)]/qform:text-white " <>
+                    "group-has-[[data-qother]:not(:placeholder-shown)]/qform:shadow-md " <>
+                    "group-has-[[data-qother]:not(:placeholder-shown)]/qform:shadow-orange-600/30"
+              )
+            ]}
           >
-            Answer
+            Confirm answer
           </button>
           <button
             :if={@q[:multi]}

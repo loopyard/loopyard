@@ -180,6 +180,21 @@ defmodule Loopyard.Harness.Questions do
     end
   end
 
+  @doc """
+  Clear a question's drafted selection (focusing the "Other" box deselects the
+  option rows — broadcast so every viewer sees it). Not a skip; nothing
+  commits.
+  """
+  def clear_draft(qid, q_id) when is_binary(qid) and is_binary(q_id) do
+    with_entry(qid, fn entry ->
+      if Map.get(entry[:selections] || %{}, q_id, []) == [] do
+        entry
+      else
+        put_selection(entry, q_id, [])
+      end
+    end)
+  end
+
   @doc "Confirm a multi-select question's current draft (possibly empty = skip) as its answer."
   @spec confirm_question(String.t(), String.t()) :: :ok | {:error, :not_found}
   def confirm_question(qid, q_id) when is_binary(qid) and is_binary(q_id) do

@@ -555,3 +555,18 @@ input[type="range"].volume-slider:focus-visible {
   color: #fff;
 }
 #chat-form button[type="submit"].send-ready:hover { background: #6d28d9; }
+
+/* Question options: the check appears INSTANTLY on tap (tier-1, client-only
+   click→receipt sliver) while the server draft round-trips — on a busy agent
+   the LiveView can lag behind stream traffic, and a dead-feeling tap reads
+   as broken. The server render then confirms (tier 2, multiplayer). */
+.q-option.phx-click-loading {
+  @apply bg-orange-500/10;
+}
+.q-option.phx-click-loading .q-dot {
+  @apply border-orange-500;
+}
+.q-option.phx-click-loading .q-dot::after {
+  content: "";
+  @apply block h-2 w-2 rounded-full bg-orange-500;
+}
