@@ -1,6 +1,6 @@
 {
-  "name": "loopyard",
-  "short_name": "loopyard",
+  "name": "Loopyard",
+  "short_name": "Loopyard",
   "description": "Multiplayer Claude Code runner — share and steer AI agents in real time, in containers.",
   "start_url": "/",
   "scope": "/",
