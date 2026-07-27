@@ -325,9 +325,9 @@ defmodule LoopyardWeb.ReviewLive do
           tone={(@msg.status == :pending && :needs_you) || :neutral}
           chrome={:desktop}
         >
+          <%!-- No identity chip here: the FocusedView subject right above
+    already names project · workspace large — once is enough. --%>
           <LoopyardWeb.Components.StreamCard.header
-            project={@slide.project_name}
-            workspace={@slide.workspace_name}
             state={:needs_you}
             label_class={
               (@msg.status == :pending && "text-orange-700 dark:text-orange-400") ||
