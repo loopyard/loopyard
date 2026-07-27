@@ -1163,10 +1163,20 @@ if ("serviceWorker" in navigator) {
   }
   // 4s grace: a dev code-reload / server restart usually reconnects in 1–4s —
   // narrating those blips isn't calm. A real outage still surfaces within 4s.
-  const armDown = () => { if (!downTimer) downTimer = setTimeout(show, 4000) }
+  const armDown = (ms = 4000) => { if (!downTimer) downTimer = setTimeout(show, ms) }
   liveSocket.socket.onOpen(hide)
-  liveSocket.socket.onError(armDown)
-  liveSocket.socket.onClose(armDown)
+  liveSocket.socket.onError(() => armDown())
+  liveSocket.socket.onClose(() => armDown())
+
+  // PHONE WAKE: when the page becomes visible again the user is LOOKING at it
+  // and about to tap — the reconnect window (1–4s) with no banner reads as
+  // "broken, tap harder". Reveal fast (500ms) for this episode only; a wake
+  // that reconnects instantly still shows nothing.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return
+    const main = document.querySelector("[data-phx-main]")
+    if (main && !main.classList.contains("phx-connected")) armDown(500)
+  })
 
   // Belt-and-suspenders for the states socket callbacks can't see: a page
   // served mid-reload whose socket NEVER connected (no onError fires), or a

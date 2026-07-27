@@ -563,6 +563,15 @@ input[type="range"].volume-slider:focus-visible {
 .q-option.phx-click-loading {
   @apply bg-orange-500/10;
 }
+/* :active = raw browser press state — fires with NO socket at all (phone-wake
+   reconnect window). The tap always visibly registers; the server state
+   settles when the socket is back. */
+.q-option:active {
+  @apply bg-orange-500/15 scale-[0.99];
+}
+.q-option:active .q-dot {
+  @apply border-orange-500;
+}
 .q-option.phx-click-loading .q-dot {
   @apply border-orange-500;
 }
