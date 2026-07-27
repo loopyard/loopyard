@@ -103,7 +103,7 @@ defmodule LoopyardWeb.OperatorLive do
       # Desktop (lg+) ignores this and shows both side-by-side.
       |> assign(:mobile_view, :chat)
       |> assign(:auth_broken, false)
-      |> assign(:auth_token_pushed, false)
+      |> assign(:workstation_id, Loopyard.Workstation.current())
       # The rail (needs-you groups + working jobs + count) computed IN the
       # LiveView and stored as real assigns, so it's part of the reactive graph —
       # NOT recomputed inside the component (which LiveView memoizes when @tree/
@@ -340,31 +340,6 @@ defmodule LoopyardWeb.OperatorLive do
 
   def handle_event("mobile_view", %{"v" => v}, socket) when v in ~w(chat rail) do
     {:noreply, assign(socket, :mobile_view, String.to_existing_atom(v))}
-  end
-
-  # The token mini-app (auth outage): Env.put persists + materializes into the
-  # home volume + restarts every agent session (@credential_keys hook). The raw
-  # value is never assigned or logged — straight to the scoped store.
-  def handle_event("submit_claude_token", %{"token" => token}, socket) do
-    token = String.trim(token)
-
-    if token == "" do
-      {:noreply, socket}
-    else
-      case Loopyard.Workstation.Env.put(
-             "CLAUDE_CODE_OAUTH_TOKEN",
-             token,
-             Loopyard.Workstation.current()
-           ) do
-        :ok ->
-          Loopyard.EventLog.info("operator", "fresh Claude token pushed from the operator page")
-          {:noreply, assign(socket, :auth_token_pushed, true)}
-
-        {:error, reason} ->
-          {:noreply,
-           put_flash(socket, :error, "Couldn't save the token: #{inspect(reason)} — try again.")}
-      end
-    end
   end
 
   # Scroll-up paging: the ScrollBottom hook fires this near the top. Prepend the
@@ -688,44 +663,31 @@ defmodule LoopyardWeb.OperatorLive do
       </div>
 
       <div class="flex-1 min-h-0 flex flex-col">
-        <%!-- CLAUDE TOKEN MINI-APP: when the fleet's credential is dead, NOTHING
-    works — not even the operator agent — so recovery must be pure UI +
-    server (no agent in the loop). Paste a fresh token here; Env.put
-    persists it, materializes it into the home volume, and restarts every
-    agent's session (@credential_keys hook). --%>
+        <%!-- AUTH OUTAGE: when the fleet's credential is dead, nothing works —
+    not even the operator agent — so recovery routes to the WORKSTATION
+    SETUP flow (the operator has always been "a workstation acting on
+    your behalf"; creds live there). One copyable command mints + pushes
+    a 1-year token; the Claude page has the manual paste path. --%>
         <div
           :if={@auth_broken}
           class="flex-none border-l-2 border-orange-400 dark:border-orange-500/60 bg-orange-50/70 dark:bg-orange-950/15 px-4 md:px-6 py-3"
         >
-          <div class="chat-meta font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-400 mb-1">
+          <div class="chat-meta font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-400 mb-1.5">
             Claude token expired — the fleet is down until it's replaced
           </div>
-          <div :if={!@auth_token_pushed} class="chat-sub text-zinc-700 dark:text-zinc-300 mb-2">
-            Run <code class="font-mono bg-zinc-500/10 rounded-sm px-1">claude setup-token</code>
-            in any terminal, then paste the token:
-          </div>
-          <form
-            :if={!@auth_token_pushed}
-            phx-submit="submit_claude_token"
-            class="flex items-center gap-2"
-          >
-            <input
-              type="password"
-              name="token"
-              autocomplete="off"
-              placeholder="sk-ant-oat…"
-              class="chat-sub min-w-0 flex-1 max-w-md rounded-sm border border-orange-300 dark:border-orange-500/40 bg-white dark:bg-zinc-900 px-3 py-2 font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
-            />
-            <button
-              type="submit"
-              class="focus-ring chat-sub flex-none inline-flex items-center rounded-sm bg-orange-700 hover:bg-orange-800 text-white font-medium px-4 py-2 transition-colors"
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div class="min-w-0 flex-1 max-w-2xl">
+              <LoopyardWeb.Components.Workstation.command_box
+                id="auth-fix-curl"
+                command={"curl -fsS __ORIGIN__/workstations/#{@workstation_id}/claude/setup.sh | sh"}
+              />
+            </div>
+            <.link
+              navigate={"/workstations/#{@workstation_id}/claude"}
+              class="chat-sub text-violet-600 dark:text-violet-400 hover:underline flex-none"
             >
-              Update token
-            </button>
-          </form>
-          <div :if={@auth_token_pushed} class="chat-sub text-zinc-700 dark:text-zinc-300">
-            Token pushed — restarting every agent's session; this banner clears when
-            the fleet is back.
+              or paste a token on the Claude page →
+            </.link>
           </div>
         </div>
 

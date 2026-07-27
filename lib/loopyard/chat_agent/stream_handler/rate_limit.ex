@@ -235,9 +235,11 @@ defmodule Loopyard.ChatAgent.StreamHandler.RateLimit do
 
   def handle_auth_status_event(state, %Event.AuthStatus{error: error}) when is_binary(error) do
     id = state.id
-    # Only announce the failure on the FIRST transition into auth_expired — a
-    # retry that re-fails would otherwise re-spam the chat every backoff.
-    first? = state.status != :auth_expired
+    # Only announce ONCE PER OUTAGE. Gate on auth_error, not status: the
+    # self-heal restart resets status to :idle between attempts, so a status
+    # gate re-announced the same outage on every failed send (three identical
+    # red walls in one screen). auth_error persists until a turn SUCCEEDS.
+    first? = is_nil(state.auth_error)
     attempt = Map.get(state, :auth_retry_count, 0) + 1
 
     :telemetry.execute(
@@ -271,9 +273,9 @@ defmodule Loopyard.ChatAgent.StreamHandler.RateLimit do
               "WHY: the harness couldn't authenticate — usually an expired or rotated " <>
               "CLAUDE_CODE_OAUTH_TOKEN in this workstation. " <>
               "CONSEQUENCE: this turn was dropped; your conversation is preserved. " <>
-              "ACTION: paste a fresh token on the Operator page (run `claude setup-token`, " <>
-              "then use the \"Update token\" card at the top) — every agent restarts and " <>
-              "resumes automatically once it lands.",
+              "ACTION: run the one-line setup command on the Operator page banner (or " <>
+              "the workstation's Claude page) — it mints a 1-year token and pushes it; " <>
+              "every agent restarts and resumes automatically once it lands.",
           timestamp: DateTime.utc_now()
         }
 

@@ -59,15 +59,11 @@ defmodule LoopyardWeb.OperatorLiveTest do
       html = render(view)
 
       assert html =~ "Claude token expired"
-      assert html =~ "submit_claude_token"
-      assert html =~ ~s(type="password")
-
-      # Empty submit is a no-op (no crash, no store write).
-      view
-      |> element(~s(form[phx-submit="submit_claude_token"]))
-      |> render_submit(%{"token" => "  "})
-
-      assert Process.alive?(view.pid)
+      # Routes to the WORKSTATION SETUP flow (the existing machinery), not a
+      # hand-rolled form: the minting curl + the Claude page link.
+      assert html =~ "claude/setup.sh"
+      assert html =~ "/claude"
+      refute html =~ "submit_claude_token"
     end
 
     test "no banner when the fleet is healthy", %{conn: conn} do
