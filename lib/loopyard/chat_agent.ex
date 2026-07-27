@@ -25,6 +25,7 @@ defmodule Loopyard.ChatAgent do
     Persistence,
     Prompt,
     Restart,
+    SendGuards,
     SessionManager,
     StreamHandler,
     TurnHelpers
@@ -214,10 +215,6 @@ defmodule Loopyard.ChatAgent do
   # the Claude API bill. Configurable via Application env for tests
   # that want to exercise the reject path with smaller inputs.
   @max_message_bytes Application.compile_env(:loopyard, :max_message_bytes, 1_048_576)
-  # The pending queue is user-bounded by design, but "bounded by user
-  # behavior" is unbounded in multiplayer: a stuck agent + several eager
-  # senders can balloon GenServer state without a ceiling.
-  @max_pending_sends 50
 
   # Compact-instead-of-resume breaker: after this many unexpected CLI deaths
   # since the last clean turn (see midturn_crashes on the struct), recovery
@@ -499,9 +496,9 @@ defmodule Loopyard.ChatAgent do
         # in the queue (shown in the queue panel) instead of slapping it into the
         # chat stream — it enters the history only when actually sent on drain.
         state =
-          case park_send(state, text) do
+          case SendGuards.park_send(state, text) do
             {:ok, state} -> state
-            :full -> queue_full_note(state)
+            :full -> SendGuards.queue_full_note(state)
           end
 
         # Refresh the ETS summary so the live queue panel updates.
@@ -521,15 +518,15 @@ defmodule Loopyard.ChatAgent do
         # queued (the queue band shows it; it delivers itself after re-auth),
         # and the chat says exactly what's blocking + the one link to fix it.
         state =
-          case park_send(state, text) do
+          case SendGuards.park_send(state, text) do
             {:ok, state} -> state
-            :full -> queue_full_note(state)
+            :full -> SendGuards.queue_full_note(state)
           end
 
         # The pending auth-fix CARD is the chat's answer; make sure one exists
         # (it normally does — the outage announcement posts it), but never
         # stack duplicates per send.
-        state = ensure_auth_fix_card(state)
+        state = SendGuards.ensure_auth_fix_card(state)
 
         :ets.insert(@ets_table, {state.id, summary(state)})
 
@@ -964,7 +961,7 @@ defmodule Loopyard.ChatAgent do
         {:reply, :ok, new_state}
 
       true ->
-        case park_send(state, text) do
+        case SendGuards.park_send(state, text) do
           {:ok, state} ->
             GenServer.cast(self(), :restart_session)
             {:reply, :ok, state}
@@ -1457,65 +1454,6 @@ defmodule Loopyard.ChatAgent do
   # ghost_thinking?/reset_ghost_turn/warm_interrupt — extracted to
   # Loopyard.ChatAgent.TurnHelpers.
 
-  # One PENDING auth-fix card per outage: append it if the recent tail has
-  # none (messages are stored reversed — newest first).
-  defp ensure_auth_fix_card(state) do
-    has_pending? =
-      state.messages
-      |> Enum.take(50)
-      |> Enum.any?(&(&1[:role] == :auth_fix and &1[:status] == :pending))
-
-    if has_pending? do
-      state
-    else
-      card = %{
-        role: :auth_fix,
-        status: :pending,
-        workstation_id: Loopyard.Workstation.current(),
-        timestamp: DateTime.utc_now()
-      }
-
-      {state, card} = append_message(state, card)
-      Persistence.persist_message(state, card)
-
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-        agent_id: state.id,
-        msg: card
-      })
-
-      state
-    end
-  end
-
-  # Park a message on the pending queue, bounded. :full means the caller must
-  # SAY so — a silently dropped message is the one unforgivable outcome.
-  defp park_send(state, text) do
-    if length(state.pending_sends) >= @max_pending_sends do
-      :full
-    else
-      {:ok, %{state | pending_sends: state.pending_sends ++ [text]}}
-    end
-  end
-
-  defp queue_full_note(state) do
-    note = %{
-      role: :error,
-      content:
-        "Message NOT queued — #{@max_pending_sends} are already waiting. " <>
-          "Wait for the agent to catch up (or Clear all in the queue panel), then resend.",
-      timestamp: DateTime.utc_now()
-    }
-
-    {state, note} = append_message(state, note)
-
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-      agent_id: state.id,
-      msg: note
-    })
-
-    state
-  end
-
   defp send_message_normal(state, text) do
     state = SessionManager.ensure_alive(state)
 
@@ -1541,9 +1479,9 @@ defmodule Loopyard.ChatAgent do
       )
 
       state =
-        case park_send(state, text) do
+        case SendGuards.park_send(state, text) do
           {:ok, state} -> state
-          :full -> queue_full_note(state)
+          :full -> SendGuards.queue_full_note(state)
         end
 
       Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
@@ -1675,7 +1613,7 @@ defmodule Loopyard.ChatAgent do
       started_by: state.started_by,
       last_activity_at: state.last_activity_at,
       status: state.status,
-      messages: reconcile_card_patches(state.id, Enum.reverse(state.messages)),
+      messages: MessageLog.reconcile_card_patches(state.id, Enum.reverse(state.messages)),
       tool_calls: state.tool_calls,
       errors: state.errors,
       service_name: state.service_name,
@@ -1700,37 +1638,6 @@ defmodule Loopyard.ChatAgent do
       pending_count: length(state.pending_sends),
       pending_messages: state.pending_sends
     }
-  end
-
-  # Re-apply outstanding card patches (see MessageWindow.update_message_now):
-  # a summary built from state that predates a card interaction must not undo
-  # it. Fast path (no patches) is one ETS match on a tiny table.
-  defp reconcile_card_patches(agent_id, messages) do
-    case :ets.match_object(:card_patches, {{agent_id, :_}, :_}) do
-      [] ->
-        messages
-
-      patches ->
-        by_msg = Map.new(patches, fn {{_aid, msg_id}, changes} -> {msg_id, changes} end)
-
-        Enum.map(messages, fn msg ->
-          case Map.get(by_msg, msg[:id]) do
-            nil ->
-              msg
-
-            changes ->
-              # NB: monotonic time is NEGATIVE on most systems — no numeric
-              # sentinel; nil msg card_v means "never patched", always apply.
-              msg_v = msg[:card_v]
-
-              if is_nil(msg_v) or (changes[:card_v] && changes[:card_v] > msg_v),
-                do: Map.merge(msg, changes),
-                else: msg
-          end
-        end)
-    end
-  rescue
-    _ -> messages
   end
 
   @doc "Drop all queued (pending) messages without stopping the current turn."

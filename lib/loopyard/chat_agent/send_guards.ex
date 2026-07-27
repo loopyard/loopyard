@@ -1,0 +1,76 @@
+defmodule Loopyard.ChatAgent.SendGuards do
+  @moduledoc """
+  The inbox's protective rails, extracted from ChatAgent: the bounded pending
+  queue (`park_send/2` + the loud `queue_full_note/1` — a silently dropped
+  message is the one unforgivable outcome) and the auth-outage card
+  (`ensure_auth_fix_card/1` — one pending card per outage, never stacked).
+  State in, state out; no GenServer coupling.
+  """
+
+  alias Loopyard.ChatAgent.MessageLog
+  alias Loopyard.ChatAgent.Persistence
+  alias Loopyard.Events
+
+  # See ChatAgent's @max_message_bytes note: "bounded by user behavior" is
+  # unbounded in multiplayer.
+  @max_pending_sends 50
+
+  # Park a message on the pending queue, bounded. :full means the caller must
+  # SAY so — a silently dropped message is the one unforgivable outcome.
+  def park_send(state, text) do
+    if length(state.pending_sends) >= @max_pending_sends do
+      :full
+    else
+      {:ok, %{state | pending_sends: state.pending_sends ++ [text]}}
+    end
+  end
+
+  def queue_full_note(state) do
+    note = %{
+      role: :error,
+      content:
+        "Message NOT queued — #{@max_pending_sends} are already waiting. " <>
+          "Wait for the agent to catch up (or Clear all in the queue panel), then resend.",
+      timestamp: DateTime.utc_now()
+    }
+
+    {state, note} = MessageLog.append(state, note)
+
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+      agent_id: state.id,
+      msg: note
+    })
+
+    state
+  end
+
+  # One PENDING auth-fix card per outage: append it if the recent tail has
+  # none (messages are stored reversed — newest first).
+  def ensure_auth_fix_card(state) do
+    has_pending? =
+      state.messages
+      |> Enum.take(50)
+      |> Enum.any?(&(&1[:role] == :auth_fix and &1[:status] == :pending))
+
+    if has_pending? do
+      state
+    else
+      card = %{
+        role: :auth_fix,
+        status: :pending,
+        workstation_id: Loopyard.Workstation.current(),
+        timestamp: DateTime.utc_now()
+      }
+
+      {state, card} = MessageLog.append(state, card)
+      Persistence.persist_message(state, card)
+
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+        agent_id: state.id,
+        msg: card
+      })
+
+      state
+    end
+  end
+end
