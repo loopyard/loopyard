@@ -146,12 +146,12 @@ defmodule Loopyard.ChatAgent.Restart do
               tool_calls_this_turn: 0,
               tool_runaway_warned: false,
               last_tool_call: nil,
-              context_warning_sent: false,
-              # A fresh session re-sourced credentials — clear the auth block so
-              # the UI leaves the red auth_expired state. The retry counter is
-              # kept (only a genuinely successful turn resets it) so a still-bad
-              # token keeps its growing backoff instead of hot-looping.
-              auth_error: nil
+              context_warning_sent: false
+              # auth_error is deliberately NOT cleared here: a restart merely
+              # re-sources credentials — it doesn't prove them. Clearing it
+              # optimistically made the fleet-outage signal (and the operator's
+              # token mini-app) FLAP between self-heal cycles. Only a turn that
+              # actually completes clears it (complete_turn).
           })
 
         :ets.insert(@ets_table, {state.id, Loopyard.ChatAgent.summary(state)})

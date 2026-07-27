@@ -453,6 +453,9 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     # A turn completed cleanly → credentials are valid; clear the auth backoff so
     # the next failure (if any) starts fresh rather than at a capped interval.
     state = Map.put(state, :auth_retry_count, 0)
+    # A completed turn PROVES the credential — this is the one place the auth
+    # flag clears (restarts only re-source, they don't prove).
+    state = %{state | auth_error: nil}
 
     cond do
       # Recovery FIRST (order matters): context overflowed so hard the model
