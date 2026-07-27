@@ -25,7 +25,7 @@ defmodule Loopyard.MixProject do
       mod: {Loopyard.Application, []},
       # :os_mon (built into OTP) starts :memsup so the operator's system_status
       # tool can report host memory cross-platform.
-      extra_applications: [:logger, :runtime_tools, :ssh, :crypto, :public_key, :os_mon]
+      extra_applications: [:logger, :runtime_tools, :ssh, :crypto, :public_key, :os_mon, :inets]
     ]
   end
 
@@ -49,8 +49,10 @@ defmodule Loopyard.MixProject do
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:jason, "~> 1.2"},
-      # Web Push (question notifications to installed PWAs) — pure-Elixir VAPID/aes128gcm
-      {:ex_nudge, "~> 1.0"},
+      # Web Push (question notifications to installed PWAs) — builds the signed
+      # RFC 8291/8292 (aes128gcm) request; we deliver it with :httpc, so no
+      # extra HTTP-client dep (ex_nudge dragged in hackney + a CVE).
+      {:web_push_ex, "~> 0.2"},
       {:bandit, "~> 1.6"},
       {:claude_code, "~> 0.34"},
       {:dotenvy, "~> 1.1"},

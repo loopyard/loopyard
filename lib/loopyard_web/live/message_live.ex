@@ -173,7 +173,7 @@ defmodule LoopyardWeb.MessageLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x">
+    <div class="min-h-screen bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x safe-area-top">
       <Nav.bar height="h-12" pad="px-4">
         <.link
           navigate={"/messages/#{@agent_id}/#{@msg_id}"}

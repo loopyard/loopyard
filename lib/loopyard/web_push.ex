@@ -7,8 +7,10 @@ defmodule Loopyard.WebPush do
   question can reach a pocket; tapping the notification opens the Reviewer
   slide for that exact card (`/review/:agent_id/:msg_id`).
 
-  Send path is `ExNudge` (RFC 8291/8292 — aes128gcm, which Apple requires).
-  Expired subscriptions (endpoint gone, 404/410) are pruned on send.
+  `WebPushEx` builds the signed RFC 8291/8292 (aes128gcm — what Apple
+  requires) request; delivery is plain `:httpc` with verified TLS, so no
+  extra HTTP-client dependency. Expired subscriptions (404/410) prune on
+  send.
   """
 
   require Logger
@@ -26,15 +28,24 @@ defmodule Loopyard.WebPush do
       if is_binary(state["public_key"]) and is_binary(state["private_key"]) do
         state
       else
-        %{public_key: public, private_key: private} = ExNudge.VAPID.generate_vapid_keys()
-        state = Map.merge(state, %{"public_key" => public, "private_key" => private})
+        {public, private} = :crypto.generate_key(:ecdh, :prime256v1)
+
+        state =
+          Map.merge(state, %{
+            "public_key" => Base.url_encode64(public, padding: false),
+            "private_key" => Base.url_encode64(private, padding: false)
+          })
+
         write(state)
         state
       end
 
-    Application.put_env(:ex_nudge, :vapid_subject, "mailto:brad@rocketship.io")
-    Application.put_env(:ex_nudge, :vapid_public_key, state["public_key"])
-    Application.put_env(:ex_nudge, :vapid_private_key, state["private_key"])
+    Application.put_env(:web_push_ex, :vapid,
+      subject: "mailto:brad@rocketship.io",
+      public_key: state["public_key"],
+      private_key: state["private_key"]
+    )
+
     :ok
   rescue
     e ->
@@ -85,24 +96,27 @@ defmodule Loopyard.WebPush do
 
       Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
         Enum.each(subs, fn sub ->
-          struct = %ExNudge.Subscription{
-            endpoint: sub["endpoint"],
+          struct = %WebPushEx.Subscription{
+            endpoint: URI.parse(sub["endpoint"]),
             keys: %{
               p256dh: get_in(sub, ["keys", "p256dh"]),
               auth: get_in(sub, ["keys", "auth"])
             }
           }
 
-          case ExNudge.send_notification(struct, payload, urgency: :high, ttl: 3600) do
-            {:ok, _} ->
+          req = WebPushEx.request(struct, payload)
+          headers = Map.merge(req.headers, %{"Urgency" => "high", "TTL" => "3600"})
+
+          case deliver(URI.to_string(req.endpoint), headers, req.body) do
+            {:ok, status} when status in 200..299 ->
               :ok
 
-            {:error, :subscription_expired} ->
+            {:ok, status} when status in [404, 410] ->
               # Device is gone — prune so we stop paying for it.
               unsubscribe(sub["endpoint"])
 
-            {:error, reason} ->
-              Logger.warning("[WebPush] send failed: #{inspect(reason)}")
+            other ->
+              Logger.warning("[WebPush] send failed: #{inspect(other)}")
           end
         end)
       end)
@@ -113,6 +127,29 @@ defmodule Loopyard.WebPush do
     e ->
       Logger.warning("[WebPush] notify failed: #{Exception.message(e)}")
       :ok
+  end
+
+  # :httpc POST with verified TLS (OS trust store) — the endpoints are the
+  # browser vendors' push services; no client dep needed for four headers.
+  defp deliver(url, headers, body) do
+    hdrs = Enum.map(headers, fn {k, v} -> {String.to_charlist(k), String.to_charlist(v)} end)
+
+    ssl = [
+      verify: :verify_peer,
+      cacerts: :public_key.cacerts_get(),
+      depth: 3,
+      customize_hostname_check: [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)]
+    ]
+
+    case :httpc.request(
+           :post,
+           {String.to_charlist(url), hdrs, ~c"application/octet-stream", body},
+           [ssl: ssl, timeout: 15_000],
+           []
+         ) do
+      {:ok, {{_, status, _}, _hdrs, _body}} -> {:ok, status}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   # ── store (RMW under a lock, like Peering was) ─────────────────────────────
