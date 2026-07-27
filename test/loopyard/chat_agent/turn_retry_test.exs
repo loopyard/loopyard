@@ -33,7 +33,9 @@ defmodule Loopyard.ChatAgent.TurnRetryTest do
       )
 
     on_exit(fn ->
-      Application.delete_env(:loopyard, :agent_turn_retries)
+      # Restore the suite-wide opt-out (config/test.exs) — delete_env would
+      # leak the prod default (3) into every later ChatAgent test.
+      Application.put_env(:loopyard, :agent_turn_retries, 0)
 
       try do
         ChatAgent.stop_agent(id)
@@ -87,7 +89,9 @@ defmodule Loopyard.ChatAgent.TurnRetryTest do
   describe "default: the system IS the retry loop" do
     test "a transient failure auto-retries (stays thinking, counter bumps)",
          %{id: id, pid: pid} do
-      # No env override — this asserts the DEFAULT is retries > 0.
+      # Delete the test-env opt-out so this reads the compiled-in PROD default
+      # — pinning that shipping builds retry (>0) without touching the number.
+      Application.delete_env(:loopyard, :agent_turn_retries)
       ref = in_turn(pid)
       fail_turn(pid, id, ref, "error_during_execution")
 

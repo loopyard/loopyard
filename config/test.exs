@@ -20,6 +20,12 @@ config :loopyard,
   # accidentally spawn the real Claude CLI subprocess. Individual
   # tests can still pass `backend: SomeOther` in opts to override.
   default_harness: Loopyard.Harness.Fake,
+  # Turn auto-retry OFF suite-wide: tests fabricate turn failures constantly,
+  # and the prod default (3 retries w/ backoff) would leave those agents
+  # :thinking on scheduled retries — cascading timeouts across the suite.
+  # turn_retry_test deletes this env in the ONE test that pins the prod
+  # default, and restores it in on_exit.
+  agent_turn_retries: 0,
   # Disable Saga.Journal writes by default in test env. Async saga
   # tests would otherwise share one journal file and race on
   # compaction. Tests that exercise the journal explicitly opt in via
