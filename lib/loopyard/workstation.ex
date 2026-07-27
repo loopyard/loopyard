@@ -154,12 +154,39 @@ defmodule Loopyard.Workstation do
       a.id == operator_id or
         (is_binary(a[:workspace_id]) and agent_workstation(a[:workspace_id]) == id)
     end)
-    |> Enum.each(fn a -> Loopyard.ChatAgent.restart_session(a.id, :credentials) end)
+    |> Enum.each(fn a ->
+      case Registry.lookup(Loopyard.ChatAgentRegistry, a.id) do
+        [{pid, _}] when is_pid(pid) ->
+          Loopyard.ChatAgent.restart_session(a.id, :credentials)
+
+        [] ->
+          # CRASHED agents have no GenServer to restart — a credential push
+          # must REVIVE them too (an auth outage crashes most of the fleet;
+          # "agents are back" has to mean all of them). resume: true replays
+          # their durable log; the fresh session sources the new token.
+          revive(a)
+      end
+    end)
 
     :ok
   rescue
     _ -> :ok
   end
+
+  defp revive(%{workspace_id: ws_id, id: agent_id}) when is_binary(ws_id) do
+    Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
+      ws = Loopyard.WorkspaceRegistry.get_workspace(ws_id)
+
+      if ws && ws[:path] do
+        _ = Loopyard.WorkspaceSupervisor.start_workspace(ws_id, ws.path)
+        _ = Loopyard.WorkspaceGroup.start_agent(ws_id, id: agent_id, resume: true)
+      end
+    end)
+
+    :ok
+  end
+
+  defp revive(_), do: :ok
 
   # workstation_id/1 raises on unknown/malformed ids; never let that abort a reload.
   defp agent_workstation(ws_id) do
