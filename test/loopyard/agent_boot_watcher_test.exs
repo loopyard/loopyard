@@ -67,7 +67,12 @@ defmodule Loopyard.AgentBootWatcherTest do
 
     test "boot task crashes with agent still :booting → boot_failed fires" do
       id = fresh_id()
-      ChatAgent.register_booting(id, "watcher test", File.cwd!())
+
+      ChatAgent.register_booting(
+        id,
+        "watcher test",
+        Path.join(System.tmp_dir!(), "bootwatch-#{System.unique_integer([:positive])}")
+      )
 
       run_watcher(self(), id, fn -> raise "boot exploded" end)
 
@@ -89,7 +94,8 @@ defmodule Loopyard.AgentBootWatcherTest do
         id: id,
         status: :idle,
         name: "already ready",
-        working_dir: File.cwd!(),
+        working_dir:
+          Path.join(System.tmp_dir!(), "bootwatch-#{System.unique_integer([:positive])}"),
         started_at: DateTime.utc_now(),
         last_activity_at: DateTime.utc_now()
       }
@@ -109,7 +115,12 @@ defmodule Loopyard.AgentBootWatcherTest do
 
     test "boot task clean exit → no boot_failed (nothing to surface)" do
       id = fresh_id()
-      ChatAgent.register_booting(id, "clean exit", File.cwd!())
+
+      ChatAgent.register_booting(
+        id,
+        "clean exit",
+        Path.join(System.tmp_dir!(), "bootwatch-#{System.unique_integer([:positive])}")
+      )
 
       run_watcher(self(), id, fn -> :ok end)
 
@@ -129,12 +140,18 @@ defmodule Loopyard.AgentBootWatcherTest do
       Loopyard.ChatAgent.subscribe()
 
       id = fresh_id()
-      ChatAgent.register_booting(id, "start_monitored test", File.cwd!())
+
+      ChatAgent.register_booting(
+        id,
+        "start_monitored test",
+        Path.join(System.tmp_dir!(), "bootwatch-#{System.unique_integer([:positive])}")
+      )
 
       Loopyard.AgentBoot.start_monitored(
         id,
         [
-          working_dir: File.cwd!(),
+          working_dir:
+            Path.join(System.tmp_dir!(), "bootwatch-#{System.unique_integer([:positive])}"),
           workspace_id: "nonexistent-ws-#{:rand.uniform(1_000_000)}"
         ],
         # Tight deadline keeps the test fast — the saga fails on the
