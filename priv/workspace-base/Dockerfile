@@ -30,10 +30,16 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
-# Node (current LTS via NodeSource; Debian's is old) — the harness CLIs need it.
-RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
-    && rm -rf /var/lib/apt/lists/*
+# Node (current LTS; Debian's is old) — the harness CLIs need it. Official
+# nodejs.org tarball, NOT NodeSource: their setup script intermittently 403s
+# CI runners (broke docker-e2e 2026-07-27), and a pinned dist download is
+# reproducible where `setup_lts.x` floats. Bump the version deliberately.
+ARG NODE_VERSION=22.17.1
+RUN arch="$(dpkg --print-architecture)" \
+    && case "$arch" in amd64) node_arch=x64 ;; arm64) node_arch=arm64 ;; *) echo "unsupported arch: $arch" && exit 1 ;; esac \
+    && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" \
+       | tar -xJ -C /usr/local --strip-components=1 --no-same-owner \
+    && node --version && npm --version
 
 # Claude Code (`claude`) and Codex (`codex`) — the harnesses + their `…login`
 # flows — plus the ACP adapter that runs the real harness in-box over stdio.
