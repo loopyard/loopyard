@@ -321,10 +321,13 @@ defmodule LoopyardWeb.ReviewLive do
       <%!-- ONE decision per slide, unboxed — the FocusedView already names the
            subject, so the content is just the question itself. --%>
       <div :if={@q}>
-        <LoopyardWeb.Components.StreamCard.band tone={
-          (@msg.status == :pending && :needs_you) || :neutral
-        }>
+        <LoopyardWeb.Components.StreamCard.band
+          tone={(@msg.status == :pending && :needs_you) || :neutral}
+          chrome={:desktop}
+        >
           <LoopyardWeb.Components.StreamCard.header
+            project={@slide.project_name}
+            workspace={@slide.workspace_name}
             state={:needs_you}
             label_class={
               (@msg.status == :pending && "text-orange-700 dark:text-orange-400") ||

@@ -20,6 +20,17 @@ defmodule LoopyardWeb.Components.StreamCard do
   use Phoenix.Component
 
   attr :tone, :atom, default: :needs_you, values: [:needs_you, :you, :neutral]
+
+  attr :chrome, :atom,
+    default: :always,
+    values: [:always, :desktop],
+    doc: """
+    :always — the toned wash + rail at every size (the chat stream).
+    :desktop — chrome from md: up only; on a PHONE the content takes the
+    viewport bare (full-screen surfaces like the Reviewer, where a big toned
+    box inside a small screen reads boxed-in).
+    """
+
   attr :class, :string, default: nil
   slot :inner_block, required: true
 
@@ -27,7 +38,7 @@ defmodule LoopyardWeb.Components.StreamCard do
     ~H"""
     <div class={[
       "-mx-4 md:-mx-6 2xl:-mx-4 px-4 md:px-6 lg:px-8 pt-4 md:pt-5 pb-4 md:pb-5",
-      band_tone(@tone),
+      band_tone(@tone, @chrome),
       @class
     ]}>
       {render_slot(@inner_block)}
@@ -37,15 +48,26 @@ defmodule LoopyardWeb.Components.StreamCard do
 
   # The left line MEANS "live — waiting on you / the active turn". Settled
   # receipts (:neutral) carry no line: the wash alone is the receipt.
-  defp band_tone(:needs_you),
+  defp band_tone(:needs_you, :always),
     do:
       "border-l-2 bg-orange-50/70 dark:bg-orange-950/15 border-orange-400 dark:border-orange-500/60"
 
-  defp band_tone(:you),
+  defp band_tone(:you, :always),
     do: "border-l-2 bg-violet-100 dark:bg-[#2b2348] border-violet-500 dark:border-violet-400"
 
-  defp band_tone(:neutral),
+  defp band_tone(:neutral, :always),
     do: "bg-zinc-500/[0.06] dark:bg-white/[0.045]"
+
+  defp band_tone(:needs_you, :desktop),
+    do:
+      "md:border-l-2 md:bg-orange-50/70 md:dark:bg-orange-950/15 md:border-orange-400 md:dark:border-orange-500/60"
+
+  defp band_tone(:you, :desktop),
+    do:
+      "md:border-l-2 md:bg-violet-100 md:dark:bg-[#2b2348] md:border-violet-500 md:dark:border-violet-400"
+
+  defp band_tone(:neutral, :desktop),
+    do: "md:bg-zinc-500/[0.06] md:dark:bg-white/[0.045]"
 
   attr :project, :string, default: nil
   attr :workspace, :string, default: nil

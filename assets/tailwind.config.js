@@ -3,6 +3,10 @@ const fs = require("fs")
 const path = require("path")
 
 module.exports = {
+  // Touch screens must never wear sticky :hover state — iOS keeps a tapped
+  // element's hover styles until you tap elsewhere, which made a changed
+  // question answer look like TWO selections (old row still hover-tinted).
+  future: { hoverOnlyWhenSupported: true },
   darkMode: 'media',
   content: [
     "./js/**/*.js",

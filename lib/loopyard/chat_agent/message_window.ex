@@ -118,44 +118,68 @@ defmodule Loopyard.ChatAgent.MessageWindow do
         :ok
 
       [] ->
-        case :ets.lookup(@ets_table, agent_id) do
-          [{^agent_id, summary}] ->
-            try do
-              messages =
-                Enum.map(summary.messages, fn msg ->
-                  if msg[:id] == msg_id, do: update_fn.(msg), else: msg
-                end)
+        patch_ets_and_broadcast(agent_id, msg_id, update_fn)
+    end
+  end
 
-              :ets.insert(@ets_table, {agent_id, %{summary | messages: messages}})
+  @doc """
+  Update a message NOW: patch ETS + broadcast immediately, then let the live
+  GenServer (if any) converge via the normal cast.
 
-              # Same live-patch broadcast as the GenServer path — a viewer
-              # watching a stopped agent's transcript still sees the update.
-              case Enum.find(messages, &(&1[:id] == msg_id)) do
-                nil ->
-                  :ok
+  For CARD-STATE changes (question drafts/selections/locks) — pure
+  `Map.merge`s that don't depend on GenServer state. The plain
+  `update_message/3` cast rides the agent's mailbox, which during a streaming
+  turn sits behind a backlog of token events — tapping an option on a busy
+  agent's card took SECONDS to highlight. Every viewer reads the patched ETS
+  + broadcast instantly; the cast re-applies the same merge (idempotent) so
+  the GenServer's own state catches up.
+  """
+  def update_message_now(agent_id, msg_id, update_fn) do
+    result = patch_ets_and_broadcast(agent_id, msg_id, update_fn)
 
-                new_msg ->
-                  Loopyard.Events.ChatAgentMessage.publish(
-                    %Loopyard.Events.ChatAgentMessage.MessageUpdated{
-                      agent_id: agent_id,
-                      msg: new_msg
-                    }
-                  )
-              end
+    case Registry.lookup(Loopyard.ChatAgentRegistry, agent_id) do
+      [{pid, _}] -> GenServer.cast(pid, {:update_message, msg_id, update_fn})
+      [] -> :ok
+    end
 
+    result
+  end
+
+  defp patch_ets_and_broadcast(agent_id, msg_id, update_fn) do
+    case :ets.lookup(@ets_table, agent_id) do
+      [{^agent_id, summary}] ->
+        try do
+          messages =
+            Enum.map(summary.messages, fn msg ->
+              if msg[:id] == msg_id, do: update_fn.(msg), else: msg
+            end)
+
+          :ets.insert(@ets_table, {agent_id, %{summary | messages: messages}})
+
+          # Same live-patch broadcast as the GenServer path — a viewer
+          # watching a stopped agent's transcript still sees the update.
+          case Enum.find(messages, &(&1[:id] == msg_id)) do
+            nil ->
               :ok
-            rescue
-              e ->
-                :telemetry.execute(
-                  [:loopyard, :agent, :update_message_failed],
-                  %{count: 1},
-                  %{agent_id: agent_id, msg_id: msg_id, reason: Exception.message(e)}
-                )
 
-                :error
-            end
+            new_msg ->
+              Loopyard.Events.ChatAgentMessage.publish(
+                %Loopyard.Events.ChatAgentMessage.MessageUpdated{
+                  agent_id: agent_id,
+                  msg: new_msg
+                }
+              )
+          end
 
-          [] ->
+          :ok
+        rescue
+          e ->
+            :telemetry.execute(
+              [:loopyard, :agent, :update_message_failed],
+              %{count: 1},
+              %{agent_id: agent_id, msg_id: msg_id, reason: Exception.message(e)}
+            )
+
             :error
         end
     end

@@ -105,7 +105,10 @@ defmodule Loopyard.OnboardingTest do
     # Start working — cheap, no preview cluster, no agent-written compose needed.
     assert {:ok, container} = Onboarding.start_working(ws.id)
     assert container == "loopyard-#{ws.id}-work"
-    assert Loopyard.Workspace.working?(ws.id)
+    # eventually: `working?` is a raw `docker inspect`, and on a loaded CI
+    # daemon (right after the base-image build) a single read can lag the
+    # just-started container. Same convention as the compose asserts above.
+    assert eventually(fn -> Loopyard.Workspace.working?(ws.id) end, 15_000)
 
     # The preview cluster is a *separate* concern and is NOT running.
     refute Loopyard.Workspace.container_running?(ws.id)

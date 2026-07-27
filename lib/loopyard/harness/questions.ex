@@ -425,7 +425,12 @@ defmodule Loopyard.Harness.Questions do
   defp update_msg(_agent_id, nil, _changes), do: :ok
 
   defp update_msg(agent_id, msg_id, changes) do
-    ChatAgent.update_message(agent_id, msg_id, fn m -> Map.merge(m, changes) end)
+    # update_message_NOW: card state must render instantly for every viewer —
+    # the plain cast rides the agent's mailbox, which during a streaming turn
+    # made a draft tap take seconds to highlight.
+    Loopyard.ChatAgent.MessageWindow.update_message_now(agent_id, msg_id, fn m ->
+      Map.merge(m, changes)
+    end)
   end
 
   defp gen_id, do: :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)

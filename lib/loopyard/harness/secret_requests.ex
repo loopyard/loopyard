@@ -188,7 +188,11 @@ defmodule Loopyard.Harness.SecretRequests do
   defp update_msg(_agent_id, nil, _changes), do: :ok
 
   defp update_msg(agent_id, msg_id, changes) do
-    ChatAgent.update_message(agent_id, msg_id, fn m -> Map.merge(m, changes) end)
+    # Card state renders instantly for every viewer (see MessageWindow
+    # .update_message_now — the plain cast lags behind a streaming mailbox).
+    Loopyard.ChatAgent.MessageWindow.update_message_now(agent_id, msg_id, fn m ->
+      Map.merge(m, changes)
+    end)
   end
 
   # A human-typed name → a stable storage key (what `get_secret` takes).
