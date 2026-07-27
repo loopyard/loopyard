@@ -207,7 +207,16 @@ defmodule Loopyard.DockerDaemon do
           # Group first: an unregistered ServiceManager silently swallows the
           # resync ({:error, :service_manager_not_running}).
           _ = Loopyard.WorkspaceSupervisor.start_workspace(ws.id, ws.path)
-          Loopyard.Workspace.ServiceManager.resync_services(ws.path)
+          _ = Loopyard.Workspace.ServiceManager.resync_services(ws.path)
+
+          # LESSON FROM THE FIELD: infra revival can't fix an APP-level break
+          # (garryslist crash-looped on Bundler::GemNotFound after a clean
+          # resync, and sat red until a human noticed the pills). Give the
+          # cluster a minute to settle, then hand any still-crashing service —
+          # WITH its log tail — to the workspace's own agent. The agent owns
+          # its dev environment; the machinery's job is a good handoff.
+          Process.sleep(60_000)
+          dispatch_crash_loops(ws)
         end)
       end
 
@@ -217,6 +226,63 @@ defmodule Loopyard.DockerDaemon do
     :ok
   rescue
     _ -> :ok
+  end
+
+  defp dispatch_crash_loops(ws) do
+    {:ok, out} =
+      Loopyard.Docker.docker([
+        "ps",
+        "-a",
+        "--filter",
+        "name=loopyard-#{ws.id}",
+        "--format",
+        "{{.Names}}|{{.Status}}"
+      ])
+
+    crashed =
+      out
+      |> String.split("\n", trim: true)
+      |> Enum.filter(&String.contains?(&1, "Exited"))
+      |> Enum.map(&hd(String.split(&1, "|")))
+      |> Enum.reject(&String.ends_with?(&1, "-work"))
+
+    if crashed != [] do
+      diagnosis =
+        Enum.map_join(crashed, "\n\n", fn name ->
+          tail =
+            case Loopyard.Docker.docker(["logs", "--tail", "15", name]) do
+              {:ok, logs} -> logs
+              _ -> "(no logs)"
+            end
+
+          "#{name}:\n#{tail}"
+        end)
+
+      agent =
+        Loopyard.ChatAgent.list_agent_summaries()
+        |> Enum.find(&(&1[:workspace_id] == ws.id))
+
+      if agent do
+        Loopyard.ChatAgent.enqueue_message(
+          agent.id,
+          "Docker was restarted and your dev cluster came back — except these " <>
+            "services, which are crash-looping (likely an app-level issue: " <>
+            "stale deps, migrations, config). Diagnose from the logs below and " <>
+            "bring them up.\n\n#{diagnosis}"
+        )
+
+        Loopyard.EventLog.warning(
+          "docker",
+          "post-revive crash-loops in #{ws.id} handed to its agent"
+        )
+      end
+    end
+
+    :ok
+  rescue
+    _ -> :ok
+  catch
+    _, _ -> :ok
   end
 
   defp reapply_inotify do
