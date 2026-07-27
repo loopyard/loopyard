@@ -41,6 +41,15 @@ defmodule Loopyard.CardText do
     "### Secret request\n\n`#{msg[:name]}`#{why(msg)}" <> status_line(msg)
   end
 
+  def render(%{role: :auth_fix, status: :pending} = msg) do
+    "### Claude token needed\n\nRun the setup command on the workstation " <>
+      "(`/workstations/#{msg[:workstation_id]}/claude`) — agents resume automatically."
+  end
+
+  def render(%{role: :auth_fix}) do
+    "### Claude token — authenticated ✓"
+  end
+
   def render(%{role: :embed} = msg) do
     "▸ Embedded workspace: **#{msg[:label] || "workspace"}** — " <>
       "/projects/#{msg[:project_id]}/workspaces/#{msg[:workspace_id]}/agents/#{msg[:agent_id]}"

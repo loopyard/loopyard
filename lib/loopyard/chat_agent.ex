@@ -514,32 +514,28 @@ defmodule Loopyard.ChatAgent do
 
         {:noreply, state}
 
-      state.status == :auth_expired ->
-        # No recovery path — the CLI can't reach the API. Record the
-        # send attempt so the user sees their message, then surface
-        # the same auth-expired error again so they know nothing is
-        # going to happen until they re-authenticate.
-        user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
-        {state, user_msg} = append_message(state, user_msg)
-        Persistence.persist_message(state, user_msg)
+      is_binary(state.auth_error) or state.status == :auth_expired ->
+        # CONFIRMED auth outage (auth_error persists until a turn proves the
+        # token — status alone flaps through self-heal restarts). A user's
+        # send ALWAYS gets the answer in chat, every time: their message is
+        # queued (the queue band shows it; it delivers itself after re-auth),
+        # and the chat says exactly what's blocking + the one link to fix it.
+        state =
+          case park_send(state, text) do
+            {:ok, state} -> state
+            :full -> queue_full_note(state)
+          end
 
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-          agent_id: state.id,
-          msg: user_msg
-        })
+        # The pending auth-fix CARD is the chat's answer; make sure one exists
+        # (it normally does — the outage announcement posts it), but never
+        # stack duplicates per send.
+        state = ensure_auth_fix_card(state)
 
-        auth_msg = %{
-          role: :error,
-          content:
-            "Can't send — Claude CLI auth is expired (#{state.auth_error}). Re-auth and restart the agent.",
-          timestamp: DateTime.utc_now()
-        }
+        :ets.insert(@ets_table, {state.id, summary(state)})
 
-        {state, auth_msg} = append_message(state, auth_msg)
-
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-          agent_id: state.id,
-          msg: auth_msg
+        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{
+          id: state.id,
+          status: state.status
         })
 
         {:noreply, state}
@@ -1436,6 +1432,36 @@ defmodule Loopyard.ChatAgent do
   # ensure_session_alive.
   # ghost_thinking?/reset_ghost_turn/warm_interrupt — extracted to
   # Loopyard.ChatAgent.TurnHelpers.
+
+  # One PENDING auth-fix card per outage: append it if the recent tail has
+  # none (messages are stored reversed — newest first).
+  defp ensure_auth_fix_card(state) do
+    has_pending? =
+      state.messages
+      |> Enum.take(50)
+      |> Enum.any?(&(&1[:role] == :auth_fix and &1[:status] == :pending))
+
+    if has_pending? do
+      state
+    else
+      card = %{
+        role: :auth_fix,
+        status: :pending,
+        workstation_id: Loopyard.Workstation.current(),
+        timestamp: DateTime.utc_now()
+      }
+
+      {state, card} = append_message(state, card)
+      Persistence.persist_message(state, card)
+
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+        agent_id: state.id,
+        msg: card
+      })
+
+      state
+    end
+  end
 
   # Park a message on the pending queue, bounded. :full means the caller must
   # SAY so — a silently dropped message is the one unforgivable outcome.

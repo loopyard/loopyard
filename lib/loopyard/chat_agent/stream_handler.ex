@@ -454,8 +454,15 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     # the next failure (if any) starts fresh rather than at a capped interval.
     state = Map.put(state, :auth_retry_count, 0)
     # A completed turn PROVES the credential — this is the one place the auth
-    # flag clears (restarts only re-source, they don't prove).
-    state = %{state | auth_error: nil}
+    # flag clears (restarts only re-source, they don't prove). Flipping the
+    # flag also flips any pending auth-fix card GREEN in place — the mini-app's
+    # "I did the thing and saw it work" receipt.
+    state =
+      if is_binary(state.auth_error) do
+        resolve_auth_fix_cards(%{state | auth_error: nil})
+      else
+        state
+      end
 
     cond do
       # Recovery FIRST (order matters): context overflowed so hard the model
@@ -657,4 +664,29 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
   # Append via the ONE shared MessageLog (id assignment + message cap).
   defp append_message(state, msg), do: MessageLog.append(state, msg)
+
+  # Flip every pending auth-fix card to :resolved + broadcast the update, so
+  # the card the user acted on turns green for every viewer.
+  defp resolve_auth_fix_cards(state) do
+    {messages, flipped} =
+      Enum.map_reduce(state.messages, [], fn msg, acc ->
+        if msg[:role] == :auth_fix and msg[:status] == :pending do
+          msg = Map.put(msg, :status, :resolved)
+          {msg, [msg | acc]}
+        else
+          {msg, acc}
+        end
+      end)
+
+    state = %{state | messages: messages}
+
+    Enum.each(flipped, fn msg ->
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.MessageUpdated{
+        agent_id: state.id,
+        msg: msg
+      })
+    end)
+
+    state
+  end
 end

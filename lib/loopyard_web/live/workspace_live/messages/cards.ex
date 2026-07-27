@@ -18,6 +18,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   alias LoopyardWeb.Live.WorkspaceLive.Messages.Cards.{
     AgentEmbed,
     Approval,
+    AuthFix,
     Question,
     Secret
   }
@@ -27,4 +28,5 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   defdelegate secret_card(assigns), to: Secret
   defdelegate approval_card(assigns), to: Approval
   defdelegate agent_embed(assigns), to: AgentEmbed
+  defdelegate auth_fix_card(assigns), to: AuthFix
 end

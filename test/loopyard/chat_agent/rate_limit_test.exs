@@ -254,7 +254,7 @@ defmodule Loopyard.ChatAgent.RateLimitTest do
              end)
     end
 
-    test "send_message while :auth_expired surfaces an error, no CLI hit",
+    test "send_message while :auth_expired queues + posts the auth-fix card, no CLI hit",
          %{id: id} do
       pid = agent_pid(id)
 
@@ -267,11 +267,27 @@ defmodule Loopyard.ChatAgent.RateLimitTest do
 
       state = :sys.get_state(pid)
       assert state.status == :auth_expired
-      assert Enum.any?(state.messages, &(&1.role == :user and &1.content == "hey"))
+      # Queued for delivery after re-auth (the queue band shows it) — not
+      # appended as a user message yet (that happens on actual send).
+      assert "hey" in state.pending_sends
 
-      assert Enum.any?(state.messages, fn m ->
-               m.role == :error and String.contains?(m.content, "auth is expired")
-             end)
+      # The chat's answer is the auth-fix MINI-APP card, exactly one.
+      assert Enum.count(
+               state.messages,
+               &(&1[:role] == :auth_fix and &1[:status] == :pending)
+             ) == 1
+
+      # Repeat sends don't stack duplicate cards.
+      ChatAgent.send_message(id, "hello again")
+      Process.sleep(100)
+      state = :sys.get_state(pid)
+
+      assert Enum.count(
+               state.messages,
+               &(&1[:role] == :auth_fix and &1[:status] == :pending)
+             ) == 1
+
+      assert "hello again" in state.pending_sends
     end
   end
 

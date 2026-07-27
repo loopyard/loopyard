@@ -266,15 +266,13 @@ defmodule Loopyard.ChatAgent.StreamHandler.RateLimit do
 
     state =
       if first? do
-        # Calm, once per outage, with the ONE action as a link — never a wall
-        # of red ("calmly inform the person and just link to the page").
+        # Once per outage: the auth-fix MINI-APP card — calm instructions +
+        # the copyable setup command; it flips green in place when a turn
+        # proves the new token (see complete_turn).
         auth_msg = %{
-          role: :system,
-          content: "Claude needs a fresh token before agents can work.",
-          link: %{
-            href: "/workstations/#{Loopyard.Workstation.current()}/claude",
-            label: "Set it up on the Claude page →"
-          },
+          role: :auth_fix,
+          status: :pending,
+          workstation_id: Loopyard.Workstation.current(),
           timestamp: DateTime.utc_now()
         }
 
