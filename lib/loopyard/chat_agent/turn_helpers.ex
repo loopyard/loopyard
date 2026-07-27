@@ -49,7 +49,8 @@ defmodule Loopyard.ChatAgent.TurnHelpers do
         context_warning_sent: false,
         turn_retry_count: 0,
         pending_turn_error: nil,
-        current_turn_prompt: nil
+        current_turn_prompt: nil,
+        current_turn_origin: :human
     }
   end
 

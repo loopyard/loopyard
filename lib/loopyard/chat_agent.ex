@@ -105,6 +105,11 @@ defmodule Loopyard.ChatAgent do
     # retry; `failed_prompt` preserves the message for one-tap resend once
     # retries are exhausted.
     current_turn_prompt: nil,
+    # :human (typed by a person) | :seed (machine-built resume/continuation
+    # prompt). Failure handling differs: a failed human turn gets a chat
+    # error; a failed seed turn is EventLog-only (its prompt is regenerable
+    # machinery — surfacing it, or worse restoring it anywhere, is noise).
+    current_turn_origin: :human,
     turn_retry_count: 0,
     pending_turn_error: nil,
     failed_prompt: nil,
@@ -625,7 +630,7 @@ defmodule Loopyard.ChatAgent do
     state = SessionManager.ensure_alive(state)
 
     if state.status == :idle and state.backend.session_alive?(state.session) do
-      start_turn(state, text)
+      start_turn(%{state | current_turn_origin: :seed}, text)
     else
       {:noreply, state}
     end
@@ -834,7 +839,8 @@ defmodule Loopyard.ChatAgent do
         # {:retry_turn_now} mismatches once this is reset).
         turn_retry_count: 0,
         pending_turn_error: nil,
-        current_turn_prompt: nil
+        current_turn_prompt: nil,
+        current_turn_origin: :human
     }
 
     cond do
@@ -1036,11 +1042,6 @@ defmodule Loopyard.ChatAgent do
         # count so a Stop / new message cancels it on arrival.
         delay = Loopyard.Retry.backoff_ms(state.turn_retry_count, {:exponential, 2_000})
         Process.send_after(self(), {:retry_turn_now, id, prompt, state.turn_retry_count}, delay)
-        {:noreply, state}
-
-      {:restore_input, _prompt, state} ->
-        # The failed prompt is preserved in state.failed_prompt and rode the
-        # StatusChanged broadcast; the LiveView refills the input box from it.
         {:noreply, state}
 
       {:drain, list, state} ->
@@ -1481,19 +1482,13 @@ defmodule Loopyard.ChatAgent do
       # "offline/reconnecting" and a crash-looping session is quarantined
       # (/system/quarantine). The loud escalation lives on those paths, not
       # here, ahead of a recovery that usually just works.
-      note = %{
-        role: :system,
-        timestamp: DateTime.utc_now(),
-        content: "Reconnecting the harness — your message is queued and will send automatically."
-      }
-
-      {state, note} = append_message(state, note)
-      Persistence.persist_message(state, note)
-
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-        agent_id: state.id,
-        msg: note
-      })
+      # SILENT: the restart auto-fixes and auto-delivers — the queue band shows
+      # the parked message and harness-status shows Reconnecting. A chat line
+      # about self-healing is noise ("it either broke or it didn't").
+      Loopyard.EventLog.info(
+        "agent:#{state.name}",
+        "send hit a dead session — queued + restarting"
+      )
 
       state =
         case park_send(state, text) do
@@ -1516,7 +1511,10 @@ defmodule Loopyard.ChatAgent do
 
       # Fresh human turn → reset the transient-retry counter and any prior
       # failed-prompt banner.
-      start_turn(%{state | turn_retry_count: 0, failed_prompt: nil}, text)
+      start_turn(
+        %{state | turn_retry_count: 0, failed_prompt: nil, current_turn_origin: :human},
+        text
+      )
     end
   end
 
@@ -1551,7 +1549,7 @@ defmodule Loopyard.ChatAgent do
         end)
 
       start_turn(
-        %{state | turn_retry_count: 0, failed_prompt: nil},
+        %{state | turn_retry_count: 0, failed_prompt: nil, current_turn_origin: :human},
         Loopyard.Turn.batch_prompt(list)
       )
     end

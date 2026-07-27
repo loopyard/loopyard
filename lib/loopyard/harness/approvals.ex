@@ -63,12 +63,6 @@ defmodule Loopyard.Harness.Approvals do
   `action` map (durable in the card) and `msg_id` (the card's message id).
   """
   @spec run(String.t(), String.t() | nil, map()) :: :ok
-  def run(agent_id, msg_id, %{verb: :peer_workspaces} = action) do
-    Loopyard.Peering.grant_pair(action.workspace_id, action.peer_workspace_id)
-    resolve(agent_id, msg_id, %{status: :approved})
-    :ok
-  end
-
   def run(agent_id, msg_id, %{verb: :rename_project} = action) do
     case Loopyard.ProjectRegistry.rename_project(action.project_id, action.name) do
       {:ok, _} -> resolve(agent_id, msg_id, %{status: :renamed})

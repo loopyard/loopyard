@@ -3,42 +3,16 @@ defmodule Loopyard.Harness.ApprovalsRunTest do
   Per-verb EFFECTS of `Approvals.run/3` — the queued model's execute step. The
   Docker-touching verbs (:fork / :integrate / :delete_workspace) shell out even
   on nonexistent targets, so they are deliberately NOT driven here; this covers
-  the pure-registry verbs (:peer_workspaces, :rename_project, :rename_workspace)
-  and the malformed-action contract.
+  the pure-registry verbs (:rename_project, :rename_workspace) and the
+  malformed-action contract.
   """
   use ExUnit.Case, async: false
 
   alias Loopyard.Harness.Approvals
-  alias Loopyard.Peering
 
   setup do
     Loopyard.StateKeeper.ensure_tables!()
     :ok
-  end
-
-  describe ":peer_workspaces" do
-    test "grants the pair in BOTH directions" do
-      ws_a = "peer-a-#{System.unique_integer([:positive])}"
-      ws_b = "peer-b-#{System.unique_integer([:positive])}"
-
-      on_exit(fn ->
-        Peering.revoke(ws_a, ws_b)
-        Peering.revoke(ws_b, ws_a)
-      end)
-
-      refute Peering.granted?(ws_a, ws_b)
-      refute Peering.granted?(ws_b, ws_a)
-
-      assert :ok =
-               Approvals.run("run-agent", nil, %{
-                 verb: :peer_workspaces,
-                 workspace_id: ws_a,
-                 peer_workspace_id: ws_b
-               })
-
-      assert Peering.granted?(ws_a, ws_b)
-      assert Peering.granted?(ws_b, ws_a)
-    end
   end
 
   describe ":rename_project" do
@@ -158,7 +132,9 @@ defmodule Loopyard.Harness.ApprovalsRunTest do
       # user-visible path. If this starts returning cleanly instead, update
       # this test to the new contract. (Built at runtime so the type checker
       # doesn't flag the deliberately-incomplete action literal.)
-      action = Map.new([{:verb, :peer_workspaces}])
+      # :rename_project without :project_id/:name — a matched clause with a
+      # lost payload.
+      action = Map.new([{:verb, :rename_project}])
 
       assert_raise KeyError, fn ->
         Approvals.run("run-agent", nil, action)

@@ -82,14 +82,17 @@ Rules a contributor needs to know:
 - `init_resume` threads the saved `claude_session_id` through too —
   Loopyard server restart doesn't drop the conversation.
 
-**Error messages follow WHY / CONSEQUENCE / ACTION.** Every
-`role: :error` message in the ChatAgent:
+**Errors speak ONLY when the user can act and the system can't
+self-fix.** The gate, before any copy: is the system already handling
+it (retry, restart, queue-and-deliver)? Then SILENCE — EventLog +
+harness-status carry it; a chat line about self-healing is noise ("it
+either broke or it didn't"). Only a failure that needs a HUMAN action
+earns a message, and then it's decisive WHY / CONSEQUENCE / ACTION:
 1. Names what failed at the system level.
 2. States what won't work + what's still preserved.
-3. Tells the user exactly how to recover (which command, which UI
-   page, which order).
-Single-line terse errors are for developers, not operators. When
-adding a new error path, follow the existing pattern.
+3. Tells the user the ONE thing to do (no "maybe try again" hedges).
+Recovery NEVER writes into the composer — the input box is for humans
+only (machine prompts/seeds must never be "restored" there).
 
 **Every reset-to-idle path clears transient state:**
 - `active_tool: nil` (UI spinner doesn't stick)
@@ -530,7 +533,6 @@ Two ways in:
 | `PortExposer` | Per-port TCP proxy GenServer (loopback ↔ network toggle) |
 | `PortStore` | JSON persistence for port assignments (`ports.json`) |
 | `Tools.Container` | MCP toolkit — one file per tool (incl. propose_fork/integrate/delete/rename, ask_user, request_secret, recall_conversation) |
-| `Loopyard.Peering` | Human-approved workspace↔workspace messaging grants (see SECURITY.md) |
 | `Loopyard.Attention` | The durable "waiting on the human" line (cards ∪ broker) feeding rail/Reviewer/dashboard |
 | `Loopyard.CardText` | Cards → paste-ready markdown (share/raw) |
 | `LoopyardWeb.ReviewLive` | `/review` — one-decision-per-slide Reviewer |

@@ -84,6 +84,16 @@ defmodule Loopyard.ChatAgent.TurnRetryTest do
       refute StreamHandler.retryable_turn_error?("error_max_budget_usd")
       refute StreamHandler.retryable_turn_error?(nil)
     end
+
+    test "auth-flavored errors route to the auth flow, never the retry loop" do
+      # "Authentication required" once burned all 3 transient retries; auth
+      # can't be fixed by retrying — only by re-sourcing credentials.
+      assert StreamHandler.auth_error?("Authentication required")
+      assert StreamHandler.auth_error?("Not logged in · Please run /login")
+      assert StreamHandler.auth_error?("401 unauthorized")
+      refute StreamHandler.auth_error?("error_during_execution")
+      refute StreamHandler.auth_error?(nil)
+    end
   end
 
   describe "default: the system IS the retry loop" do
@@ -117,10 +127,10 @@ defmodule Loopyard.ChatAgent.TurnRetryTest do
       assert state.turn_retry_count == 0
       assert state.failed_prompt == "make the thing"
 
-      # WHY/CONSEQUENCE/ACTION: names the failure, says the text is back in
-      # the composer, and what Send does — never a bare "turn failed".
+      # Decisive: it broke, here's why, one action. Recovery NEVER writes
+      # into the composer (humans only).
       assert Enum.any?(state.messages, fn m ->
-               m.role == :error and String.contains?(m.content, "back in the composer")
+               m.role == :error and String.contains?(m.content, "didn't go through")
              end)
     end
 
@@ -163,9 +173,9 @@ defmodule Loopyard.ChatAgent.TurnRetryTest do
       assert state.turn_retry_count == 1
       assert state.status == :thinking
 
-      # ONE quiet note on the first attempt (repeats are EventLog-only).
-      assert Enum.any?(state.messages, fn m ->
-               m.role == :system and String.contains?(m.content, "retrying automatically")
+      # Retries are SILENT in chat (EventLog only) — self-healing never speaks.
+      refute Enum.any?(state.messages, fn m ->
+               m.role == :system and String.contains?(m.content || "", "etry")
              end)
     end
 

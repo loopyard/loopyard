@@ -227,12 +227,22 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     # A turn that failed on a transient upstream error (529 / overload /
     # execution error) is flagged here; on_stream_done reads the flag and
     # decides whether to auto-retry. Limit-class failures (max turns/budget)
-    # aren't retryable — retrying can't fix them.
+    # aren't retryable — retrying can't fix them. AUTH failures aren't either:
+    # "Authentication required" once burned all 3 retries as if transient —
+    # route it to the auth-expired flow (status + banner + credential-resourcing
+    # self-heal) instead, which is the thing that can actually fix it.
     state =
-      if result.is_error and retryable_turn_error?(result.error_subtype) do
-        %{state | pending_turn_error: result.error_subtype}
-      else
-        state
+      cond do
+        result.is_error and auth_error?(result.error_subtype) ->
+          RateLimit.handle_auth_status_event(state, %Event.AuthStatus{
+            error: to_string(result.error_subtype)
+          })
+
+        result.is_error and retryable_turn_error?(result.error_subtype) ->
+          %{state | pending_turn_error: result.error_subtype}
+
+        true ->
+          state
       end
 
     :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
@@ -255,6 +265,18 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   # (execution errors, upstream 529/overload, unknown) is transient enough
   # to be worth a bounded retry.
   @non_retryable_turn_errors ~w(error_max_turns error_max_budget_usd error_max_structured_output_retries)
+
+  @doc false
+  def auth_error?(subtype) when is_binary(subtype) do
+    down = String.downcase(subtype)
+
+    Enum.any?(
+      ["authentication", "unauthorized", "401", "not logged in", "oauth", "invalid api key"],
+      &String.contains?(down, &1)
+    )
+  end
+
+  def auth_error?(_), do: false
   def retryable_turn_error?(nil), do: false
   def retryable_turn_error?(subtype), do: subtype not in @non_retryable_turn_errors
 
@@ -307,9 +329,10 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     end
   end
 
-  # Auto-retry: re-issue the prompt after a backoff. ONE quiet chat line on the
-  # first attempt (so the pause is explained); repeats are EventLog-only —
-  # three "Retrying…" lines for one hiccup is noise, not news.
+  # Auto-retry: re-issue the prompt after a backoff — SILENTLY. The system is
+  # fixing it; a chat line about self-healing is noise ("it either broke or it
+  # didn't"). EventLog carries the detail; the thinking indicator covers the
+  # visible pause.
   defp schedule_turn_retry(state) do
     attempt = state.turn_retry_count + 1
     reason = state.pending_turn_error
@@ -327,37 +350,34 @@ defmodule Loopyard.ChatAgent.StreamHandler do
       "transient turn error (#{inspect(reason)}) — retry #{attempt}/#{max_turn_retries()}"
     )
 
-    state =
-      if attempt == 1 do
-        msg = %{
-          role: :system,
-          content:
-            "Hit a transient API error (their servers, not your message) — " <>
-              "retrying automatically (up to #{max_turn_retries()}×)…",
-          timestamp: DateTime.utc_now()
-        }
-
-        {state, msg} = append_message(state, msg)
-        Persistence.persist_message(state, msg)
-
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-          agent_id: state.id,
-          msg: msg
-        })
-
-        state
-      else
-        state
-      end
-
     :ets.insert(@ets_table, {state.id, Loopyard.ChatAgent.summary(state)})
 
     {:retry_turn, state.current_turn_prompt, state}
   end
 
-  # The turn failed and we're not auto-retrying: DON'T lose the text and DON'T
-  # pretend it went through. Surface a clear error, stash the prompt, and tell
-  # the caller to put it back in the input box — the human hits Send to retry.
+  # The turn failed and retries are exhausted. RECOVERY NEVER TOUCHES THE
+  # COMPOSER — the input box is for humans only (a machine-built resume seed
+  # once got "restored" into it, dumping the whole chat history at the user).
+  # A failed HUMAN turn: the message is already in the transcript; say why it
+  # went unanswered. A failed SEED turn: EventLog only — its prompt is
+  # regenerable machinery, not something to surface.
+  defp preserve_failed_turn(%{current_turn_origin: :seed} = state) do
+    id = state.id
+
+    Loopyard.EventLog.error(
+      "agent:#{state.name}",
+      "seed/continuation turn failed (#{inspect(state.pending_turn_error)}) — going idle"
+    )
+
+    state =
+      reset_turn_state(%{state | status: :idle, turns: state.turns + 1, errors: state.errors + 1})
+
+    :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
+    Persistence.persist_agent(state, &Loopyard.ChatAgent.summary/1)
+    Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
+    {:noreply, state}
+  end
+
   defp preserve_failed_turn(state) do
     id = state.id
     prompt = state.current_turn_prompt
@@ -367,20 +387,13 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     # and what the human's one remaining move is).
     attempts = max_turn_retries()
 
-    why =
-      if attempts > 0 do
-        "This turn kept failing on Anthropic's side (#{attempts} automatic " <>
-          "retries, all failed: #{inspect(state.pending_turn_error)})."
-      else
-        "This turn failed on Anthropic's side (#{inspect(state.pending_turn_error)})."
-      end
+    retried = if attempts > 0, do: " after #{attempts} automatic retries", else: ""
 
     err = %{
       role: :error,
       content:
-        why <>
-          " Your message is back in the composer — Send retries it. " <>
-          "If this keeps happening, check the harness status in the sidebar.",
+        "This didn't go through — Anthropic's API failed#{retried} " <>
+          "(#{inspect(state.pending_turn_error)}). Send it again.",
       timestamp: DateTime.utc_now()
     }
 
@@ -403,7 +416,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     Persistence.persist_agent(state, &Loopyard.ChatAgent.summary/1)
     Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
 
-    if is_binary(prompt), do: {:restore_input, prompt, state}, else: {:noreply, state}
+    {:noreply, state}
   end
 
   # Canonical transient-turn reset. Every path back to a resting status MUST
@@ -420,6 +433,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
         in_flight_partial: "",
         pending_turn_error: nil,
         current_turn_prompt: nil,
+        current_turn_origin: :human,
         turn_retry_count: 0,
         tool_calls_this_turn: 0,
         tool_runaway_warned: false,

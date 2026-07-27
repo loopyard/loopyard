@@ -129,18 +129,11 @@ defmodule Loopyard.ChatAgent.DeadSessionTest do
       # the session is dead).
       assert state.status == :idle
 
-      # (1) ONE quiet :system note — never a red :error ahead of a restart
-      # that usually heals in seconds (don't-narrate-fast-recoveries). The
-      # loud escalation lives on the harness-status block + quarantine.
-      notes = Enum.filter(state.messages, &(&1.role == :system))
-
-      assert Enum.any?(notes, fn m ->
-               String.contains?(m.content || "", "queued")
-             end),
-             "expected the quiet 'Reconnecting the harness — message queued' note"
-
-      refute Enum.any?(state.messages, &(&1.role == :error)),
-             "dead-session send must not append a red :error before the restart attempt"
+      # (1) SILENCE: the restart auto-fixes and auto-delivers, so there is NO
+      # chat narration at all — the queue band + harness status carry it.
+      # ("It either broke or it didn't" — self-healing never speaks.)
+      refute Enum.any?(state.messages, &(&1.role in [:system, :error])),
+             "dead-session send must be silent in chat (queue band + status carry it)"
 
       # The raw user text must NOT have been appended as a :user message
       # in this branch — it's only persisted as a user message once a

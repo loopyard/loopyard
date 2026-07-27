@@ -94,7 +94,6 @@ defmodule LoopyardWeb.OperatorLive do
       |> assign(:stream_buffer, StreamBuffer.new())
       |> assign(:building, false)
       |> assign(:thinking_word, nil)
-      |> assign(:restored_failed_prompt, nil)
       # No windowing for the operator's short chats — the whole transcript is the
       # tail. (chat_panel still reads these two.)
       |> assign(:has_more_messages, false)

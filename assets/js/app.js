@@ -1009,14 +1009,10 @@ Hooks.ChatForm = {
     this.el.addEventListener("submit", (e) => { e.preventDefault(); send() })
     this.handleEvent("focus_input", () => ta.focus())
 
-    // A turn failed (e.g. Anthropic 529) — the server preserved the prompt and
-    // pushes it back here. Refill the box ONLY if empty, so we never clobber
-    // something the user has since started typing. The text is right where they
-    // left it; they hit Enter to retry, as many times as they want.
-    this.handleEvent("restore_input", ({ text }) => {
-      if (!text || ta.value.trim() !== "") return
-      fillBox(text)
-    })
+    // NOTE deliberately NO "restore_input" handler: the composer is for
+    // HUMANS ONLY. Recovery never writes into it — a machine-built resume
+    // seed once got "restored" here, dumping the whole chat history at the
+    // user. fill_input below survives because it is a deliberate USER action.
 
     // Explicit edit (tapping a queued message to pull it back) — always fills,
     // even over existing text, since it's a deliberate action.

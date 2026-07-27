@@ -61,29 +61,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentEvents do
               ])
             )
 
-          socket
-          |> assign(:selected_agent, merged)
-          |> maybe_restore_input(merged[:failed_prompt])
+          assign(socket, :selected_agent, merged)
       end
     else
       socket
-    end
-  end
-
-  # A turn that failed (and wasn't auto-retried) preserves its prompt in
-  # `failed_prompt`; push it back into the message box so the human never loses
-  # the text and can just hit Send to retry. Track the last-restored value so we
-  # push once per failure (and reset when it clears, so the SAME text failing
-  # again still restores).
-  defp maybe_restore_input(socket, nil), do: assign(socket, :restored_failed_prompt, nil)
-
-  defp maybe_restore_input(socket, text) do
-    if socket.assigns[:restored_failed_prompt] == text do
-      socket
-    else
-      socket
-      |> assign(:restored_failed_prompt, text)
-      |> push_event("restore_input", %{text: text})
     end
   end
 

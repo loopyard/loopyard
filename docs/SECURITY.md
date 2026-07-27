@@ -210,14 +210,15 @@ Before merging anything that touches tools, MCP servers, compose processing, or 
 
 If you're unsure whether a change weakens the model, ask before merging. The rule is: every boundary is a runtime check, not a rule the model follows.
 
-## Workspace peering (cross-workspace messaging)
+## Cross-workspace coordination (no direct peering)
 
-`send_to_workspace` lets one workspace's agent message another's — ONLY under
-a human-approved peering grant (`propose_peering` → approval card →
-`Peering.grant_pair/2`, persisted in `~/.loopyard/peering.json`). Grants are
-directed; the standard card grants the pair. Delivery is the durable inbox
-(`enqueue_message`) with provenance prefixed, so every cross-workspace message
-is visible in the receiving chat and attributable. No grant → the tool
-refuses and points at `propose_peering`. Revoke: `Peering.revoke/2` (console;
-UI affordance is future work). The operator remains the ungated dispatcher;
-peering is for blessed pairs that genuinely collaborate.
+Workspace agents CANNOT message each other directly — there is deliberately
+no peer-to-peer channel. Cross-workspace coordination goes through exactly
+two mechanisms: the OPERATOR (dispatch/relay — one legible story in one
+place, human-shaped arbitration in the middle) and DATA channels (git /
+shared volumes) for artifacts. A `propose_peering`/`send_to_workspace` tool
+pair existed briefly (Jul 2026) and was removed: agent-to-agent chat is a
+prompt-injection surface between workspaces, burns a full turn per message,
+and every real use case moved the payload over git anyway. If a genuine
+high-frequency pairing need appears, re-adding it is small — the consent
+architecture (approval card → grant store) is the template.
