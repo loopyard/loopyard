@@ -188,3 +188,14 @@ of staff hunts so the human doesn't.
 4. **Operator.Digest has no tests** — the notify-when-done GenServer (watch
    registration, TTL sweep, dedup, pending-flush-on-idle) is the operator's
    money path; needs a focused GenServer test with fabricated Activity events.
+
+5. **Survive a Docker-daemon outage decisively.** Colima hard-crashed
+   (runtime state "empty value", socket refused) and every agent thrashed
+   into harness-spawn error walls (`{:closed, {:exit_status, 1}}` — exec into
+   dead containers) until a human restarted the VM. Wanted: a daemon-health
+   probe (cheap `docker version` on a timer or Docker.Observer's event stream
+   dying) that flips a fleet-level status — pause session spawns while it's
+   down (they can only fail), one calm operator-chat line with the fix
+   (`colima start`), auto-resume when the daemon returns. Same shape as the
+   auth-outage flow. Also: re-apply `fs.inotify.max_user_instances=1024`
+   inside the VM automatically on reconnect (lost on every VM restart).
