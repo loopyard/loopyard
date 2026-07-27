@@ -21,8 +21,10 @@ defmodule Loopyard.WorkspaceRegistry do
   def list_workspaces(project_id) do
     :ets.tab2list(@workspaces_table)
     |> Enum.map(fn {_id, workspace} -> normalize_workspace(workspace) end)
-    |> Enum.filter(&(&1.project_id == project_id))
-    |> Enum.sort_by(fn w -> if w.name == "main", do: "0", else: w.name end)
+    # Access, not dot: a minimal/malformed row (fabricated test rows, partial
+    # writes) must never crash EVERY reader of the registry.
+    |> Enum.filter(&(&1[:project_id] == project_id))
+    |> Enum.sort_by(fn w -> if w[:name] == "main", do: "0", else: w[:name] end)
   end
 
   @doc """
