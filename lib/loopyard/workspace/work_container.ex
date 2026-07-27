@@ -79,6 +79,17 @@ defmodule Loopyard.Workspace.WorkContainer do
   """
   @spec ensure_up(String.t()) :: {:ok, String.t()} | {:error, term()}
   def ensure_up(workspace_id) do
+    # Serialized PER WORKSPACE: concurrent ensure_up calls (tool hot path,
+    # onboarding, UI boot) raced `docker run` against `docker run` — the
+    # loser's name-conflict retry then `rm -f`'d the winner's live container
+    # and could still collide. Under the lock the second caller sees the
+    # winner's container running and no-ops.
+    :global.trans({{__MODULE__, workspace_id}, self()}, fn ->
+      do_ensure_up(workspace_id)
+    end)
+  end
+
+  defp do_ensure_up(workspace_id) do
     name = container_name(workspace_id)
 
     result =

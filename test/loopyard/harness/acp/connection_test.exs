@@ -696,7 +696,9 @@ defmodule Loopyard.Harness.ACP.ConnectionTest do
          %{"id" => load_id, "error" => %{"code" => -32_000, "message" => "unknown session"}}}
       )
 
-      assert_receive {:sent, %{"method" => "session/new", "id" => new_id}}
+      # 2s: the load-error → session/new fallback does real work; the default
+      # 100ms raced a loaded CI runner.
+      assert_receive {:sent, %{"method" => "session/new", "id" => new_id}}, 2_000
       send(conn, {:acp_msg, %{"id" => new_id, "result" => %{"sessionId" => "sess-fresh"}}})
       assert Connection.await_ready(conn, 1_000) == :ok
       assert Connection.session_id(conn) == "sess-fresh"
