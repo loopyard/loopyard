@@ -105,6 +105,19 @@ defmodule Loopyard.Workstation do
     end
   end
 
+  @doc """
+  Is the workstation's Claude credential dead? True when any agent is stuck
+  in :auth_expired (or carries an auth_error) — the fleet-level "nothing will
+  work until a human pushes a fresh token" signal. Drives the operator page's
+  token mini-app; MUST work without any live agent (pure ETS read).
+  """
+  def claude_auth_broken? do
+    Loopyard.ChatAgent.list_agent_summaries()
+    |> Enum.any?(fn s -> s[:status] == :auth_expired or is_binary(s[:auth_error]) end)
+  rescue
+    _ -> false
+  end
+
   @doc "The workstation you're operating as (the identity agents inherit)."
   def current do
     case File.read(current_path()) do

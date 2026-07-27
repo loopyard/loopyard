@@ -271,9 +271,9 @@ defmodule Loopyard.ChatAgent.StreamHandler.RateLimit do
               "WHY: the harness couldn't authenticate — usually an expired or rotated " <>
               "CLAUDE_CODE_OAUTH_TOKEN in this workstation. " <>
               "CONSEQUENCE: this turn was dropped; your conversation is preserved. " <>
-              "ACTION: none required — I'll keep re-sourcing credentials automatically " <>
-              "and resume as soon as a valid token is present. To recover instantly, push " <>
-              "a fresh token to this workstation (Workstation → env, or the setup curl).",
+              "ACTION: paste a fresh token on the Operator page (run `claude setup-token`, " <>
+              "then use the \"Update token\" card at the top) — every agent restarts and " <>
+              "resumes automatically once it lands.",
           timestamp: DateTime.utc_now()
         }
 

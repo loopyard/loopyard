@@ -102,6 +102,8 @@ defmodule LoopyardWeb.OperatorLive do
       # can't both fit a phone, so we show ONE at a time with a top toggle.
       # Desktop (lg+) ignores this and shows both side-by-side.
       |> assign(:mobile_view, :chat)
+      |> assign(:auth_broken, false)
+      |> assign(:auth_token_pushed, false)
       # The rail (needs-you groups + working jobs + count) computed IN the
       # LiveView and stored as real assigns, so it's part of the reactive graph —
       # NOT recomputed inside the component (which LiveView memoizes when @tree/
@@ -340,6 +342,31 @@ defmodule LoopyardWeb.OperatorLive do
     {:noreply, assign(socket, :mobile_view, String.to_existing_atom(v))}
   end
 
+  # The token mini-app (auth outage): Env.put persists + materializes into the
+  # home volume + restarts every agent session (@credential_keys hook). The raw
+  # value is never assigned or logged — straight to the scoped store.
+  def handle_event("submit_claude_token", %{"token" => token}, socket) do
+    token = String.trim(token)
+
+    if token == "" do
+      {:noreply, socket}
+    else
+      case Loopyard.Workstation.Env.put(
+             "CLAUDE_CODE_OAUTH_TOKEN",
+             token,
+             Loopyard.Workstation.current()
+           ) do
+        :ok ->
+          Loopyard.EventLog.info("operator", "fresh Claude token pushed from the operator page")
+          {:noreply, assign(socket, :auth_token_pushed, true)}
+
+        {:error, reason} ->
+          {:noreply,
+           put_flash(socket, :error, "Couldn't save the token: #{inspect(reason)} — try again.")}
+      end
+    end
+  end
+
   # Scroll-up paging: the ScrollBottom hook fires this near the top. Prepend the
   # next older batch from the durable log, capped at @message_window_max so the
   # DOM never holds the whole history — on overflow we drop from the TAIL (it's
@@ -461,6 +488,7 @@ defmodule LoopyardWeb.OperatorLive do
 
     socket
     |> assign(:tree, tree)
+    |> assign(:auth_broken, Loopyard.Workstation.claude_auth_broken?())
     |> assign(:attention_groups, groups)
     |> assign(
       :attention_by_ws,
@@ -659,47 +687,90 @@ defmodule LoopyardWeb.OperatorLive do
         </button>
       </div>
 
-      <div class="flex-1 min-h-0 flex">
-        <%!-- Chat is PRIMARY — mostly you just talk to the operator. --%>
-        <div class={[
-          "flex-1 min-w-0 flex-col min-h-0",
-          (@mobile_view == :chat && "flex") || "hidden",
-          "lg:flex"
-        ]}>
-          <.chat_panel
-            messages={@messages}
-            streaming_text={@streaming_text}
-            streaming_thinking={@streaming_thinking}
-            agent={@selected_agent}
-            workspace_id={nil}
-            host={@host}
-            thinking_word={@thinking_word || "Thinking"}
-            has_more_messages={@has_more_messages}
-            window_tail?={@window_tail?}
-            detail_level={:chat}
-          />
+      <div class="flex-1 min-h-0 flex flex-col">
+        <%!-- CLAUDE TOKEN MINI-APP: when the fleet's credential is dead, NOTHING
+    works — not even the operator agent — so recovery must be pure UI +
+    server (no agent in the loop). Paste a fresh token here; Env.put
+    persists it, materializes it into the home volume, and restarts every
+    agent's session (@credential_keys hook). --%>
+        <div
+          :if={@auth_broken}
+          class="flex-none border-l-2 border-orange-400 dark:border-orange-500/60 bg-orange-50/70 dark:bg-orange-950/15 px-4 md:px-6 py-3"
+        >
+          <div class="chat-meta font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-400 mb-1">
+            Claude token expired — the fleet is down until it's replaced
+          </div>
+          <div :if={!@auth_token_pushed} class="chat-sub text-zinc-700 dark:text-zinc-300 mb-2">
+            Run <code class="font-mono bg-zinc-500/10 rounded-sm px-1">claude setup-token</code>
+            in any terminal, then paste the token:
+          </div>
+          <form
+            :if={!@auth_token_pushed}
+            phx-submit="submit_claude_token"
+            class="flex items-center gap-2"
+          >
+            <input
+              type="password"
+              name="token"
+              autocomplete="off"
+              placeholder="sk-ant-oat…"
+              class="chat-sub min-w-0 flex-1 max-w-md rounded-sm border border-orange-300 dark:border-orange-500/40 bg-white dark:bg-zinc-900 px-3 py-2 font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+            />
+            <button
+              type="submit"
+              class="focus-ring chat-sub flex-none inline-flex items-center rounded-sm bg-orange-700 hover:bg-orange-800 text-white font-medium px-4 py-2 transition-colors"
+            >
+              Update token
+            </button>
+          </form>
+          <div :if={@auth_token_pushed} class="chat-sub text-zinc-700 dark:text-zinc-300">
+            Token pushed — restarting every agent's session; this banner clears when
+            the fleet is back.
+          </div>
         </div>
-        <%!-- Desktop (lg+): the "for you" rail — co-equal with the chat. Leads
+
+        <div class="flex-1 min-h-0 flex">
+          <%!-- Chat is PRIMARY — mostly you just talk to the operator. --%>
+          <div class={[
+            "flex-1 min-w-0 flex-col min-h-0",
+            (@mobile_view == :chat && "flex") || "hidden",
+            "lg:flex"
+          ]}>
+            <.chat_panel
+              messages={@messages}
+              streaming_text={@streaming_text}
+              streaming_thinking={@streaming_thinking}
+              agent={@selected_agent}
+              workspace_id={nil}
+              host={@host}
+              thinking_word={@thinking_word || "Thinking"}
+              has_more_messages={@has_more_messages}
+              window_tail?={@window_tail?}
+              detail_level={:chat}
+            />
+          </div>
+          <%!-- Desktop (lg+): the "for you" rail — co-equal with the chat. Leads
     with NEEDS YOU (blocking questions/approvals, grouped by workspace,
     answered inline) then WORKING (dispatched jobs + progress). The
     operator curates this; the chat is where you talk about it. --%>
-        <aside class={[
-          "flex-none flex-col border-l border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/40",
-          "w-full lg:w-72 xl:w-80",
-          (@mobile_view == :rail && "flex") || "hidden",
-          "lg:flex"
-        ]}>
-          <div class="flex-1 min-h-0 overflow-y-auto">
-            <.for_you_rail
-              operator_attention={@operator_attention}
-              attention_by_ws={@attention_by_ws}
-              groups={@attention_groups}
-              active={@active_jobs}
-              done_buckets={@done_buckets}
-            />
-          </div>
-          <.sound_player id="rail-sound" tracks={@tracks} current_track={@current_track} />
-        </aside>
+          <aside class={[
+            "flex-none flex-col border-l border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/40",
+            "w-full lg:w-72 xl:w-80",
+            (@mobile_view == :rail && "flex") || "hidden",
+            "lg:flex"
+          ]}>
+            <div class="flex-1 min-h-0 overflow-y-auto">
+              <.for_you_rail
+                operator_attention={@operator_attention}
+                attention_by_ws={@attention_by_ws}
+                groups={@attention_groups}
+                active={@active_jobs}
+                done_buckets={@done_buckets}
+              />
+            </div>
+            <.sound_player id="rail-sound" tracks={@tracks} current_track={@current_track} />
+          </aside>
+        </div>
       </div>
     </div>
     """
