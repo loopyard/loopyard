@@ -98,6 +98,14 @@ when reshooting.
 
 Feature pages live in the website repo
 (`~/Projects/loopyard/website/priv/content/marketing/features/`). Shoot with
-`--out` into a shots directory there, reference the PNGs from the page
-markdown. Site copy rules apply to the pages (no em dashes in
-`priv/content/`), not to screenshots.
+`--out priv/content/marketing/features/shots` there — ALWAYS both themes —
+and the pages pick shots up via `shot_desktop`/`shot_mobile` frontmatter.
+The website's presentation rules (hero bands, device frames, Dynamic
+Island over the injected inset, shadow style, verification discipline)
+live in that repo's `.claude/skills/feature-heroes` skill — read it before
+touching how shots are DISPLAYED. Site copy rules apply to the pages (no
+em dashes in `priv/content/`), not to screenshots.
+
+Desktop captures are 1120 CSS px on purpose: marketing figures display at
+~1100-1150px, so text reads ~1:1. Don't widen the capture to "show more" —
+that shrinks the text back into a thumbnail.
