@@ -21,9 +21,12 @@ defmodule Mix.Tasks.Loopyard.Shot do
 
   use Mix.Task
 
+  # Desktop is deliberately NARROW (1280): marketing figures display at
+  # ~1100-1150px, so a 1280 capture keeps the app's text near native size —
+  # the difference between a screenshot people can read and a thumbnail.
   @viewports %{
     "mobile" => {390, 844},
-    "desktop" => {1440, 900}
+    "desktop" => {1280, 800}
   }
 
   # Chrome headless clamps window width to roughly this; see shoot/2.
