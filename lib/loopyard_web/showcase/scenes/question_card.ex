@@ -11,15 +11,20 @@ defmodule LoopyardWeb.Showcase.Scenes.QuestionCard do
 
   @impl true
   def assigns do
-    messages = [
-      Mock.user_msg(1, "Set up staging deploys for this app.", 0),
+    # The tail of the checkout fix leads in, so the desktop frame shows a
+    # working transcript above the card instead of bottom-anchored blank
+    # space. Same workspace, next task — a natural handoff.
+    prior = Enum.take(Mock.checkout_conversation(), -3)
+
+    messages = prior ++ [
+      Mock.user_msg(10, "Set up staging deploys for this app.", 300),
       Mock.assistant_msg(
-        2,
+        11,
         "The app is ready to deploy — one decision before I wire it up.",
-        60
+        360
       ),
       Mock.question_msg(
-        3,
+        12,
         [
           %{
             id: "q1",
