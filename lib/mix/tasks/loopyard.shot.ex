@@ -12,7 +12,7 @@ defmodule Mix.Tasks.Loopyard.Shot do
       mix loopyard.shot --list                # what scenes exist
 
   Output: `<out>/<scene>-<viewport>.png` (default out: `tmp/showcase`).
-  Viewports: mobile 390×844, desktop 1440×900 — both captured at 2× for
+  Viewports: mobile 390×844, desktop 1120×780 — both captured at 2× for
   retina-crisp marketing images.
 
   Add a scene: drop a module in `lib/loopyard_web/showcase/scenes/` (see
@@ -21,12 +21,12 @@ defmodule Mix.Tasks.Loopyard.Shot do
 
   use Mix.Task
 
-  # Desktop is deliberately NARROW (1280): marketing figures display at
-  # ~1100-1150px, so a 1280 capture keeps the app's text near native size —
-  # the difference between a screenshot people can read and a thumbnail.
+  # Desktop is deliberately NARROW (1120): marketing figures display at
+  # ~1100-1150px, so the capture is ~1:1 at display width — the app's text
+  # reads at native size instead of thumbnail scale.
   @viewports %{
     "mobile" => {390, 844},
-    "desktop" => {1280, 800}
+    "desktop" => {1120, 780}
   }
 
   # Chrome headless clamps window width to roughly this; see shoot/2.
