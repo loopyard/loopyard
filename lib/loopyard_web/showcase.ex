@@ -63,6 +63,17 @@ defmodule LoopyardWeb.Showcase do
     constraint =
       if frame_width, do: ~s( style="width:#{frame_width}px;margin:0 auto"), else: ""
 
+    # Phone captures get SYNTHETIC safe-area insets injected through the
+    # app's safe-area tokens (see app.css) — the same padding iOS feeds via
+    # env() on a real device, so the shot's top isn't jammed against the
+    # frame radius and the composer clears a would-be home indicator.
+    safe_insets =
+      if frame_width do
+        "<style>:root { --safe-top: 54px; --safe-bottom: 20px; }</style>"
+      else
+        ""
+      end
+
     framed =
       case scene.frame() do
         :pane ->
@@ -80,6 +91,7 @@ defmodule LoopyardWeb.Showcase do
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <title>#{scene.name()}</title>
       <style>#{css}</style>
+      #{safe_insets}
     </head>
     <body class="h-full antialiased font-sans">
       #{framed}

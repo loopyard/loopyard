@@ -340,29 +340,40 @@
 }
 
 
+/* Safe-area TOKENS. Real devices feed these from env(); anything that
+   renders the app OUTSIDE a device can inject values by overriding the
+   vars — the showcase screenshot renderer (LoopyardWeb.Showcase) sets
+   them on phone captures so shots carry the same status-bar/home-bar
+   padding the app has on a real iPhone. Never use env() directly in a
+   utility below — always go through the tokens. */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
 /* Safe area for notched/dynamic island devices */
-@supports (padding: env(safe-area-inset-bottom)) {
-  .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
-  .safe-area-top { padding-top: env(safe-area-inset-top); }
-  .safe-area-x {
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
-  }
-  /* Directional insets for the 3-column layout: the rail BACKGROUND reaches the
-     screen edge, but its CONTENT is padded off the notch / dynamic island. Put
-     these on the rail element itself (padding is inside its background box). */
-  .safe-pl { padding-left: env(safe-area-inset-left); }
-  .safe-pr { padding-right: env(safe-area-inset-right); }
-  .safe-pt { padding-top: env(safe-area-inset-top); }
-  .safe-pb { padding-bottom: env(safe-area-inset-bottom); }
-  /* Bottom padding that's AT LEAST the given base and grows for the home
-     indicator — for the composer / any fixed-ish bottom bar. Base is 0.75rem
-     (mobile); md bumps to 1rem. Combines instead of overriding, unlike
-     .safe-pb, so content never loses its normal breathing room. */
-  .pb-safe { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
-  @media (min-width: 768px) {
-    .pb-safe { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
-  }
+.safe-area-bottom { padding-bottom: var(--safe-bottom); }
+.safe-area-top { padding-top: var(--safe-top); }
+.safe-area-x {
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+/* Directional insets for the 3-column layout: the rail BACKGROUND reaches the
+   screen edge, but its CONTENT is padded off the notch / dynamic island. Put
+   these on the rail element itself (padding is inside its background box). */
+.safe-pl { padding-left: var(--safe-left); }
+.safe-pr { padding-right: var(--safe-right); }
+.safe-pt { padding-top: var(--safe-top); }
+.safe-pb { padding-bottom: var(--safe-bottom); }
+/* Bottom padding that's AT LEAST the given base and grows for the home
+   indicator — for the composer / any fixed-ish bottom bar. Base is 0.75rem
+   (mobile); md bumps to 1rem. Combines instead of overriding, unlike
+   .safe-pb, so content never loses its normal breathing room. */
+.pb-safe { padding-bottom: max(0.75rem, var(--safe-bottom)); }
+@media (min-width: 768px) {
+  .pb-safe { padding-bottom: max(1rem, var(--safe-bottom)); }
 }
 refresh your browser when you save files and it does not affect production.
 .highlight .hll {background-color: #49483e}

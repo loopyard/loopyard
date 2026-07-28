@@ -87,6 +87,10 @@ when reshooting.
   Don't "fix" a mobile shot by widening the viewport.
 - Transcripts auto-scroll to the tail (the page injects a scroll snippet),
   matching the live app's bottom-anchor.
+- Mobile captures get SYNTHETIC safe-area insets: the app's safe-area
+  utilities read the `--safe-top/--safe-bottom` tokens (app.css), and the
+  renderer overrides them on phone shots (54px/20px) so the capture has
+  the same status-bar padding a real iPhone gives via env().
 - CSS comes from `priv/static/assets/app.css` — run `mix tailwind loopyard`
   first if you changed styles.
 
