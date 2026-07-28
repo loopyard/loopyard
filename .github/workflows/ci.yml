@@ -40,6 +40,9 @@ jobs:
       - name: Compile (warnings as errors)
         run: mix compile --warnings-as-errors
 
+      - name: Build assets (showcase scene tests render against the compiled CSS)
+        run: mix tailwind loopyard
+
       - name: Run tests with coverage
         env:
           LOOPYARD_LONG_TIMEOUTS: "1"
