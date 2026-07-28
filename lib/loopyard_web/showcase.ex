@@ -18,7 +18,9 @@ defmodule LoopyardWeb.Showcase do
 
   @scenes [
     LoopyardWeb.Showcase.Scenes.ChatWorking,
-    LoopyardWeb.Showcase.Scenes.QuestionCard
+    LoopyardWeb.Showcase.Scenes.QuestionCard,
+    LoopyardWeb.Showcase.Scenes.WorkspaceFull,
+    LoopyardWeb.Showcase.Scenes.WorkspaceQuestion
   ]
 
   def scenes, do: @scenes

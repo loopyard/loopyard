@@ -65,6 +65,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         />
         <.chat_panel
           :if={@tab != :container}
+          static?={assigns[:static?] || false}
           messages={@messages}
           streaming_text={@streaming_text}
           streaming_thinking={@streaming_thinking}

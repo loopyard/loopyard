@@ -8,11 +8,17 @@ defmodule LoopyardWeb.Showcase.Mock do
   contract check for the views.
   """
 
-  # Deterministic timestamps: scenes must render identically run-to-run so
-  # re-shot marketing images don't diff. A fixed "yesterday afternoon".
-  @t0 ~U[2026-07-27 21:04:00Z]
+  # Timestamps are fixed OFFSETS from render time (the conversation "ended"
+  # ten minutes ago): relative labels ("Last active 2m ago", the Working
+  # badge) read live instead of stale, and offsets stay deterministic so the
+  # transcript's internal chronology never changes between shots.
+  @conversation_span 600
 
-  def at(seconds_after), do: DateTime.add(@t0, seconds_after)
+  def at(seconds_after) do
+    DateTime.utc_now()
+    |> DateTime.add(seconds_after - @conversation_span)
+    |> DateTime.truncate(:second)
+  end
 
   @doc "An agent summary map the chat components read (loose `agent[:key]` access)."
   def agent(overrides \\ %{}) do
