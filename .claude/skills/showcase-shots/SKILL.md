@@ -50,7 +50,23 @@ end
 
 Mock factories live in `LoopyardWeb.Showcase.Mock` (agent maps, message
 maps in the exact runtime shapes, the shared "storefront" demo narrative).
-Timestamps are FIXED so shots are reproducible run-to-run.
+Timestamps are fixed OFFSETS from render time, so relative labels ("4m
+ago", Working) read live while the transcript's chronology never changes.
+
+## The scenes are feature-view contracts (CI)
+
+`test/loopyard_web/showcase_test.exs` renders every scene (light + dark)
+on every CI run and asserts its load-bearing content markers. The scene
+module's `description/0` + the marker list in that test are THE spec for
+what each surface shows — when you deliberately change a view, update
+both together. A new scene without a marker contract fails the suite.
+Screenshots themselves are generated on demand (not in CI — Chrome), but
+green tests mean the shot pipeline still renders.
+
+Website pages consume the shots as light/dark pairs: every scene is shot
+in both themes (`--theme dark` adds a `-dark` suffix) and the site swaps
+via `<picture>` + `prefers-color-scheme`. Always regenerate BOTH themes
+when reshooting.
 
 ## Rules and gotchas
 

@@ -20,7 +20,12 @@ defmodule LoopyardWeb.Showcase do
     LoopyardWeb.Showcase.Scenes.ChatWorking,
     LoopyardWeb.Showcase.Scenes.QuestionCard,
     LoopyardWeb.Showcase.Scenes.WorkspaceFull,
-    LoopyardWeb.Showcase.Scenes.WorkspaceQuestion
+    LoopyardWeb.Showcase.Scenes.WorkspaceQuestion,
+    LoopyardWeb.Showcase.Scenes.DevServer,
+    LoopyardWeb.Showcase.Scenes.MultiAgent,
+    LoopyardWeb.Showcase.Scenes.SshConsole,
+    LoopyardWeb.Showcase.Scenes.Operator,
+    LoopyardWeb.Showcase.Scenes.Aural
   ]
 
   def scenes, do: @scenes
@@ -43,6 +48,8 @@ defmodule LoopyardWeb.Showcase do
   frame. Media queries see the 500px window — same mobile bucket as 390.
   """
   def page_html(scene, theme \\ :light, frame_width \\ nil) do
+    ensure_endpoint_term()
+
     inner =
       Phoenix.LiveViewTest.render_component(scene.component(), scene.assigns())
 
@@ -88,6 +95,31 @@ defmodule LoopyardWeb.Showcase do
     </body>
     </html>
     """
+  end
+
+  # Some components call endpoint path/url helpers (e.g. ~p for static
+  # assets), which read the persistent term Phoenix.Endpoint.Supervisor puts
+  # at boot. Scenes render WITHOUT the app running, so stub the same shape
+  # (mirrors deps/phoenix/lib/phoenix/endpoint/supervisor.ex) when the real
+  # endpoint hasn't claimed it. Never overwrites a live endpoint's term.
+  defp ensure_endpoint_term do
+    key = {Phoenix.Endpoint, LoopyardWeb.Endpoint}
+
+    if :persistent_term.get(key, nil) == nil do
+      url = URI.parse("http://loopyard.local")
+
+      :persistent_term.put(key, %{
+        struct_url: url,
+        url: URI.to_string(url),
+        host: url.host,
+        path: "",
+        script_name: [],
+        static_path: "",
+        static_url: URI.to_string(url)
+      })
+    end
+
+    :ok
   end
 
   @dark_query "@media (prefers-color-scheme: dark)"

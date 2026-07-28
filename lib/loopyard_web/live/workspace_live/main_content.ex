@@ -64,6 +64,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.MainContent do
         :if={@live_action == :console}
         service_name={@selected_service}
         container={@console_container}
+        static_lines={assigns[:console_static_lines] || []}
       />
       <.all_services_view :if={@live_action == :services} all_service_logs={@all_service_logs} />
       <.volume_detail

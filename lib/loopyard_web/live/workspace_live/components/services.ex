@@ -235,6 +235,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
   end
 
   def console_view(assigns) do
+    assigns = Map.put_new(assigns, :static_lines, [])
+
     ssh_cmd =
       if assigns.container do
         "ssh -p #{Loopyard.SSHServer.port()} #{assigns.container}@localhost"
@@ -279,6 +281,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
           </button>
         </div>
       </:header>
+      <%!-- static_lines: showcase-only seed (live terminals are xterm.js via the
+    Terminal hook + channel, so a static render is an empty box). Live call
+    sites pass [] and nothing changes; phx-update="ignore" means the hook
+    owns this element the moment it mounts anyway. --%>
       <div
         :if={@container}
         id={"terminal-#{@container}"}
@@ -287,6 +293,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
         phx-update="ignore"
         class="flex-1 bg-[#18181b] p-3"
       >
+        <pre
+          :if={@static_lines != []}
+          class="font-mono text-xs leading-relaxed text-zinc-200 whitespace-pre-wrap"
+        >{Enum.join(@static_lines, "\n")}</pre>
       </div>
       <div :if={!@container} class="flex-1 flex items-center justify-center">
         <p class="text-sm text-zinc-400">Service not running</p>
