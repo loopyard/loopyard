@@ -64,3 +64,5 @@ sagas.log
 # Legacy paths from the BoomLooper→Loopyard rename — kept so leftover dirs
 # on old workstations don't accidentally get committed.
 .boomlooper_home/
+.gstack/
+/tmp/showcase/

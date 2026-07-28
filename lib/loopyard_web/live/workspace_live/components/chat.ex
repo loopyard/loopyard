@@ -286,10 +286,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     aligned to the column edge — same x as the active prompt band's
     left rail above — so the two read as one continuous "current turn"
     timeline. --%>
-              <.streaming_thinking :if={
-                @detail_level != :chat && assigns[:streaming_thinking] != "" &&
-                  assigns[:streaming_thinking] != nil
-              } />
+              <%!-- `initial` seeds the thinking text ONLY in static renders
+    (showcase screenshots — @static?): live, the element is created by
+    the same diff that pushes the first delta, so seeding there would
+    double that chunk. The hook owns the text in live sessions. --%>
+              <.streaming_thinking
+                :if={
+                  @detail_level != :chat && assigns[:streaming_thinking] != "" &&
+                    assigns[:streaming_thinking] != nil
+                }
+                initial={(assigns[:static?] && @streaming_thinking) || ""}
+              />
               <.streaming_bubble :if={@streaming_text != ""} streaming_text={@streaming_text} />
               <.thinking_indicator
                 :if={

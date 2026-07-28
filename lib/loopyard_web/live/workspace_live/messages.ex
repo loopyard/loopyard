@@ -521,10 +521,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     """
   end
 
+  attr :initial, :string, default: ""
+
   def streaming_thinking(assigns) do
     # The agent's live reasoning — flows on the spine, not a bubble. Quietly set
     # apart (muted, italic-feel via the label) since it's inner monologue.
     # Client-appended like streaming_bubble (event "stream_thinking_delta").
+    # `initial` seeds the first paint in STATIC renders only (showcase
+    # screenshots) — live renders pass "" because the first delta both creates
+    # this element and pushes its text, so a live seed would double chunk one.
     ~H"""
     <div
       class="py-1"
@@ -539,7 +544,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       <pre
         data-stream-target
         class="text-sm text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto"
-      ></pre>
+      >{@initial}</pre>
     </div>
     """
   end
