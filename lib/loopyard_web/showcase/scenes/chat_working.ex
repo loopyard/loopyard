@@ -31,8 +31,7 @@ defmodule LoopyardWeb.Showcase.Scenes.ChatWorking do
         "The stepper is two <button> elements with click handlers — no keydown. " <>
           "Arrow keys should adjust quantity when the input has focus; that's the " <>
           "native number-input behavior, so the real fix is using the platform…",
-      agent:
-        Mock.agent(%{status: :thinking, last_activity_at: Mock.at(310), messages: messages}),
+      agent: Mock.agent(%{status: :thinking, last_activity_at: Mock.at(310), messages: messages}),
       workspace_id: "checkout-fix",
       host: "loopyard.local",
       thinking_word: "Reasoning",

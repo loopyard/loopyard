@@ -173,8 +173,6 @@ defmodule Mix.Tasks.Loopyard.Shot do
     System.get_env("LOOPYARD_CHROME") ||
       Enum.find(@chrome_paths, &File.exists?/1) ||
       System.find_executable("chromium") ||
-      Mix.raise(
-        "No Chrome/Chromium found. Install Google Chrome or set LOOPYARD_CHROME."
-      )
+      Mix.raise("No Chrome/Chromium found. Install Google Chrome or set LOOPYARD_CHROME.")
   end
 end

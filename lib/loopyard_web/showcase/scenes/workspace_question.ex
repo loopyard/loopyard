@@ -4,7 +4,6 @@ defmodule LoopyardWeb.Showcase.Scenes.WorkspaceQuestion do
     name: "workspace-question",
     description: "Full cockpit with a needs-you question card waiting"
 
-  alias LoopyardWeb.Showcase.Mock
   alias LoopyardWeb.Showcase.Scenes.{QuestionCard, WorkspaceFull}
 
   @impl true

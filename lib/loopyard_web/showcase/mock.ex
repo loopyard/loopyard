@@ -123,7 +123,13 @@ defmodule LoopyardWeb.Showcase.Mock do
         140
       ),
       tool_result_msg(6, 5, "ok", 141),
-      tool_msg(7, "Bash", :command, %{"command" => "bin/rails test test/system/cart_test.rb"}, 170),
+      tool_msg(
+        7,
+        "Bash",
+        :command,
+        %{"command" => "bin/rails test test/system/cart_test.rb"},
+        170
+      ),
       tool_result_msg(8, 7, "12 runs, 34 assertions, 0 failures, 0 errors, 0 skips", 214),
       assistant_msg(
         9,

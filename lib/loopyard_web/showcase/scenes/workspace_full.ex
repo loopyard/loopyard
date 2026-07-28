@@ -60,7 +60,10 @@ defmodule LoopyardWeb.Showcase.Scenes.WorkspaceFull do
       nav_agent_id: agent.id,
       nav_service: nil,
       nav_volume: nil,
-      agents: [agent, Mock.agent(%{id: "reviewer", name: "Reviewer", status: :idle, alive?: true})],
+      agents: [
+        agent,
+        Mock.agent(%{id: "reviewer", name: "Reviewer", status: :idle, alive?: true})
+      ],
       selected_id: agent.id,
       selected_agent: agent,
       selected_service: nil,
@@ -174,7 +177,14 @@ defmodule LoopyardWeb.Showcase.Scenes.WorkspaceFull do
 
   defp service_statuses do
     [
-      %{name: "dev", status: :running, health: :healthy, ports: %{}, host_port: 4007, exposed: false},
+      %{
+        name: "dev",
+        status: :running,
+        health: :healthy,
+        ports: %{},
+        host_port: 4007,
+        exposed: false
+      },
       %{name: "postgres", status: :running, health: :healthy, ports: %{}, host_port: nil}
     ]
   end

@@ -47,7 +47,10 @@ defmodule LoopyardWeb.Showcase.Scenes.DevServer do
           f(-239, "Completed \e[32m200 OK\e[0m in 21ms (Views: 13.1ms | ActiveRecord: 3.2ms)"),
           f(-31, "Started \e[32mPATCH\e[0m \"/cart/items/8\" for 172.19.0.1"),
           f(-31, "Processing by CartItemsController#update as TURBO_STREAM"),
-          f(-30, "  \e[36mCartItem Update (1.8ms)\e[0m  UPDATE \"cart_items\" SET \"quantity\" = 3"),
+          f(
+            -30,
+            "  \e[36mCartItem Update (1.8ms)\e[0m  UPDATE \"cart_items\" SET \"quantity\" = 3"
+          ),
           f(-30, "Completed \e[32m200 OK\e[0m in 9ms (Views: 4.2ms | ActiveRecord: 2.9ms)")
         ]
       }
