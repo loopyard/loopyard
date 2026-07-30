@@ -431,4 +431,72 @@ defmodule Loopyard.AgentRecoveryTest do
       end
     end
   end
+
+  describe "identity guard: messages with no {:agent, …} record" do
+    setup do
+      table =
+        :ets.new(:identity_guard_test, [:set, :public, read_concurrency: true])
+
+      on_exit(fn -> if :ets.info(table) != :undefined, do: :ets.delete(table) end)
+      %{table: table}
+    end
+
+    @tag :recovery
+    test "orphaned message runs are kept out of ETS", %{log_path: log_path, table: table} do
+      # A real agent...
+      AgentLog.append({:agent, "real-agent", %{name: "Real", status: :idle}},
+        log_path: log_path,
+        version: @version
+      )
+
+      # ...and messages for an agent whose identity record the log never held
+      # (deleted agent, or history truncated before its {:agent, …} record).
+      for i <- 1..3 do
+        AgentLog.append({:msg, "orphan-agent", %{id: "o-#{i}", content: "ghost #{i}"}},
+          log_path: log_path,
+          version: @version
+        )
+      end
+
+      {:ok, agents} = AgentLog.replay(log_path: log_path, version: @version, ets_table: table)
+
+      # Replay surfaces both — the raw map is NOT safe to count or start from.
+      assert map_size(agents) == 2
+
+      # Only the identity-bearing agent reaches ETS.
+      assert [{_, restored}] = :ets.lookup(table, "real-agent")
+      assert restored.name == "Real"
+      assert :ets.lookup(table, "orphan-agent") == []
+    end
+
+    @tag :recovery
+    test "restorable/1 is what callers must count and start from", %{
+      log_path: log_path,
+      table: table
+    } do
+      AgentLog.append({:agent, "real-agent", %{name: "Real", status: :idle}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append({:msg, "orphan-agent", %{id: "o-1", content: "ghost"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      {:ok, agents} = AgentLog.replay(log_path: log_path, version: @version, ets_table: table)
+
+      restorable = AgentLog.restorable(agents)
+
+      # This is the bug the helper exists to prevent: map_size(agents)
+      # overcounts, and iterating it spawns a ghost agent.
+      assert map_size(agents) == 2
+      assert map_size(restorable) == 1
+      assert Map.keys(restorable) == ["real-agent"]
+
+      # restorable/1 agrees exactly with what populate_ets inserted.
+      assert Enum.sort(Map.keys(restorable)) ==
+               table |> :ets.tab2list() |> Enum.map(&elem(&1, 0)) |> Enum.sort()
+    end
+  end
 end

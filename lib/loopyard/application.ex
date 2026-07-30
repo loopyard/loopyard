@@ -313,7 +313,11 @@ defmodule Loopyard.Application do
     if log_path && File.exists?(log_path) do
       case Loopyard.AgentLog.replay(log_path: log_path, version: 1, ets_table: :chat_agents) do
         {:ok, agents} when map_size(agents) > 0 ->
-          acc + map_size(agents)
+          # Count what actually landed in ETS, not what the replay map held —
+          # orphaned message runs are skipped by the identity guard, so
+          # map_size overcounted wildly ("Restored 100 agent(s)" on a boot
+          # that restored 2). See AgentLog.restorable/1.
+          acc + map_size(Loopyard.AgentLog.restorable(agents))
 
         _ ->
           acc

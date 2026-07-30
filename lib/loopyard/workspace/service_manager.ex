@@ -657,13 +657,23 @@ defmodule Loopyard.Workspace.ServiceManager do
             :previous -> " (recovered from .prev — primary log was corrupt)"
           end
 
-        Loopyard.EventLog.info(
-          "workspace",
-          "Restored #{map_size(agents)} agent(s) from log#{source_note}, starting..."
-        )
+        # Only agents that actually made it into ETS. Starting an orphaned
+        # message run (no identity record) spawned a ghost GenServer with
+        # resume: true, which then failed and logged "Failed to resume
+        # agent …" — noise on top of wasted boot work. See
+        # AgentLog.restorable/1. A log holding ONLY orphans restores
+        # nothing, and says nothing.
+        agents = Loopyard.AgentLog.restorable(agents)
 
-        for {agent_id, _agent_data} <- agents do
-          start_restored_agent(workspace_id, agent_id)
+        if map_size(agents) > 0 do
+          Loopyard.EventLog.info(
+            "workspace",
+            "Restored #{map_size(agents)} agent(s) from log#{source_note}, starting..."
+          )
+
+          for {agent_id, _agent_data} <- agents do
+            start_restored_agent(workspace_id, agent_id)
+          end
         end
 
         :ok

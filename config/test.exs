@@ -1,5 +1,27 @@
 import Config
 
+# The test home must be redirected and reset HERE, not in test_helper.exs.
+# `mix test` starts the :loopyard application BEFORE it evaluates
+# test_helper.exs, and boot immediately reads projects.json and replays
+# every workspace's agents.log (Application.restore_all_agents/0). Doing
+# this in test_helper left that whole boot window pointed at the
+# developer's real ~/.loopyard — which is how ~100 dead test agents
+# (backoff-test-*, resume-test-*, …) ended up permanently written into
+# real workspace logs, warning on every boot thereafter. Config files are
+# evaluated before app start, so this closes the window.
+loopyard_test_home = Path.join(File.cwd!(), ".loopyard_home")
+System.put_env("LOOPYARD_HOME", loopyard_test_home)
+
+# Start every run from an empty home. Nothing in here is a fixture — tests
+# create projects and workspaces with random ids and never remove them, so
+# this grew without bound (1723 workspace dirs / 3117 agents.log files /
+# 73MB before this landed) and every boot replayed the residue: dead test
+# agents as "no {:agent, …} identity record" warnings, dead temp dirs as
+# "Failed to restore project" warnings.
+File.rm(Path.join(loopyard_test_home, "projects.json"))
+File.rm_rf!(Path.join(loopyard_test_home, "workspaces"))
+File.mkdir_p!(loopyard_test_home)
+
 config :loopyard, LoopyardWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
   secret_key_base:

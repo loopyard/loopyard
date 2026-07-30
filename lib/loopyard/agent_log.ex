@@ -54,6 +54,33 @@ defmodule Loopyard.AgentLog do
   On boot, replay the log to restore ETS state.
   """
 
+  require Logger
+
+  # How many orphaned agent ids to name in the single skip warning before
+  # collapsing the rest to "+N more". Enough to start an investigation,
+  # short enough to stay one line.
+  @identity_less_sample 5
+
+  @doc """
+  The subset of a replayed state map that represents real, restorable agents.
+
+  IDENTITY GUARD: a log can hold `{:msg, id, …}` records for an agent whose
+  `{:agent, id, …}` identity record it never saw — from a deleted agent, or a
+  log truncated mid-history. The replayed map entry is then just
+  `%{messages: […]}` with no `:name`/`:status`. `populate_ets/2` deliberately
+  refuses to insert those (a blind insert would CLOBBER a good ETS entry, and
+  downstream code crashes on the missing keys — this bricked the whole fleet
+  once: bare entries → no workspace_id → autostart skipped → resume badkey).
+
+  Any caller that COUNTS or STARTS replayed agents must filter through here.
+  Iterating the raw replay map instead both overcounts ("Restored 100
+  agent(s)" on a boot that restored 2) and spawns ghost agents that were
+  never in ETS.
+  """
+  def restorable(state) when is_map(state), do: Map.filter(state, &agent_identity?/1)
+
+  defp agent_identity?({_agent_id, agent_data}), do: Map.has_key?(agent_data, :name)
+
   @doc """
   Append an event to the log file.
 
@@ -237,126 +264,12 @@ defmodule Loopyard.AgentLog do
     end
   end
 
-  @doc """
-  Rewrite the log as a minimal snapshot of its current state.
-
-  The log is append-only: every message, message update, and agent
-  update is a record. A long-running workspace accumulates tens of
-  megabytes of records that collapse, on replay, to a state of only
-  a few thousand messages. Replay of that history gets slow, then
-  flaky, then fails. Compaction rewrites the file as exactly the
-  record sequence needed to reproduce the current state from scratch:
-  one `{:agent, id, data}` record per agent, followed by one
-  `{:msg, id, msg}` per message.
-
-  Atomic: writes to `<path>.compacting`, then `File.rename/2`. A crash
-  mid-write leaves the original file untouched.
-
-  ## Options
-
-    * `:log_path` — path to the log file (required)
-    * `:version`  — log version (required; same semantics as `append/2`)
-
-  Returns `{:ok, %{before: bytes, after: bytes, agents: n, messages: n}}`
-  or `{:error, reason}`. Running compact/1 on a missing file is a
-  no-op returning `{:ok, %{before: 0, after: 0, agents: 0, messages: 0}}`.
-  """
-  def compact(opts) do
-    path = Keyword.fetch!(opts, :log_path)
-    version = Keyword.fetch!(opts, :version)
-
-    case File.stat(path) do
-      {:ok, %{size: before_size}} ->
-        case replay(log_path: path, version: version) do
-          {:ok, state} ->
-            do_compact(path, version, state, before_size)
-
-          {:error, _} = err ->
-            err
-        end
-
-      {:error, :enoent} ->
-        {:ok, %{before: 0, after: 0, agents: 0, messages: 0}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  @doc """
-  Compact the log iff it's bigger than the threshold.
-
-  Called at startup (see `ServiceManager.init`) so every workspace
-  boot trims its log if it's grown past the threshold. Cheap no-op
-  when the file is small.
-
-  Options:
-    * `:log_path` — path to the log file (required)
-    * `:version`  — log version (required)
-    * `:threshold_bytes` — minimum size before compacting (default: 5 MB)
-  """
-  def maybe_compact(opts) do
-    path = Keyword.fetch!(opts, :log_path)
-    threshold = Keyword.get(opts, :threshold_bytes, 5_000_000)
-
-    case File.stat(path) do
-      {:ok, %{size: size}} when size >= threshold ->
-        compact(opts)
-
-      _ ->
-        {:ok, :skipped}
-    end
-  end
-
-  @doc """
-  Like `compact/1`, but keeps the pre-compaction log as `<path>.prev`.
-
-  This is the checkpoint / snapshot primitive for move #8 in
-  `plans/coordination-hardening.md`. Where `compact/1` rewrites the
-  log and discards the old bytes, `compact_keep_previous/1` always
-  leaves the prior log beside the new one so `replay_with_fallback/1`
-  can recover from a corrupt primary.
-
-  ## Sequencing
-
-  The rewrite order matters for crash safety:
-
-    1. Build the new snapshot at `<path>.compacting` (atomic writes).
-    2. Rename `<path>` → `<path>.prev` (atomic on POSIX).
-    3. Rename `<path>.compacting` → `<path>` (atomic on POSIX).
-
-  Any interrupt between steps leaves the filesystem in a usable
-  state: either the old primary is intact (interrupt before step 2)
-  or the old primary now lives as `.prev` with the new snapshot at
-  the primary path (interrupt between 2 and 3 would leave `.prev`
-  valid and primary missing; `replay_with_fallback/1` recovers).
-
-  Never deletes `.prev` here. Callers that want to trim the backup
-  do it explicitly.
-
-  Options match `compact/1`.
-  """
-  def compact_keep_previous(opts) do
-    path = Keyword.fetch!(opts, :log_path)
-    version = Keyword.fetch!(opts, :version)
-
-    case File.stat(path) do
-      {:ok, %{size: before_size}} ->
-        case replay(log_path: path, version: version) do
-          {:ok, state} ->
-            do_compact_keep_previous(path, version, state, before_size)
-
-          {:error, _} = err ->
-            err
-        end
-
-      {:error, :enoent} ->
-        {:ok, %{before: 0, after: 0, agents: 0, messages: 0}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
+  # Compaction lives in Loopyard.AgentLog.Compactor (this module was over
+  # its size cap). These delegates are the API every caller uses — keep
+  # them here so `AgentLog.compact/1` stays the obvious entry point.
+  defdelegate compact(opts), to: Loopyard.AgentLog.Compactor
+  defdelegate maybe_compact(opts), to: Loopyard.AgentLog.Compactor
+  defdelegate compact_keep_previous(opts), to: Loopyard.AgentLog.Compactor
 
   @doc """
   Replay the log, falling back to `<path>.prev` on primary corruption.
@@ -446,129 +359,6 @@ defmodule Loopyard.AgentLog do
     end
   end
 
-  defp do_compact_keep_previous(path, version, state, before_size) do
-    temp_path = path <> ".compacting"
-    prev_path = path <> ".prev"
-
-    # Remove any leftover temp file from a previous failed compaction
-    File.rm(temp_path)
-
-    # Step 1: write the new snapshot to a temp file
-    ensure_meta_header(temp_path, version)
-
-    message_count = write_snapshot(temp_path, state)
-
-    # Step 2: rename current log to .prev (if primary exists). If there
-    # is no primary yet, this is the first snapshot and .prev is omitted
-    # — there's nothing to preserve. On rename failure, leave the temp
-    # file alone so the next call / manual inspection can recover.
-    case File.stat(path) do
-      {:ok, _} ->
-        case File.rename(path, prev_path) do
-          :ok ->
-            :ok
-
-          {:error, reason} ->
-            # Leave temp file in place; original primary still intact.
-            {:error, {:rename_to_prev_failed, reason}}
-        end
-
-      {:error, :enoent} ->
-        :ok
-    end
-    |> case do
-      :ok ->
-        # Step 3: rename temp file to current log
-        case File.rename(temp_path, path) do
-          :ok ->
-            after_size =
-              case File.stat(path) do
-                {:ok, %{size: s}} -> s
-                _ -> 0
-              end
-
-            {:ok,
-             %{
-               before: before_size,
-               after: after_size,
-               agents: map_size(state),
-               messages: message_count
-             }}
-
-          {:error, reason} ->
-            # Temp file still at .compacting, .prev may already hold the
-            # pre-compaction data. Don't delete anything — operator can
-            # manually recover. replay_with_fallback/1 will use .prev on
-            # next boot.
-            {:error, {:rename_failed, reason}}
-        end
-
-      {:error, _} = err ->
-        err
-    end
-  end
-
-  defp write_snapshot(path, state) do
-    Enum.reduce(state, 0, fn {agent_id, agent_data}, acc ->
-      messages = Map.get(agent_data, :messages, [])
-      agent_meta = Map.delete(agent_data, :messages)
-
-      write_record(path, {:agent, agent_id, agent_meta})
-
-      for msg <- messages do
-        write_record(path, {:msg, agent_id, msg})
-      end
-
-      acc + length(messages)
-    end)
-  end
-
-  defp do_compact(path, version, state, before_size) do
-    temp_path = path <> ".compacting"
-    File.rm(temp_path)
-
-    # Ensure meta header on the temp file first, then append snapshot
-    # events. The ordering is: one :agent record per agent, then all
-    # its messages as :msg records. Replaying this yields the same
-    # in-memory state we started from.
-    ensure_meta_header(temp_path, version)
-
-    message_count =
-      Enum.reduce(state, 0, fn {agent_id, agent_data}, acc ->
-        messages = Map.get(agent_data, :messages, [])
-        agent_meta = Map.delete(agent_data, :messages)
-
-        write_record(temp_path, {:agent, agent_id, agent_meta})
-
-        for msg <- messages do
-          write_record(temp_path, {:msg, agent_id, msg})
-        end
-
-        acc + length(messages)
-      end)
-
-    case File.rename(temp_path, path) do
-      :ok ->
-        after_size =
-          case File.stat(path) do
-            {:ok, %{size: s}} -> s
-            _ -> 0
-          end
-
-        {:ok,
-         %{
-           before: before_size,
-           after: after_size,
-           agents: map_size(state),
-           messages: message_count
-         }}
-
-      {:error, reason} ->
-        File.rm(temp_path)
-        {:error, {:rename_failed, reason}}
-    end
-  end
-
   @doc """
   Read all events from the log without applying them.
   Useful for debugging/inspection. Excludes meta record.
@@ -589,9 +379,14 @@ defmodule Loopyard.AgentLog do
     end
   end
 
-  # --- Private: Writing ---
+  # --- Writing ---
+  #
+  # `ensure_meta_header/2` and `write_record/2` are internal record-format
+  # primitives, public only so Compactor can build a snapshot file. Not
+  # part of the module's API — use append/2.
 
-  defp ensure_meta_header(path, version) do
+  @doc false
+  def ensure_meta_header(path, version) do
     needs_header =
       case File.stat(path) do
         {:ok, %{size: 0}} -> true
@@ -607,7 +402,8 @@ defmodule Loopyard.AgentLog do
     end
   end
 
-  defp write_record(path, event) do
+  @doc false
+  def write_record(path, event) do
     binary = :erlang.term_to_binary(event)
     compressed = :zlib.compress(binary)
     File.write!(path, <<byte_size(compressed)::32, compressed::binary>>, [:append, :raw])
@@ -754,47 +550,54 @@ defmodule Loopyard.AgentLog do
   # --- Private: ETS Population ---
 
   defp populate_ets(table, state) do
-    for {agent_id, agent_data} <- state do
-      cond do
-        # IDENTITY GUARD: a log can hold `{:msg, id, …}` records for an agent
-        # whose `{:agent, id, …}` identity record it never saw — the replayed
-        # map is then just `%{messages: […]}`. Inserting that CLOBBERS a good
-        # ETS entry (populate is a blind insert) and downstream code crashes on
-        # the missing :name/:status (this bricked the whole fleet once: bare
-        # entries → no workspace_id → autostart skipped → resume badkey).
-        # Messages without an identity aren't an agent — skip, loudly.
-        not Map.has_key?(agent_data, :name) ->
-          :telemetry.execute(
-            [:loopyard, :agent_log, :identity_less_agent_skipped],
-            %{count: 1},
-            %{agent_id: agent_id}
-          )
+    {restorable, identity_less} = Enum.split_with(state, &agent_identity?/1)
 
-          require Logger
+    Enum.each(restorable, fn {agent_id, agent_data} ->
+      # Ensure :id is always present (it's the ETS key but code expects it in
+      # the map too). Mark alive?: false — these agents were restored from
+      # disk, no GenServer is running yet. The UI uses alive? to decide
+      # whether to show the agent as active or stopped. Without this,
+      # status: :idle + alive?: nil causes inconsistent indicators (green
+      # dot but grayed-out controls).
+      agent_data =
+        agent_data
+        |> Map.put_new(:id, agent_id)
+        |> Map.put(:alive?, false)
 
-          Logger.warning(
-            "[AgentLog] replay found #{length(Map.get(agent_data, :messages, []))} message(s) " <>
-              "for agent #{agent_id} but no {:agent, …} identity record — NOT inserting into ETS"
-          )
+      :ets.insert(table, {agent_id, agent_data})
+    end)
 
-          :ok
-
-        true ->
-          # Ensure :id is always present (it's the ETS key but code expects it in
-          # the map too). Mark alive?: false — these agents were restored from
-          # disk, no GenServer is running yet. The UI uses alive? to decide
-          # whether to show the agent as active or stopped. Without this,
-          # status: :idle + alive?: nil causes inconsistent indicators (green
-          # dot but grayed-out controls).
-          agent_data =
-            agent_data
-            |> Map.put_new(:id, agent_id)
-            |> Map.put(:alive?, false)
-
-          :ets.insert(table, {agent_id, agent_data})
-      end
-    end
+    report_identity_less(identity_less)
 
     :ok
+  end
+
+  # ONE line for the whole batch, not one per agent. A long-lived log
+  # accumulates orphaned message runs (deleted agents, pre-identity
+  # records), and warning-per-entry buried every other boot line under
+  # ~100 lines of noise — the flood read like a fleet-wide failure when
+  # the guard was in fact working correctly. Per-agent detail stays on
+  # telemetry, where a handler can consume it without spamming the
+  # console.
+  defp report_identity_less([]), do: :ok
+
+  defp report_identity_less(entries) do
+    Enum.each(entries, fn {agent_id, data} ->
+      :telemetry.execute(
+        [:loopyard, :agent_log, :identity_less_agent_skipped],
+        %{count: 1, messages: length(Map.get(data, :messages, []))},
+        %{agent_id: agent_id}
+      )
+    end)
+
+    sample = entries |> Enum.map(&elem(&1, 0)) |> Enum.sort() |> Enum.take(@identity_less_sample)
+    hidden = length(entries) - length(sample)
+    suffix = if hidden > 0, do: " (+#{hidden} more)", else: ""
+
+    Logger.warning(
+      "[AgentLog] skipped #{length(entries)} orphaned agent(s) — messages with no " <>
+        "{:agent, …} identity record, NOT inserted into ETS: " <>
+        Enum.join(sample, ", ") <> suffix
+    )
   end
 end

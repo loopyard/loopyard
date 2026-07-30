@@ -1,12 +1,7 @@
-# Set LOOPYARD_HOME to a local dir so tests don't write to ~/.loopyard
-loopyard_home = Path.join(File.cwd!(), ".loopyard_home")
-
-# Clean up stale projects.json from previous test runs
-projects_json = Path.join(loopyard_home, "projects.json")
-File.rm(projects_json)
-
-File.mkdir_p!(loopyard_home)
-System.put_env("LOOPYARD_HOME", loopyard_home)
+# LOOPYARD_HOME is redirected to .loopyard_home/ and reset in
+# config/test.exs — NOT here. This file runs after the application has
+# already booted and read the home dir, which is far too late. See the
+# comment there before moving any of it back.
 
 #
 # Tags excluded from the default `mix test` run to keep it under 30s.
