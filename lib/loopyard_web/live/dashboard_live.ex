@@ -63,7 +63,22 @@ defmodule LoopyardWeb.DashboardLive do
     |> assign(:operator_count, safe(fn -> length(Loopyard.Workstation.list()) end, 1))
     |> assign(:waiting, safe(&Loopyard.Attention.count/0, 0))
     |> assign(:inference_ready?, safe(&inference_ready?/0, true))
+    |> then(&assign(&1, :first_run_step, first_run_step(&1.assigns)))
   end
+
+  # Which step of getting started is the user actually on? nil once they're
+  # past it — a working install must not keep coaching.
+  #
+  # The ORDER is the point: inference first, because the agent is what builds
+  # everything downstream, then a project to point it at. Each step names the
+  # next one so the entrance is never a dead end.
+  defp first_run_step(%{inference_ready?: false}), do: :inference
+
+  defp first_run_step(%{tree: tree}) do
+    if Enum.empty?(tree), do: :project
+  end
+
+  defp first_run_step(_), do: nil
 
   # Can an agent actually run? Without a credential the harness can't
   # authenticate, so EVERY downstream step (build the workspace, write the
@@ -101,7 +116,42 @@ defmodule LoopyardWeb.DashboardLive do
   # the server can't know the host you actually reached (LAN IP, tunnel,
   # reverse proxy), but the browser can. Same reason the token is inline — a
   # remote fetch is gated by `PushAuth`.
+  attr :step, :atom, required: true, values: [:inference, :project]
   attr :workstation, :string, required: true
+
+  # STEP 2 — inference works, but there's nothing to point it at. Quieter than
+  # the flame band: nothing is blocked or broken, the user just hasn't started
+  # yet, so this is iris (interactive/"you"), not flame.
+  defp start_here(%{step: :project} = assigns) do
+    ~H"""
+    <section class="mt-8 md:mt-12 border border-violet-300 dark:border-violet-500/40 bg-violet-50 dark:bg-violet-500/[0.06] p-5 md:p-6">
+      <div class="flex items-center gap-2.5">
+        <span class="w-2 h-2 rounded-full bg-violet-500 flex-none" aria-hidden="true"></span>
+        <h2 class="text-base font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+          Claude's connected — now add a project
+        </h2>
+      </div>
+      <p class="chat-sub text-zinc-700 dark:text-zinc-300 mt-2">
+        Point Loopyard at some code and an agent takes it from there: it reads the
+        stack, writes the Dockerfile and services, and boots the dev server.
+      </p>
+      <div class="mt-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+        <.link
+          navigate="/projects/new"
+          class="focus-ring inline-flex items-center justify-center rounded-sm bg-violet-600 hover:bg-violet-500 text-white px-4 py-3 md:py-2.5 text-sm md:text-xs font-medium transition-colors"
+        >
+          Add your first project
+        </.link>
+        <.link
+          navigate={"/workstations/#{@workstation}"}
+          class="focus-ring chat-meta py-2.5 md:py-1 text-zinc-600 dark:text-zinc-300 underline hover:text-zinc-900 dark:hover:text-zinc-100"
+        >
+          Connect more tools first
+        </.link>
+      </div>
+    </section>
+    """
+  end
 
   defp start_here(assigns) do
     ~H"""
@@ -165,7 +215,7 @@ defmodule LoopyardWeb.DashboardLive do
       <div class="mx-auto max-w-6xl px-4 md:px-8 pt-10 md:pt-16 pb-10">
         <Brand.logo mark_class="w-6 h-6 flex-none" wordmark_class="text-lg tracking-tight" />
 
-        <.start_here :if={not @inference_ready?} workstation={@operator} />
+        <.start_here :if={@first_run_step} step={@first_run_step} workstation={@operator} />
 
         <div class="mt-8 md:mt-12 grid gap-4 md:grid-cols-3">
           <%!-- ── WORKSPACES ─────────────────────────────────────────────── --%>

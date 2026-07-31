@@ -50,12 +50,21 @@ defmodule LoopyardWeb.DashboardFirstRunTest do
     assert html =~ "claude/setup.sh"
   end
 
-  test "the gate disappears once a token exists", %{conn: conn, ws: ws} do
+  test "connecting Claude advances to the next step, it does not dead-end", %{
+    conn: conn,
+    ws: ws
+  } do
     Workstation.Env.put("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-test", ws)
 
     {:ok, _lv, html} = live(conn, "/")
 
+    # The blocked-on-a-human band is gone...
     refute html =~ "Start here"
+
+    # ...and the entrance names the NEXT step rather than going quiet. On a
+    # fresh install there are no projects, so that is what it asks for.
+    assert html =~ "now add a project"
+    assert html =~ "/projects/new"
   end
 
   test "a raw API key counts as ready too", %{conn: conn, ws: ws} do
