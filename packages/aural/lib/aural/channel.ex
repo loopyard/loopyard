@@ -55,6 +55,11 @@ defmodule Aural.Channel do
   # one the listener hears.
   @max_concurrent_chimes 16
 
+  # Backstop for waiting on the killed ffmpeg's exit_status before
+  # closing its port. A ceiling, not a sleep — the drain returns as soon
+  # as the port reports the exit (~0ms in practice after SIGKILL).
+  @ffmpeg_reap_ms 500
+
   # channel_id format: 1-64 url-safe chars. Bare minimum sanity check
   # to keep an attacker from spawning a channel keyed by a multi-MB
   # path-traversal string. Anything that doesn't pass returns
@@ -309,8 +314,7 @@ defmodule Aural.Channel do
           %{channel_id: state.channel_id, from: state.track, to: track, reversed: true}
         )
 
-        {:noreply,
-         %{state | track: track, prev_track: state.track, crossfade_remaining: elapsed}}
+        {:noreply, %{state | track: track, prev_track: state.track, crossfade_remaining: elapsed}}
 
       true ->
         :telemetry.execute(
@@ -444,13 +448,73 @@ defmodule Aural.Channel do
 
   @impl true
   def terminate(_reason, %{port: port}) do
-    try do
-      Port.close(port)
-    catch
-      _, _ -> :ok
+    stop_ffmpeg(port)
+    :ok
+  end
+
+  # Kill ffmpeg BEFORE closing the port, so it isn't alive to complain.
+  #
+  # Closing the port outright (the old behavior) tore down both pipes at
+  # once while ffmpeg still had buffered packets and an MP3 trailer to
+  # write. Every one of those writes failed with EPIPE, and ffmpeg
+  # reported each separately:
+  #
+  #   Error submitting a packet to the muxer: Broken pipe
+  #   Error muxing a packet
+  #   Task finished with error code: -32 (Broken pipe)
+  #   Error writing trailer: Broken pipe
+  #   Error closing file: Broken pipe
+  #
+  # ffmpeg's stderr is not (and must not be) merged into stdout — that
+  # stream carries the MP3 bytes — so it lands on the BEAM's stderr raw
+  # and unprefixed by Logger. Five alarming lines on every routine idle
+  # shutdown, describing nothing anyone can act on.
+  #
+  # SIGTERM is deliberately NOT used: ffmpeg blocked on its stdin/stdout
+  # pipes doesn't act on it promptly (measured: still alive after 500ms,
+  # no exit_status), so the port close still caught it mid-write and the
+  # cascade printed anyway. SIGKILL is deterministic and silent — a dead
+  # process writes nothing. Nothing is lost by skipping the graceful
+  # path: subscribers are already gone at shutdown, and an MP3 trailer
+  # on an ephemeral pipe stream buys a late listener nothing.
+  defp stop_ffmpeg(port) do
+    case Port.info(port, :os_pid) do
+      {:os_pid, os_pid} ->
+        System.cmd("kill", ["-KILL", to_string(os_pid)], stderr_to_stdout: true)
+        drain_until_exit(port, System.monotonic_time(:millisecond) + @ffmpeg_reap_ms)
+
+      # Port already dead — nothing to signal, and no EPIPE to cause.
+      nil ->
+        :ok
     end
 
+    close_port(port)
+  end
+
+  # Wait for the port to report the killed process so the BEAM reaps it
+  # before we close. Returns as soon as exit_status lands (measured at
+  # ~0ms after SIGKILL); the deadline is a backstop, not a sleep. Any
+  # trailing bytes are dropped rather than broadcast — subscribers are
+  # gone by shutdown, and a partial tail helps nobody.
+  defp drain_until_exit(port, deadline) do
+    remaining = deadline - System.monotonic_time(:millisecond)
+
+    if remaining > 0 do
+      receive do
+        {^port, {:exit_status, _}} -> :ok
+        {^port, {:data, _}} -> drain_until_exit(port, deadline)
+      after
+        remaining -> :ok
+      end
+    end
+  end
+
+  defp close_port(port) do
+    Port.close(port)
     :ok
+  catch
+    # Already closed (ffmpeg exited during the drain) — badarg, not a problem.
+    _, _ -> :ok
   end
 
   # --- Topic + config helpers ---
