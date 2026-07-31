@@ -197,7 +197,13 @@ defmodule LoopyardWeb.WorkstationToolLive do
             <div>
               <h3 class="text-xs font-medium text-zinc-700 dark:text-zinc-200">Set a token</h3>
               <p class="text-[11px] text-zinc-500 dark:text-zinc-400">
-                Paste <span class="font-mono">{@ig.env}</span> — Restart to apply.
+                <%!-- Credential keys hot-apply: Env.put -> maybe_reload_agents ->
+                     Workstation.reload_agents, so agents pick up a new token on
+                     their own. Telling the user to restart contradicted the
+                     dashboard's "nothing else to do" and made them do work the
+                     system had already done. --%>
+                Paste <span class="font-mono">{@ig.env}</span>
+                — agents reload themselves.
               </p>
             </div>
             <div class="flex gap-2">

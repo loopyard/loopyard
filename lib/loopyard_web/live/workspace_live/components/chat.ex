@@ -205,6 +205,26 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             <%!-- No rail on the active turn — the deeper wash on the running
     prompt band + the live status row mark it. (Rails kept
     misaligning across band/tail/breakpoints; not worth it.) --%>
+            <%!-- FIRST CONTACT. A workspace that has just been cloned lands here
+    with a Ready agent and an empty transcript — the payoff moment of
+    onboarding, saying nothing. The user does not yet know that asking
+    the agent to set up the dev environment is the next move, so say it.
+    Disappears the instant there's any history; a working chat must not
+    keep coaching. --%>
+            <div
+              :if={@transcript_sections == []}
+              class="py-10 md:py-14 text-center"
+            >
+              <p class="chat-sub text-zinc-600 dark:text-zinc-300">
+                This agent can read and write the code, run commands, and build the dev
+                environment for you.
+              </p>
+              <p class="chat-meta text-zinc-500 dark:text-zinc-400 mt-2">
+                A good first ask:
+                <span class="italic">"set up the dev environment and get it running"</span>
+              </p>
+            </div>
+
             <section :for={section <- @transcript_sections} :key={Messages.section_key(section)}>
               <%= if section.prompt do %>
                 <% {pmsg, pidx, pctx} = section.prompt %>

@@ -55,7 +55,7 @@ defmodule Loopyard.Workstation.Integration do
       # `~/.claude` files, none of the short-lived-credential 401 treadmill.
       console: "claude setup-token",
       check: {:env, "CLAUDE_CODE_OAUTH_TOKEN"},
-      lands: "CLAUDE_CODE_OAUTH_TOKEN — durable 1-year token; restart to apply"
+      lands: "CLAUDE_CODE_OAUTH_TOKEN — durable 1-year token; agents reload themselves"
     },
     %{
       id: "codex",
@@ -73,7 +73,7 @@ defmodule Loopyard.Workstation.Integration do
       env: "FLY_ACCESS_TOKEN",
       console: nil,
       check: {:env, "FLY_ACCESS_TOKEN"},
-      lands: "FLY_ACCESS_TOKEN — restart to apply"
+      lands: "FLY_ACCESS_TOKEN — agents reload themselves"
     }
   ]
 

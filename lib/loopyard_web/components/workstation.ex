@@ -105,6 +105,11 @@ defmodule LoopyardWeb.Components.Workstation do
   phone (where you're least likely to be able to select the text by hand), so it
   clears the ~44px finger target there and tightens up on desktop, where a
   cursor is precise and the button should stop shouting.
+
+  The command WRAPS on mobile rather than scrolling off-screen. These commands
+  pipe into `sh`, and a developer who can't read what they're about to run is
+  right not to trust it — height is the cheaper cost. Desktop has the width to
+  scroll instead.
   """
   attr :id, :string, required: true
   attr :command, :string, required: true
@@ -112,7 +117,7 @@ defmodule LoopyardWeb.Components.Workstation do
   def command_box(assigns) do
     ~H"""
     <div class="flex items-stretch gap-2">
-      <pre class="flex-1 min-w-0 overflow-x-auto rounded-sm bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-[11px] leading-relaxed font-mono px-3 py-3 md:py-2.5 ring-1 ring-zinc-800">{@command}</pre>
+      <pre class="flex-1 min-w-0 whitespace-pre-wrap break-all md:whitespace-pre md:break-normal md:overflow-x-auto rounded-sm bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-[11px] leading-relaxed font-mono px-3 py-3 md:py-2.5 ring-1 ring-zinc-800">{@command}</pre>
       <button
         id={@id}
         type="button"

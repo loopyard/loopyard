@@ -314,19 +314,19 @@ defmodule LoopyardWeb.ProjectListLive do
             <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-5">How do you want to start?</p>
             <div class="space-y-2.5">
               <.method_card
+                navigate="/projects/new/github"
+                title="From GitHub"
+                desc="Clone a repo — works from anywhere, including a phone."
+              />
+              <.method_card
                 navigate="/projects/new/scratch"
                 title="From scratch"
                 desc="Name it and start building — a fresh repo, ready instantly."
               />
               <.method_card
                 navigate="/projects/new/folder"
-                title="From a folder on this machine"
-                desc="Bring in code you already have on disk."
-              />
-              <.method_card
-                navigate="/projects/new/github"
-                title="From GitHub"
-                desc="Clone a repo to start, sync back as it matures."
+                title="From a folder on the Loopyard machine"
+                desc="Code already on the disk where Loopyard itself is running."
               />
             </div>
           </div>
@@ -450,7 +450,7 @@ defmodule LoopyardWeb.ProjectListLive do
                   type="text"
                   name="branch"
                   value=""
-                  placeholder="branch"
+                  placeholder="branch (optional)"
                   aria-label="Branch — blank uses the repo default"
                   disabled={@creating != nil}
                   class="sm:w-32 flex-none rounded-sm border border-zinc-300 dark:border-zinc-600 bg-brand-paper dark:bg-brand-ink px-3 py-3 md:py-2.5 text-sm font-mono

@@ -93,6 +93,17 @@ defmodule LoopyardWeb.DashboardLive do
     "CLAUDE_CODE_OAUTH_TOKEN" in keys or "ANTHROPIC_API_KEY" in keys
   end
 
+  # "All 3 subsystems healthy" is true of the SUBSYSTEMS and a lie about the
+  # PRODUCT when there's no credential — the same screen was telling a new user
+  # everything is fine directly under a band saying nothing can start. Two
+  # elements contradicting each other is worse than either being wrong alone,
+  # because now nothing on the page can be trusted. While a blocking first-run
+  # step is open, say what's actually true.
+  defp system_line(_health, :inference),
+    do: "Subsystems up · agents blocked until Claude connects"
+
+  defp system_line(health, _step), do: health_line(health)
+
   defp safe(fun, default) do
     fun.()
   rescue
@@ -319,18 +330,24 @@ defmodule LoopyardWeb.DashboardLive do
                 />
               </svg>
               <h2 class="text-base font-semibold tracking-tight">System</h2>
+              <%!-- A green "healthy" over "agents blocked until Claude connects"
+                   is the contradiction in miniature. While a blocking first-run
+                   step is open the badge reports READINESS, amber (transitional
+                   caution — the flame band above already owns the ask). --%>
               <span class={[
                 "ml-auto chat-meta font-semibold",
-                (@health == :healthy && "text-emerald-600 dark:text-emerald-400") ||
+                (@first_run_step == :inference && "text-amber-600 dark:text-amber-400") ||
+                  (@health == :healthy && "text-emerald-600 dark:text-emerald-400") ||
                   (@health == :degraded && "text-orange-700 dark:text-orange-400") ||
                   (@health == :down && "text-rose-600 dark:text-rose-400") ||
                   "text-zinc-400"
               ]}>
-                {@health}
+                {(@first_run_step == :inference && "not ready") || @health}
               </span>
             </div>
             <p class="chat-meta text-zinc-500 dark:text-zinc-400 mt-1">
-              {health_line(@health)} · {(@remote_exposed && "reachable on #{@host}") ||
+              {system_line(@health, @first_run_step)} · {(@remote_exposed &&
+                                                            "reachable on #{@host}") ||
                 "private to this machine"}
             </p>
             <div class="relative z-10 mt-4 space-y-1">
