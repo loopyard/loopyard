@@ -148,7 +148,6 @@ defmodule LoopyardWeb.Router do
       live "/system/orphans", SystemOrphansLive, :index
       live "/system/recovery", SystemRecoveryLive, :index
       live "/system/secrets", SystemSecretsLive, :index
-      live "/remote/*path", ConnectLive, :index
 
       live "/messages/:agent_id/:msg_id", MessageLive, :show
     end

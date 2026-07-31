@@ -68,7 +68,6 @@ defmodule Loopyard.Application do
       {Registry, keys: :unique, name: Loopyard.PortExposerRegistry},
       {DynamicSupervisor, name: Loopyard.PortExposerSupervisor, strategy: :one_for_one},
       Loopyard.SSHServer,
-      Loopyard.HostExposer,
 
       # Docker event-driven cache — starts the event stream + initial
       # snapshot so LiveViews can read container/volume state from ETS
@@ -180,7 +179,6 @@ defmodule Loopyard.Application do
     # exposed: false, then persists them to disk, overwriting the saved
     # exposed: true. User has to re-open every port on every restart.
     safe_restore("PortRegistry", fn -> Loopyard.PortRegistry.restore() end)
-    safe_restore("HostExposer", fn -> Loopyard.HostExposer.restore() end)
 
     # Restore persisted projects from ~/.loopyard/projects.json
     # ServiceManager will reconnect to any running containers. Wrapped in

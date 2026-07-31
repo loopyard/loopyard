@@ -58,7 +58,8 @@ defmodule LoopyardWeb.DashboardLive do
     socket
     |> assign(:tree, safe(fn -> Loopyard.WorkspaceTree.global(socket.assigns.host) end, []))
     |> assign(:health, safe(&Loopyard.Health.severity/0, :unknown))
-    |> assign(:remote_exposed, safe(&Loopyard.HostExposer.exposed?/0, false))
+    |> assign(:remote_exposed, safe(&Loopyard.Bind.exposed?/0, false))
+    |> assign(:bind, safe(&Loopyard.Bind.describe/0, "unknown"))
     |> assign(:operator, safe(&Loopyard.Workstation.current/0, "—"))
     |> assign(:operator_count, safe(fn -> length(Loopyard.Workstation.list()) end, 1))
     |> assign(:waiting, safe(&Loopyard.Attention.count/0, 0))
@@ -351,12 +352,12 @@ defmodule LoopyardWeb.DashboardLive do
               >
                 Secrets
               </.link>
-              <.link
-                navigate="/remote/"
-                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 chat-meta text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
-              >
-                Remote · {(@remote_exposed && "exposed") || "private"}
-              </.link>
+              <%!-- Read-only. Binding is a boot flag (LOOPYARD_BIND), never a
+                   switch in here: a toggle reachable over the connection it
+                   controls can strand you the moment you tap it remotely. --%>
+              <div class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 chat-meta text-zinc-500 dark:text-zinc-400">
+                Bound to <span class="font-mono">{@bind}</span>
+              </div>
             </div>
           </section>
         </div>

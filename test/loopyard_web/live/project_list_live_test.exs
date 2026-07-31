@@ -20,12 +20,18 @@ defmodule LoopyardWeb.ProjectListLiveTest do
       assert html =~ "New project"
     end
 
-    test "home dashboard surfaces Remote and System", %{conn: conn} do
+    test "home dashboard surfaces the binding and System", %{conn: conn} do
       # The Remote/System chrome moved off the workspaces list onto the home
       # dashboard (commit 6450c3d dropped the top nav; they're cards on "/" now).
+      #
+      # "Remote" used to be a LINK to a toggle that exposed/unexposed the
+      # endpoint. That toggle is gone: it was reachable over the very connection
+      # it controlled, so disabling it remotely stranded you. Binding is now a
+      # boot flag (LOOPYARD_BIND) and the card only REPORTS it.
       {:ok, _view, html} = live(conn, "/")
-      assert html =~ "Remote"
+      assert html =~ "Bound to"
       assert html =~ "System"
+      refute html =~ "/remote/"
     end
 
     test "mount returns under 500ms — pure ETS reads, no shell-outs", %{conn: conn} do

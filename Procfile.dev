@@ -1,1 +1,1 @@
-web: mix loopyard.server
+web: LOOPYARD_BIND=0.0.0.0 mix loopyard.server

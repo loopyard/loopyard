@@ -1,9 +1,31 @@
 import Config
 
-# Loopback by default. Operator opts in via /connect → Expose, which restarts
-# the endpoint bound to 0.0.0.0. See Loopyard.HostExposer.
+# Where we listen is a BOOT FLAG, not runtime state:
+#
+#   LOOPYARD_BIND=0.0.0.0    reachable on the LAN
+#   (unset)                  loopback only
+#
+# This replaced a UI toggle that could strand you: it was reachable over the
+# very connection it controlled, so hitting "private" from your phone while
+# travelling severed your only link with no way back short of physical access.
+# It also persisted to a JSON file, so losing that file silently un-exposed the
+# server. Parsed inline (not via Loopyard.Bind) because config is evaluated
+# before app modules are guaranteed loaded; Loopyard.Bind reads it back for
+# display. Bad values fall back to loopback — the safe direction.
+bind_ip =
+  case System.get_env("LOOPYARD_BIND") do
+    nil ->
+      {127, 0, 0, 1}
+
+    val ->
+      case :inet.parse_strict_address(String.to_charlist(String.trim(val))) do
+        {:ok, ip} -> ip
+        {:error, _} -> {127, 0, 0, 1}
+      end
+  end
+
 config :loopyard, LoopyardWeb.Endpoint,
-  http: [ip: {127, 0, 0, 1}, port: String.to_integer(System.get_env("PORT") || "4000")],
+  http: [ip: bind_ip, port: String.to_integer(System.get_env("PORT") || "4000")],
   check_origin: false,
   code_reloader: true,
   debug_errors: true,

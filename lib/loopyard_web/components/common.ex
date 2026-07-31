@@ -438,7 +438,7 @@ defmodule LoopyardWeb.Components.Common do
         breadcrumbs={@breadcrumbs}
         iex_session={@iex_session}
         mode={@mode}
-        host_exposed={Loopyard.HostExposer.exposed?()}
+        host_exposed={Loopyard.Bind.exposed?()}
       >
         {render_slot(@header_actions)}
       </.header>
