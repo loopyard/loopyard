@@ -62,6 +62,19 @@ defmodule LoopyardWeb.DashboardLive do
     |> assign(:operator, safe(&Loopyard.Workstation.current/0, "—"))
     |> assign(:operator_count, safe(fn -> length(Loopyard.Workstation.list()) end, 1))
     |> assign(:waiting, safe(&Loopyard.Attention.count/0, 0))
+    |> assign(:inference_ready?, safe(&inference_ready?/0, true))
+  end
+
+  # Can an agent actually run? Without a credential the harness can't
+  # authenticate, so EVERY downstream step (build the workspace, write the
+  # compose file, boot the dev server) fails — the product is inert. Either
+  # credential counts: the durable 1-year OAuth token or a raw API key.
+  #
+  # Defaults to TRUE on error (see `safe/2` above): a wedged env store must not
+  # nag a working install to re-authenticate.
+  defp inference_ready? do
+    keys = Loopyard.Workstation.Env.keys(Loopyard.Workstation.current())
+    "CLAUDE_CODE_OAUTH_TOKEN" in keys or "ANTHROPIC_API_KEY" in keys
   end
 
   defp safe(fun, default) do
@@ -70,6 +83,69 @@ defmodule LoopyardWeb.DashboardLive do
     _ -> default
   catch
     _, _ -> default
+  end
+
+  @doc false
+  # FIRST RUN. A fresh install has no credential, so no agent can run — but the
+  # dashboard used to render three tidy cards and "All 3 subsystems healthy",
+  # which is true of the SUBSYSTEMS and false of the PRODUCT. A new user was
+  # left to guess; the one page that fixes it (/workstations/:id) is
+  # undiscoverable from here.
+  #
+  # So: one band, one action, and it disappears the moment a token lands.
+  # Flame, because this is the canonical blocked-on-a-human case (see the brand
+  # rules in CLAUDE.md — flame is reserved for exactly this).
+  #
+  # The command carries `__ORIGIN__`, which the `Clip` hook swaps for the real
+  # browser origin at copy time. That matters because Loopyard is self-hosted:
+  # the server can't know the host you actually reached (LAN IP, tunnel,
+  # reverse proxy), but the browser can. Same reason the token is inline — a
+  # remote fetch is gated by `PushAuth`.
+  attr :workstation, :string, required: true
+
+  defp start_here(assigns) do
+    ~H"""
+    <section class="mt-8 md:mt-12 border border-orange-300 dark:border-orange-500/40 bg-orange-50 dark:bg-orange-500/[0.06] p-5 md:p-6">
+      <div class="flex items-center gap-2.5">
+        <span class="w-2 h-2 rounded-full bg-orange-500 flex-none" aria-hidden="true"></span>
+        <h2 class="text-base font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+          Start here — connect Claude
+        </h2>
+      </div>
+      <p class="chat-sub text-zinc-700 dark:text-zinc-300 mt-2">
+        Agents build everything else in Loopyard — the Dockerfile, the services, the dev
+        server. None of it can start until Claude can authenticate. Run this on your Mac;
+        it opens a browser to authorize and pushes a 1-year token back here.
+      </p>
+      <div class="mt-3">
+        <LoopyardWeb.Components.Workstation.command_box
+          id="start-here-claude"
+          command={"curl -fsS \"__ORIGIN__/workstations/#{@workstation}/claude/setup.sh?token=#{Loopyard.PushToken.get()}\" | sh"}
+        />
+      </div>
+      <p class="chat-meta text-zinc-500 dark:text-zinc-400 mt-2.5">
+        This band clears itself once the token lands — nothing else to do.
+      </p>
+      <%!-- Secondary routes as real targets, not inline text. On a phone these
+           are the escape hatch when you have no terminal (paste the token, or
+           let the agent ask for it), so they have to be tappable — hence the
+           py-2.5 block layout that collapses to inline spacing at md:. --%>
+      <div class="mt-1 flex flex-col md:flex-row md:items-center md:gap-4">
+        <.link
+          navigate={"/workstations/#{@workstation}/claude"}
+          class="focus-ring chat-meta py-2.5 md:py-1 text-zinc-600 dark:text-zinc-300 underline hover:text-zinc-900 dark:hover:text-zinc-100"
+        >
+          Other ways to connect
+        </.link>
+        <.link
+          navigate={"/workstations/#{@workstation}"}
+          class="focus-ring chat-meta py-2.5 md:py-1 text-zinc-600 dark:text-zinc-300 underline hover:text-zinc-900 dark:hover:text-zinc-100"
+        >
+          All your tools
+        </.link>
+      </div>
+    </section>
+    """
   end
 
   @impl true
@@ -88,6 +164,8 @@ defmodule LoopyardWeb.DashboardLive do
 
       <div class="mx-auto max-w-6xl px-4 md:px-8 pt-10 md:pt-16 pb-10">
         <Brand.logo mark_class="w-6 h-6 flex-none" wordmark_class="text-lg tracking-tight" />
+
+        <.start_here :if={not @inference_ready?} workstation={@operator} />
 
         <div class="mt-8 md:mt-12 grid gap-4 md:grid-cols-3">
           <%!-- ── WORKSPACES ─────────────────────────────────────────────── --%>

@@ -8,10 +8,10 @@ Everything is multiplayer. Multiple people can watch agents work, interact with 
 
 ### Why this exists
 
-Claude Code runs on your host and you manage the dev environment yourself. Loopyard gives each project a containerized workspace that's isolated and shareable. The agent doesn't just write code; it builds the whole stack (Dockerfile, services, dev server, env vars) and then execs into the container to work.
+Claude Code runs on your host and you manage the dev environment yourself. Loopyard gives each project a containerized workspace that's isolated and shareable. The agent doesn't just write code; it builds the whole stack (Dockerfile, services, dev server, env vars) and runs inside the container to work.
 
 **What you get:**
-- Zero-config project setup. Clone a repo, launch it, the setup agent figures out the rest.
+- Zero-config project setup. Clone a repo, launch it, the agent figures out the rest.
 - Full Docker stack: workspace, dev server, postgres, redis, whatever the project needs.
 - Multiplayer. Every chat, terminal, and service log has its own URL.
 - Multiple agents per project, running at the same time.
@@ -21,7 +21,11 @@ Claude Code runs on your host and you manage the dev environment yourself. Loopy
 
 ## Getting started
 
-macOS only. Requires [Homebrew](https://brew.sh).
+macOS only. Requires [Homebrew](https://brew.sh) and a running container
+runtime — [Docker Desktop](https://docker.com), [Colima](https://github.com/abiosoft/colima),
+or OrbStack. Docker isn't a dependency so much as the substrate: every
+workspace, agent, and dev server is a container, so nothing works until
+`docker version` succeeds.
 
 ```bash
 git clone https://github.com/loopyard/loopyard.git
@@ -31,7 +35,22 @@ mix loopyard.setup
 mix loopyard.server
 ```
 
-Launch from any project directory:
+Then open http://localhost:4000 and **connect Claude** — the dashboard leads
+with it. Agents build everything else (the Dockerfile, the services, the dev
+server), so none of that can start until Claude can authenticate. The one
+command it gives you runs on your Mac, opens a browser to authorize, and
+pushes a 1-year token back:
+
+```bash
+curl -fsS "http://localhost:4000/workstations/<you>/claude/setup.sh?token=..." | sh
+```
+
+From there, `/workstations/<you>` is where the rest of your tools connect —
+GitHub, Fly, Codex — the same way. Loopyard is self-hosted, so credentials are
+pushed *up* from your machine rather than read off your disk; that's also what
+makes it work when the server is on a different box than your laptop.
+
+Launch a project from any directory:
 
 ```bash
 open "http://localhost:4000/launch/SECRET?path=$(pwd)"
@@ -42,7 +61,7 @@ The actual URL is printed when the server starts.
 ## How it works
 
 1. Launch a project. Point Loopyard at any git repo.
-2. Setup agent auto-detects the stack: language, framework, databases, services.
+2. The agent auto-detects the stack: language, framework, databases, services.
 3. Docker Compose builds and runs everything.
 4. Agents exec into the workspace container to write code, run tests, debug.
 5. You watch, interact, collaborate. Every view is live.

@@ -39,6 +39,28 @@ config :loopyard,
 # subscriber/broadcast call raises on first use.
 config :aural, pubsub: Loopyard.PubSub
 
+# Run ONLY the os_mon subsystem we actually read.
+#
+# `:memsup` backs SystemStats.memory/0 on non-macOS hosts — keep it.
+# Nothing anywhere reads `:disksup` or `:cpu_sup`, and both are pure
+# console noise:
+#
+#   * disksup alarms on EVERY mounted filesystem. On a dev Mac that
+#     means Time Machine backup volumes, /Volumes/.timemachine snapshot
+#     mounts, and Docker's installer temp dir — 21 multi-line
+#     `:alarm_handler: {:set, {{:disk_almost_full, …}}}` notices that
+#     buried the 4 real boot lines under ~80 lines of output. Loopyard
+#     has no stake in whether a read-only backup mount is full.
+#   * cpu_sup contributes only "[os_mon] cpu supervisor port (cpu_sup):
+#     Erlang has closed" on every VM shutdown, including every test run.
+#
+# This silences the REPORTING, not a real condition: genuine disk
+# pressure on the volume we care about still shows up where it belongs
+# (Health / /system), and nothing here changes free space.
+config :os_mon,
+  start_disksup: false,
+  start_cpu_sup: false
+
 config :loopyard, LoopyardWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,

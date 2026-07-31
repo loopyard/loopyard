@@ -100,6 +100,11 @@ defmodule LoopyardWeb.Components.Workstation do
   @doc """
   A dark, copyable command box: a `<pre>` with the command + a Copy button wired
   to the `Clip` JS hook. `id` must be unique on the page.
+
+  Sizing is mobile-first and shrinks at `md:` — Copy is the primary action on a
+  phone (where you're least likely to be able to select the text by hand), so it
+  clears the ~44px finger target there and tightens up on desktop, where a
+  cursor is precise and the button should stop shouting.
   """
   attr :id, :string, required: true
   attr :command, :string, required: true
@@ -107,14 +112,14 @@ defmodule LoopyardWeb.Components.Workstation do
   def command_box(assigns) do
     ~H"""
     <div class="flex items-stretch gap-2">
-      <pre class="flex-1 overflow-x-auto rounded-sm bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-[11px] leading-relaxed font-mono px-3 py-2.5 ring-1 ring-zinc-800">{@command}</pre>
+      <pre class="flex-1 min-w-0 overflow-x-auto rounded-sm bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-[11px] leading-relaxed font-mono px-3 py-3 md:py-2.5 ring-1 ring-zinc-800">{@command}</pre>
       <button
         id={@id}
         type="button"
         phx-hook="Clip"
         data-label="Copy"
         data-copy={@command}
-        class="focus-ring flex-none self-start rounded-sm bg-zinc-900 hover:bg-zinc-700 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white px-3.5 py-2.5 text-xs font-medium transition-colors"
+        class="focus-ring flex-none self-stretch md:self-start rounded-sm bg-zinc-900 hover:bg-zinc-700 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white px-4 md:px-3.5 py-3 md:py-2.5 text-sm md:text-xs font-medium transition-colors"
       >
         Copy
       </button>
