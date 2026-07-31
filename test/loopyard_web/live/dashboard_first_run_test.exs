@@ -21,6 +21,18 @@ defmodule LoopyardWeb.DashboardFirstRunTest do
     ws = Workstation.current()
     before = Workstation.Env.all(ws)
 
+    # The first-run step depends on whether ANY project exists, which is global
+    # ETS shared with whatever else has run. Snapshot and clear so these assert
+    # against a genuine fresh install rather than leftovers from another test
+    # (or, when run against a live dev box, real projects).
+    projects_before = :ets.tab2list(:project_registry)
+    :ets.delete_all_objects(:project_registry)
+
+    on_exit(fn ->
+      :ets.delete_all_objects(:project_registry)
+      for row <- projects_before, do: :ets.insert(:project_registry, row)
+    end)
+
     on_exit(fn ->
       # Restore whatever was there — these tests mutate the shared env store.
       for {k, _} <- Workstation.Env.all(ws), not Map.has_key?(before, k) do

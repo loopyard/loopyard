@@ -3,6 +3,47 @@ defmodule Loopyard.Git do
   Thin wrapper around git CLI for repo and worktree operations.
   """
 
+  @doc """
+  The default branch of a REMOTE, without cloning it.
+
+  `git ls-remote --symref <url> HEAD` prints `ref: refs/heads/<name>\\tHEAD`.
+  Returns nil on any failure so callers fall back rather than block.
+
+  Why this exists: assuming "main" breaks perfectly valid repos. Anything
+  created before ~2020 — and plenty since — still uses `master`, and a clone
+  then dies with "Remote branch main not found in upstream origin" for a URL
+  the user typed correctly. Nobody should need to know a repo's default branch
+  to clone it, so every path that clones a remote resolves it here.
+
+  `token` (optional) is injected for private repos; it only ever reaches the
+  git process argv, never a log.
+  """
+  @spec default_branch(String.t(), String.t() | nil) :: String.t() | nil
+  def default_branch(url, token \\ nil) do
+    probe_url = if token, do: authed_url(url, token), else: url
+
+    case System.cmd("git", ["ls-remote", "--symref", probe_url, "HEAD"],
+           stderr_to_stdout: true,
+           env: [{"GIT_TERMINAL_PROMPT", "0"}]
+         ) do
+      {out, 0} ->
+        case Regex.run(~r{^ref:\s+refs/heads/(\S+)\s+HEAD}m, out) do
+          [_, branch] -> branch
+          _ -> nil
+        end
+
+      _ ->
+        nil
+    end
+  rescue
+    _ -> nil
+  catch
+    _, _ -> nil
+  end
+
+  defp authed_url("https://" <> rest, token), do: "https://x-access-token:#{token}@#{rest}"
+  defp authed_url(url, _token), do: url
+
   @doc "Get the git repo root for a path. Returns {:ok, path} or {:error, reason}."
   def repo_root(path) do
     case git(["rev-parse", "--show-toplevel"], cd: path) do

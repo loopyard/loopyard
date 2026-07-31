@@ -45,8 +45,15 @@ defmodule Loopyard.Onboarding do
         do: CanonicalRepo.init_from_remote(project_id, remote, opts),
         else: CanonicalRepo.init(project_id)
 
+    # A cloned repo's main branch is whatever the REMOTE says it is — assuming
+    # "main" fails outright on every `master` repo, and the operator's
+    # create_project_from_github goes through here. A blank repo has no remote
+    # to ask, so it starts on "main" by convention.
+    branch =
+      if remote, do: Loopyard.Git.default_branch(remote, opts[:token]) || "main", else: "main"
+
     with {:ok, _canon} <- init,
-         {:ok, _ws_vol} <- CanonicalRepo.checkout(project_id, ws_id, "main", remote) do
+         {:ok, _ws_vol} <- CanonicalRepo.checkout(project_id, ws_id, branch, remote) do
       project =
         ProjectRegistry.register(%{
           id: project_id,
@@ -60,7 +67,7 @@ defmodule Loopyard.Onboarding do
           added_at: DateTime.utc_now()
         })
 
-      ws = register_workspace(project_id, ws_id, "main", is_main: true)
+      ws = register_workspace(project_id, ws_id, branch, is_main: true)
       persist(project_id)
       # Always-on per branch: bring the cheap work container up now so the
       # branch is a live, workable box the moment it exists (no cold start when

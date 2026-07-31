@@ -6,7 +6,7 @@ defmodule Loopyard.Tools.ControlPlane.CreateProjectFromGithub do
         "the operating identity's GitHub auth). Shows the user an Approve/Deny card " <>
         "and WAITS. On approval, bare-clones the repo into the project's canonical " <>
         "volume, creates the main workspace, and spawns a workspace agent to set it " <>
-        "up. You do NOT set it up yourself. Currently checks out the 'main' branch.",
+        "up. You do NOT set it up yourself. Checks out the repo's default branch.",
     busy_words: ["proposing a clone", "awaiting approval"],
     params: [
       agent_id: {:string, required: true},

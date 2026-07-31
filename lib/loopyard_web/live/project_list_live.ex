@@ -162,7 +162,10 @@ defmodule LoopyardWeb.ProjectListLive do
           # the user gets "Remote branch main not found" for a URL that is
           # perfectly valid. Nobody should have to know a repo's default
           # branch to clone it.
-          resolved = if branch == "", do: default_branch(url, token) || "main", else: branch
+          resolved =
+            if branch == "",
+              do: Loopyard.Git.default_branch(url, token) || "main",
+              else: branch
 
           send(
             lv,
@@ -179,34 +182,6 @@ defmodule LoopyardWeb.ProjectListLive do
     ProjectRegistry.remove_project(id)
     {:noreply, reload(socket)}
   end
-
-  # Ask the remote what its default branch is: `ls-remote --symref` prints
-  # `ref: refs/heads/<name>\tHEAD`. Cheap (no clone), and nil on any failure so
-  # the caller falls back rather than blocking.
-  defp default_branch(url, token) do
-    url = if token, do: authed_url(url, token), else: url
-
-    case System.cmd("git", ["ls-remote", "--symref", url, "HEAD"],
-           stderr_to_stdout: true,
-           env: [{"GIT_TERMINAL_PROMPT", "0"}]
-         ) do
-      {out, 0} ->
-        case Regex.run(~r{^ref:\s+refs/heads/(\S+)\s+HEAD}m, out) do
-          [_, branch] -> branch
-          _ -> nil
-        end
-
-      _ ->
-        nil
-    end
-  rescue
-    _ -> nil
-  end
-
-  # Token in the URL so a private repo can be probed without an interactive
-  # prompt. Never logged — it only ever reaches the git process argv here.
-  defp authed_url("https://" <> rest, token), do: "https://x-access-token:#{token}@#{rest}"
-  defp authed_url(url, _token), do: url
 
   @impl true
   def handle_info({:project_created, {:ok, project, ws}}, socket) do
