@@ -44,7 +44,47 @@ defmodule LoopyardWeb.ProjectListLive do
      |> assign(:host, host)
      |> assign(:projects, Loopyard.WorkspaceTree.global(host))
      |> assign(:launch_cmd, launch_cmd)
-     |> assign(:creating, nil)}
+     |> assign(:creating, nil)
+     |> assign(:github_url, "")
+     |> assign(:workstation, safe_ws())
+     |> assign(:github_connected?, github_token() != nil)}
+  end
+
+  # The workstation's GitHub token — what makes private clones work without a
+  # second credential to manage. nil when GitHub hasn't been connected yet.
+  defp github_token do
+    keys = Loopyard.Workstation.Env.all(Loopyard.Workstation.current())
+
+    Enum.find_value(["GITHUB_TOKEN", "GH_TOKEN"], fn k ->
+      case Map.get(keys, k) do
+        v when is_binary(v) and v != "" -> v
+        _ -> nil
+      end
+    end)
+  rescue
+    _ -> nil
+  end
+
+  defp safe_ws do
+    Loopyard.Workstation.current()
+  rescue
+    _ -> "default"
+  end
+
+  # Clone failures are mostly one of three human-fixable things; say which.
+  defp clone_error(reason) do
+    text = if is_binary(reason), do: reason, else: inspect(reason, limit: 20)
+
+    cond do
+      text =~ "Authentication" or text =~ "403" or text =~ "denied" ->
+        "#{text} — if it's private, connect GitHub first."
+
+      text =~ "not found" or text =~ "404" ->
+        "#{text} — check the URL, or connect GitHub if it's private."
+
+      true ->
+        text
+    end
   end
 
   @impl true
@@ -91,11 +131,82 @@ defmodule LoopyardWeb.ProjectListLive do
     end
   end
 
+  # Clone a git URL into its own volume. The engine already existed
+  # (`ProjectRegistry.add_from_url/2`); only this form was missing, which left
+  # the intended happy path — and the ONLY path that works when Loopyard runs
+  # on a different machine than the developer — behind a "Soon" badge.
+  #
+  # Runs OFF the LiveView process: a clone is seconds of network + Docker work,
+  # and freezing the UI through it is exactly the wrong feel. Same
+  # `:creating` pattern as create_project.
+  @impl true
+  def handle_event("add_from_url", %{"url" => url} = params, socket) do
+    url = String.trim(url)
+    branch = params |> Map.get("branch", "") |> String.trim()
+
+    cond do
+      url == "" ->
+        {:noreply, put_flash(socket, :error, "Paste a repo URL")}
+
+      socket.assigns.creating ->
+        {:noreply, socket}
+
+      true ->
+        lv = self()
+        token = github_token()
+
+        Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
+          # Resolve the branch OFF the happy path of guessing. Defaulting to
+          # "main" fails outright on any repo that still uses master (or
+          # trunk, or develop) — github.com/octocat/Hello-World is master, and
+          # the user gets "Remote branch main not found" for a URL that is
+          # perfectly valid. Nobody should have to know a repo's default
+          # branch to clone it.
+          resolved = if branch == "", do: default_branch(url, token) || "main", else: branch
+
+          send(
+            lv,
+            {:cloned, Loopyard.ProjectRegistry.add_from_url(url, branch: resolved, token: token)}
+          )
+        end)
+
+        {:noreply, socket |> assign(:creating, url) |> assign(:github_url, url)}
+    end
+  end
+
   @impl true
   def handle_event("remove_project", %{"id" => id}, socket) do
     ProjectRegistry.remove_project(id)
     {:noreply, reload(socket)}
   end
+
+  # Ask the remote what its default branch is: `ls-remote --symref` prints
+  # `ref: refs/heads/<name>\tHEAD`. Cheap (no clone), and nil on any failure so
+  # the caller falls back rather than blocking.
+  defp default_branch(url, token) do
+    url = if token, do: authed_url(url, token), else: url
+
+    case System.cmd("git", ["ls-remote", "--symref", url, "HEAD"],
+           stderr_to_stdout: true,
+           env: [{"GIT_TERMINAL_PROMPT", "0"}]
+         ) do
+      {out, 0} ->
+        case Regex.run(~r{^ref:\s+refs/heads/(\S+)\s+HEAD}m, out) do
+          [_, branch] -> branch
+          _ -> nil
+        end
+
+      _ ->
+        nil
+    end
+  rescue
+    _ -> nil
+  end
+
+  # Token in the URL so a private repo can be probed without an interactive
+  # prompt. Never logged — it only ever reaches the git process argv here.
+  defp authed_url("https://" <> rest, token), do: "https://x-access-token:#{token}@#{rest}"
+  defp authed_url(url, _token), do: url
 
   @impl true
   def handle_info({:project_created, {:ok, project, ws}}, socket) do
@@ -107,6 +218,23 @@ defmodule LoopyardWeb.ProjectListLive do
      socket
      |> assign(:creating, nil)
      |> put_flash(:error, "Couldn't create project: #{inspect(reason)}")}
+  end
+
+  # add_from_url/2 returns the project only — resolve its workspace to land the
+  # user in the workspace they just cloned, not a project index.
+  def handle_info({:cloned, {:ok, project, workspace}}, socket) do
+    {:noreply, push_navigate(socket, to: "/projects/#{project.id}/workspaces/#{workspace.id}")}
+  end
+
+  def handle_info({:cloned, {:ok, project}}, socket) do
+    {:noreply, push_navigate(socket, to: "/projects/#{project.id}")}
+  end
+
+  def handle_info({:cloned, {:error, reason}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:creating, nil)
+     |> put_flash(:error, "Couldn't clone that repo: #{clone_error(reason)}")}
   end
 
   def handle_info(%Loopyard.Events.Projects.Changed{} = e, socket), do: on_changed(e, socket)
@@ -224,7 +352,6 @@ defmodule LoopyardWeb.ProjectListLive do
                 navigate="/projects/new/github"
                 title="From GitHub"
                 desc="Clone a repo to start, sync back as it matures."
-                badge="Soon"
               />
             </div>
           </div>
@@ -324,18 +451,67 @@ defmodule LoopyardWeb.ProjectListLive do
           </div>
         <% :new_github -> %>
           <div class="max-w-2xl">
-            <h1 class="text-xl font-semibold mb-1 flex items-center gap-2">
-              From GitHub
-              <span class="text-[10px] font-medium uppercase tracking-wide rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400 px-2 py-0.5">
-                Soon
-              </span>
-            </h1>
+            <h1 class="text-xl font-semibold mb-1">From GitHub</h1>
             <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-5">
-              Clone a repo to start, and sync back as it matures. The engine's built — the UI is next.
+              Clone a repo into its own workspace. This is the only route that works when
+              Loopyard runs on a different machine than the one you're sitting at.
             </p>
-            <div class=" border border-dashed border-zinc-300 dark:border-zinc-700 p-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
-              Coming soon.
+
+            <form phx-submit="add_from_url" class="mb-5">
+              <div class="flex flex-col sm:flex-row sm:items-center gap-2">
+                <input
+                  type="text"
+                  name="url"
+                  value={@github_url}
+                  placeholder="https://github.com/owner/repo"
+                  autocomplete="off"
+                  autofocus
+                  disabled={@creating != nil}
+                  class="flex-1 min-w-0 rounded-sm border border-zinc-300 dark:border-zinc-600 bg-brand-paper dark:bg-brand-ink px-3 py-3 md:py-2.5 text-sm font-mono
+    text-zinc-900 dark:text-zinc-300 placeholder:text-zinc-400 dark:placeholder:text-zinc-600
+    focus:outline-none focus:ring-1 focus:ring-violet-500/20 focus:border-violet-400 disabled:opacity-60"
+                />
+                <input
+                  type="text"
+                  name="branch"
+                  value=""
+                  placeholder="branch"
+                  aria-label="Branch — blank uses the repo default"
+                  disabled={@creating != nil}
+                  class="sm:w-32 flex-none rounded-sm border border-zinc-300 dark:border-zinc-600 bg-brand-paper dark:bg-brand-ink px-3 py-3 md:py-2.5 text-sm font-mono
+    text-zinc-900 dark:text-zinc-300 focus:outline-none focus:ring-1 focus:ring-violet-500/20 focus:border-violet-400 disabled:opacity-60"
+                />
+                <button
+                  type="submit"
+                  disabled={@creating != nil}
+                  class="focus-ring flex-none rounded-sm bg-zinc-900 dark:bg-zinc-200 hover:bg-zinc-800 dark:hover:bg-white px-5 py-3 md:py-2.5 text-sm font-semibold text-white dark:text-zinc-900 transition-colors disabled:opacity-60"
+                >
+                  {if @creating, do: "Cloning…", else: "Clone"}
+                </button>
+              </div>
+            </form>
+
+            <%!-- Private repos need a token, and the fix is one click away rather
+                 than a dead end. Connected → say so quietly and move on. --%>
+            <div
+              :if={not @github_connected?}
+              class="border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-4"
+            >
+              <p class="text-sm text-zinc-700 dark:text-zinc-300">
+                Public repos clone as-is. For private ones,
+                <.link
+                  navigate={"/workstations/#{@workstation}/github"}
+                  class="underline hover:text-zinc-900 dark:hover:text-zinc-100"
+                >connect GitHub</.link>
+                — one command on your Mac, and the token is reused here automatically.
+              </p>
             </div>
+            <p
+              :if={@github_connected?}
+              class="text-[11px] text-zinc-500 dark:text-zinc-400"
+            >
+              GitHub is connected — private repos work too.
+            </p>
           </div>
       <% end %>
     </.page_shell>

@@ -91,7 +91,13 @@ Screenshots: `02-workspaces.png`, `03-new-project.png`.
 `/workspaces` has a "+ New project" button. The dashboard is a dead end that
 hides the action one click away.
 
-**F6 — "From GitHub" is `SOON`.** `/projects/new` offers From scratch / From a
+**F6 — "From GitHub" is `SOON`. [FIXED]** The page itself admitted "the
+engine's built — the UI is next", and that was exactly right:
+`ProjectRegistry.add_from_url/2` already cloned into a volume. Only the form
+was missing. Built it; verified end to end by cloning a real public repo into
+a live workspace with a running agent. Original finding below.
+
+**F6 (original)** `/projects/new` offers From scratch / From a
 folder on this machine / **From GitHub (SOON)**. The intended happy path — the
 one the whole workstation + `GITHUB_TOKEN` setup exists to serve — is not
 implemented. Everything upstream of it (install `gh`, transfer the token) leads
@@ -108,6 +114,12 @@ workspaces → new project → create, never once being told Claude auth is
 required. The failure surfaces later as `Claude auth failed: Authentication
 required` in the EventLog — observed for real on this machine earlier today,
 which is exactly how a first-timer would experience it.
+
+**F10 — branch guessing breaks valid repos. [FIXED]** The first working clone
+failed on `github.com/octocat/Hello-World` with "Remote branch main not found"
+— because that repo defaults to `master`. Nobody should need to know a repo's
+default branch to clone it. The branch field is now optional and blank resolves
+the real default via `git ls-remote --symref` before cloning.
 
 **F9 — copy nit:** "Nothing here yet — create your first project below." The
 button is above-right; what's below is "No projects yet."
