@@ -222,21 +222,31 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
           "mt-3 flex flex-col sm:flex-row sm:items-center gap-2",
           (@q[:multi] && "sm:justify-end") || "sm:justify-between"
         ]}>
-          <div :if={!@q[:multi]} class="flex flex-col sm:flex-row gap-2 order-last sm:order-none">
+          <%!-- Set apart from the primary on mobile (mt-3) and deliberately
+      smaller (min-h-10 vs 52px, chat-meta vs text-base). Skip also sits
+      LAST — furthest from Answer — because it was directly beneath the
+      primary at identical weight, which made discarding a question a
+      plausible mis-tap. Size + distance beats a confirm-tap: requiring a
+      double-tap punishes every correct use to guard a rare wrong one,
+      and nothing on screen would teach it. --%>
+          <div
+            :if={!@q[:multi]}
+            class="flex flex-col sm:flex-row gap-2 mt-3 sm:mt-0 order-last sm:order-none"
+          >
             <button
               :if={!@q[:multi]}
               type="button"
               phx-click="skip_question"
               phx-value-question_id={@msg.question_id}
               phx-value-q={@q.id}
-              class="focus-ring chat-sub w-full sm:w-auto inline-flex items-center justify-center rounded-sm border border-zinc-300 dark:border-zinc-600 px-4 min-h-11 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              class="focus-ring chat-meta w-full sm:w-auto order-last sm:order-first inline-flex items-center justify-center rounded-sm px-4 min-h-10 text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
             >
               Skip
             </button>
             <.link
               :if={!@q[:multi] && @chat_path}
               navigate={@chat_path}
-              class="focus-ring chat-sub w-full sm:w-auto inline-flex items-center justify-center rounded-sm border border-zinc-300 dark:border-zinc-600 px-4 min-h-11 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              class="focus-ring chat-meta w-full sm:w-auto inline-flex items-center justify-center rounded-sm border border-zinc-300 dark:border-zinc-600 px-4 min-h-10 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
             >
               Chat
             </.link>
@@ -247,7 +257,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
             type="submit"
             class={
               [
-                "focus-ring chat-sub flex-1 sm:flex-none inline-flex items-center justify-center rounded-sm font-medium px-4 min-h-11 transition-all",
+                "focus-ring w-full sm:w-auto order-first sm:order-none inline-flex items-center justify-center rounded-sm text-base font-semibold px-6 min-h-[3.25rem] sm:min-h-12 transition-all",
                 if(draft_count(@msg, @q) > 0,
                   do: "bg-orange-600 hover:bg-orange-700 text-white shadow-md shadow-orange-600/30",
                   # Lights up the INSTANT you pick, with no server round-trip.
