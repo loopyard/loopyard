@@ -257,7 +257,7 @@ defmodule LoopyardWeb.DashboardLive do
               >
                 <path d="M3 3.5A1.5 1.5 0 0 1 4.5 2h3A1.5 1.5 0 0 1 9 3.5v3A1.5 1.5 0 0 1 7.5 8h-3A1.5 1.5 0 0 1 3 6.5v-3ZM3 13.5A1.5 1.5 0 0 1 4.5 12h3A1.5 1.5 0 0 1 9 13.5v3A1.5 1.5 0 0 1 7.5 18h-3A1.5 1.5 0 0 1 3 16.5v-3ZM11 3.5A1.5 1.5 0 0 1 12.5 2h3A1.5 1.5 0 0 1 17 3.5v3A1.5 1.5 0 0 1 15.5 8h-3A1.5 1.5 0 0 1 11 6.5v-3ZM11 13.5a1.5 1.5 0 0 1 1.5-1.5h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3a1.5 1.5 0 0 1-1.5-1.5v-3Z" />
               </svg>
-              <h2 class="text-base font-semibold tracking-tight">Workspaces</h2>
+              <h2 class="text-lg font-semibold tracking-tight">Workspaces</h2>
               <span
                 :if={@ws.working > 0}
                 class="ml-auto text-sm text-violet-600 dark:text-violet-400"
@@ -293,7 +293,7 @@ defmodule LoopyardWeb.DashboardLive do
             <.link navigate="/operator" class="absolute inset-0 focus-ring" aria-label="Operator"></.link>
             <div class="flex items-center gap-2.5 text-zinc-900 dark:text-zinc-50">
               <span class="text-violet-600 dark:text-violet-400"><Brand.mark class="w-5 h-5" /></span>
-              <h2 class="text-base font-semibold tracking-tight">Operator</h2>
+              <h2 class="text-lg font-semibold tracking-tight">Operator</h2>
               <span
                 :if={@waiting > 0}
                 class="ml-auto text-sm font-semibold text-orange-700 dark:text-orange-400"
@@ -362,7 +362,7 @@ defmodule LoopyardWeb.DashboardLive do
                   clip-rule="evenodd"
                 />
               </svg>
-              <h2 class="text-base font-semibold tracking-tight">System</h2>
+              <h2 class="text-lg font-semibold tracking-tight">System</h2>
               <%!-- A green "healthy" over "agents blocked until Claude connects"
                    is the contradiction in miniature. While a blocking first-run
                    step is open the badge reports READINESS, amber (transitional
