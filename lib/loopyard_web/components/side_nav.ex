@@ -94,6 +94,26 @@ defmodule LoopyardWeb.Components.SideNav do
 
   slot :facts, doc: "a compact live-facts line under the name"
 
+  attr :expandable, :boolean,
+    default: false,
+    doc: """
+    Show a collapse chevron, right-aligned in the eyebrow row. Only pass true
+    when there IS detail to reveal — a chevron that opens nothing is worse than
+    no chevron, so panels without extra detail (History, Changes) omit it and
+    let the facts line carry everything.
+    """
+
+  attr :expanded, :boolean, default: false
+  attr :toggle_event, :string, default: nil, doc: "phx-click event for the chevron"
+
+  slot :collapsed_actions,
+    doc: """
+    Compact icon+label actions shown while collapsed. Keep it to two or three:
+    a bare icon with no label is a guessing game, and a row of them stops being
+    a shortcut and becomes a second toolbar. The full labelled set lives in the
+    body when expanded.
+    """
+
   def detail_hero(assigns) do
     ~H"""
     <%!-- NO border by default — a sticky element only needs a divider when content
@@ -105,27 +125,73 @@ defmodule LoopyardWeb.Components.SideNav do
       data-sticky-edge="top"
       class="sticky top-0 z-10 bg-zinc-50/95 dark:bg-zinc-900/95 backdrop-blur-sm px-4 pt-3.5 md:pt-3 pb-2.5 md:pb-2"
     >
-      <%!-- Tiny quiet eyebrow (the KIND) — deliberately smaller/lighter than the
-    section labels below, so it never competes with the title. --%>
-      <div class="text-[11px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500 mb-1 md:mb-0.5">
-        {@eyebrow}
-      </div>
-      <%!-- The TITLE row: a big, bold name that clearly dominates everything the
+      <%!-- THE WHOLE HEADER is the toggle — eyebrow, title and stats together,
+    not a 32px chevron. A big target is easier to hit on a phone and it
+    reads as "this block opens" rather than "hunt for the arrow". The
+    chevron stays purely as the affordance that says so.
+    `:if` on a <button> vs a plain <div> so a hero with nothing to reveal
+    isn't a dead clickable region. --%>
+      <%!-- Big tap target, NO hover wash: lighting up the entire header on hover
+      made the whole sidebar feel like it was reacting to the cursor. Only the
+      chevron brightens, which is enough to say "this opens". --%>
+      <.dynamic_tag
+        tag_name={(@expandable && @toggle_event && "button") || "div"}
+        phx-click={(@expandable && @toggle_event) || nil}
+        aria-expanded={(@expandable && @toggle_event && to_string(@expanded)) || nil}
+        class={[
+          "group/hero w-full text-left",
+          (@expandable && @toggle_event && "focus-ring rounded-sm") || ""
+        ]}
+      >
+        <div class="flex items-center gap-2 mb-1 md:mb-0.5">
+          <div class="flex-1 min-w-0 text-[11px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+            {@eyebrow}
+          </div>
+          <svg
+            :if={@expandable && @toggle_event}
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            class={[
+              "w-4 h-4 flex-none text-zinc-400 dark:text-zinc-500 transition-all",
+              "group-hover/hero:text-zinc-700 dark:group-hover/hero:text-zinc-200",
+              @expanded && "rotate-180"
+            ]}
+            aria-hidden="true"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
+              clip-rule="evenodd"
+            />
+          </svg>
+        </div>
+        <%!-- The TITLE row: a big, bold name that clearly dominates everything the
     card shows/controls, with the status as a colored pill flush-right. --%>
-      <div class="flex items-center gap-2">
-        <span :if={@dot} class={"w-2.5 h-2.5 rounded-full flex-none #{@dot}"} aria-hidden="true"></span>
-        <h2 class="flex-1 min-w-0 text-lg font-semibold leading-tight text-zinc-900 dark:text-zinc-100 truncate">
-          {@name}
-        </h2>
-        <span
-          :if={@status}
-          class={["flex-none text-xs font-semibold px-2 py-0.5 rounded-full", @status_class]}
-        >
-          {@status}
-        </span>
-      </div>
-      <div :if={@facts != []} class="mt-1 text-sm text-zinc-500 dark:text-zinc-400 truncate">
-        {render_slot(@facts)}
+        <div class="flex items-center gap-2">
+          <span :if={@dot} class={"w-2.5 h-2.5 rounded-full flex-none #{@dot}"} aria-hidden="true"></span>
+          <h2 class="flex-1 min-w-0 text-lg font-semibold leading-tight text-zinc-900 dark:text-zinc-100 truncate">
+            {@name}
+          </h2>
+          <span
+            :if={@status}
+            class={["flex-none text-xs font-semibold px-2 py-0.5 rounded-full", @status_class]}
+          >
+            {@status}
+          </span>
+        </div>
+        <div :if={@facts != []} class="mt-1 text-sm text-zinc-500 dark:text-zinc-400 truncate">
+          {render_slot(@facts)}
+        </div>
+      </.dynamic_tag>
+      <%!-- Collapsed actions sit BELOW the stats, deliberately far from the
+      collapse chevron: side by side, a stray tap meant for "expand" would
+      hit an action instead — the same adjacency problem Skip had next to
+      Answer. Full-width labelled buttons live in the body when expanded. --%>
+      <div
+        :if={@collapsed_actions != [] && !@expanded}
+        class="mt-2 flex items-center gap-1"
+      >
+        {render_slot(@collapsed_actions)}
       </div>
     </div>
     """

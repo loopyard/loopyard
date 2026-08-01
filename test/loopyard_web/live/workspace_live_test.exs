@@ -859,7 +859,11 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
       # asserting them here would be asserting the fold is open, not that
       # the panel rendered.
       assert html =~ "Context Test"
-      assert html =~ "Details"
+
+      # The whole hero is the disclosure control, so its accessible NAME is the
+      # agent identity (better than a generic "Show details"); `aria-expanded`
+      # is what states the fold. Collapsed is the default.
+      assert html =~ ~s(aria-expanded="false")
     end
   end
 end

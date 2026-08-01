@@ -89,6 +89,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
         volume_name={@selected_volume}
         base_path={@base_path}
         changes={@changes}
+        expanded={@agent_details_expanded}
       />
     </div>
     """
@@ -280,6 +281,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
   # mobile pull-up sheet ("volume-context"). Plus the danger-zone delete for
   # non-code volumes, which lived on that tab too.
   attr :vol, :map, default: nil
+  attr :expanded, :boolean, default: false
   attr :volume_name, :string, required: true
   attr :base_path, :string, required: true
   attr :changes, :map, default: %{staged: [], unstaged: []}
@@ -308,14 +310,24 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
       )
 
     ~H"""
-    <%!-- STICKY HERO: volume name + type · size inline. --%>
-    <.detail_hero eyebrow="Volume" name={@description} dot="bg-blue-400">
+    <%!-- STICKY HERO. The facts line SUMMARISES what Info spells out — type,
+    size, and (for the code volume) how many files changed — so the collapsed
+    state is still informative and expanding is for the remainder. --%>
+    <.detail_hero
+      eyebrow="Volume"
+      name={@description}
+      dot="bg-blue-400"
+      expandable
+      expanded={@expanded}
+      toggle_event="toggle_agent_details"
+    >
       <:facts>
-        {@vol_type}{if @vol && @vol[:size], do: " · #{@vol.size}"}
+        {@vol_type}{if @vol && @vol[:size], do: " · #{@vol.size}"}{if @code?,
+          do: " · #{@changes_count} changed"}
       </:facts>
     </.detail_hero>
 
-    <.section label="Info">
+    <.section :if={@expanded} label="Info">
       <.info_row label="Type" value={@vol_type} />
       <.info_row :if={@vol && @vol[:size]} label="Size" value={@vol.size} monospace />
       <.info_row

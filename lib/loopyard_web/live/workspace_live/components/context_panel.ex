@@ -78,7 +78,39 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       dot={@hs.dot}
       status={@hs.label}
       status_class={"#{@hs.bg} #{@hs.text}"}
+      expandable
+      expanded={@expanded}
+      toggle_event="toggle_agent_details"
     >
+      <:collapsed_actions>
+        <%!-- Restart is the one action worth reaching without expanding: it's
+        the escape hatch for a wedged harness. Remove stays behind the fold —
+        a destructive action shouldn't be one stray tap from the surface. --%>
+        <button
+          type="button"
+          phx-click="restart_agent"
+          phx-value-id={@agent.id}
+          data-confirm={"Restart agent \"#{@agent.name}\"? Reloads its tools and reconnects the harness. Any in-progress turn stops; the conversation is kept."}
+          aria-label="Restart agent"
+          class="focus-ring inline-flex items-center gap-1.5 h-8 px-2.5 rounded-sm border border-zinc-300 dark:border-zinc-600 chat-meta text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-zinc-700/50 transition-colors"
+        >
+          <svg
+            class="w-3.5 h-3.5 flex-none"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
+          </svg>
+          Restart
+        </button>
+      </:collapsed_actions>
       <:facts>
         {short_model(@agent[:model]) || "default"} · {if @estimating?, do: "~"}{compact_number(
           @total_tokens
@@ -91,77 +123,70 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     reconnecting) — the calm "Ready/Asleep" status now lives in the hero. --%>
     <.harness_status agent={@agent} />
 
-    <%!-- The collapse control. Full-width row so it's an easy target, and the
-    chevron mirrors the state (v closed, ^ open). --%>
-    <button
-      type="button"
-      phx-click="toggle_agent_details"
-      aria-expanded={to_string(@expanded)}
-      class="focus-ring w-full flex items-center justify-between gap-2 px-3 min-h-11 text-left chat-meta uppercase tracking-wide text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+    <%!-- SLIDE. `grid-template-rows: 0fr -> 1fr` is the one pure-CSS way to
+    animate to an AUTO height — max-height needs a guessed magic number that
+    either clips tall content or adds dead easing time. The child must be
+    overflow-hidden + min-h-0 or it refuses to shrink below its content.
+    The content stays in the DOM (no `:if`) because a node that's removed has
+    nothing to transition; aria-hidden + inert keep it out of the a11y tree and
+    the tab order while closed. --%>
+    <div
+      class={[
+        "grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
+        (@expanded && "grid-rows-[1fr]") || "grid-rows-[0fr]"
+      ]}
+      aria-hidden={to_string(!@expanded)}
+      inert={!@expanded}
     >
-      Details
-      <svg
-        viewBox="0 0 20 20"
-        fill="currentColor"
-        class={["w-4 h-4 flex-none transition-transform", @expanded && "rotate-180"]}
-        aria-hidden="true"
-      >
-        <path
-          fill-rule="evenodd"
-          d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
-          clip-rule="evenodd"
-        />
-      </svg>
-    </button>
+      <div class="overflow-hidden min-h-0">
+        <.claude_usage agent={@agent} live_token_est={@live_token_est} />
 
-    <div :if={@expanded}>
-      <.claude_usage agent={@agent} live_token_est={@live_token_est} />
-
-      <%!-- Only the numbers not shown anywhere else: errors (a real signal) + how
+        <%!-- Only the numbers not shown anywhere else: errors (a real signal) + how
     long it's been running / idle. The chat is the record of turns / tool
     calls / messages — no vanity counts. --%>
-      <.section label="Activity">
-        <.info_row
-          label="Errors"
-          value={@agent.errors}
-          class={if @agent.errors > 0, do: "text-red-500 font-medium"}
-        />
-        <.info_row :if={@agent[:started_at]} label="Started" value={time_ago(@agent.started_at)} />
-        <.info_row
-          :if={@agent[:last_activity_at]}
-          label="Last active"
-          value={time_ago(@agent.last_activity_at)}
-        />
-      </.section>
+        <.section label="Activity">
+          <.info_row
+            label="Errors"
+            value={@agent.errors}
+            class={if @agent.errors > 0, do: "text-red-500 font-medium"}
+          />
+          <.info_row :if={@agent[:started_at]} label="Started" value={time_ago(@agent.started_at)} />
+          <.info_row
+            :if={@agent[:last_activity_at]}
+            label="Last active"
+            value={time_ago(@agent.last_activity_at)}
+          />
+        </.section>
 
-      <.docker_context agent={@agent} />
+        <.docker_context agent={@agent} />
 
-      <%!-- STICKY FOOTER: a full "Restart agent" (escape hatch for a wedged harness
+        <%!-- STICKY FOOTER: a full "Restart agent" (escape hatch for a wedged harness
     or a dropped/changed MCP tool — reloads tools, keeps the conversation),
     then the destructive "Remove agent" set apart below the divider. --%>
-      <.action_bar>
-        <:main>
-          <.control_btn
-            phx-click="restart_session"
-            phx-value-id={@agent.id}
-            data-confirm={"Restart agent \"#{@agent.name}\"? Reloads its tools and reconnects the harness. Any in-progress turn stops; the conversation is kept."}
-            class="w-full justify-center"
-          >
-            Restart agent
-          </.control_btn>
-        </:main>
-        <:danger>
-          <.control_btn
-            variant={:danger}
-            phx-click="remove_agent"
-            phx-value-id={@agent.id}
-            data-confirm={"Remove agent \"#{@agent.name}\"? Its session stops and it's removed from this workspace. The code in the volume is not touched."}
-            class="w-full justify-center"
-          >
-            Remove agent
-          </.control_btn>
-        </:danger>
-      </.action_bar>
+        <.action_bar>
+          <:main>
+            <.control_btn
+              phx-click="restart_session"
+              phx-value-id={@agent.id}
+              data-confirm={"Restart agent \"#{@agent.name}\"? Reloads its tools and reconnects the harness. Any in-progress turn stops; the conversation is kept."}
+              class="w-full justify-center"
+            >
+              Restart agent
+            </.control_btn>
+          </:main>
+          <:danger>
+            <.control_btn
+              variant={:danger}
+              phx-click="remove_agent"
+              phx-value-id={@agent.id}
+              data-confirm={"Remove agent \"#{@agent.name}\"? Its session stops and it's removed from this workspace. The code in the volume is not touched."}
+              class="w-full justify-center"
+            >
+              Remove agent
+            </.control_btn>
+          </:danger>
+        </.action_bar>
+      </div>
     </div>
     """
   end

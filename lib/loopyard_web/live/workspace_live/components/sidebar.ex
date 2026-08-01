@@ -155,6 +155,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
           volume_name={@selected_volume}
           base_path={@base_path}
           changes={@changes}
+          expanded={Map.get(assigns, :agent_details_expanded, false)}
         />
       </div>
     </aside>
