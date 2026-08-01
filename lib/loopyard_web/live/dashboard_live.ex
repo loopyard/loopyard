@@ -281,7 +281,7 @@ defmodule LoopyardWeb.DashboardLive do
                   project={w.project}
                   workspace={w.workspace}
                   state={w.state}
-                  size={:sm}
+                  size={:md}
                   class="min-w-0 flex-1"
                 />
               </.link>
