@@ -39,6 +39,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
   # volumes. On the overview itself (`live_action == :index`) the
   # path is `nil`, which the Breadcrumbs component renders as the
   # current page (no link, aria-current="page").
+  # The ONE state derivation (Common.workspace_state), read from the same tree
+  # the rails render — so the dot in this header can't disagree with the dot in
+  # the sidebar for the same workspace.
+  defp ws_identity_state(tree, ws_id) do
+    entry =
+      Enum.find_value(tree || [], fn p ->
+        Enum.find(p.workspaces || [], &(&1.id == ws_id))
+      end)
+
+    LoopyardWeb.Components.Common.workspace_state(entry) || :asleep
+  end
+
   def chat_header(assigns) do
     # The mobile workspace header (phone-only; desktop navigates from the rails).
     # Two rows that mirror the hierarchy Root → Project → Workspace →
@@ -150,15 +162,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
 
       <Nav.switcher_sheet :if={@can_switch} id="nav-switcher" title="Switch workspace">
         <:current>
-          <%!-- Same pair, same order, same weights as the bar's centre — only
-    the chevron flips. Nothing should move when the sheet opens. --%>
-          <span :if={@project} class="flex-none text-lg text-zinc-500 dark:text-zinc-400 truncate">
-            {@project.name}
-          </span>
-          <span :if={@project} class="text-zinc-300 dark:text-zinc-600 flex-none">/</span>
-          <span class="min-w-0 truncate text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-            {@ws_name}
-          </span>
+          <%!-- The canonical identity component, same as the trigger it opens
+    from and every rail in the app — so nothing changes shape when the
+    sheet opens. --%>
+          <LoopyardWeb.Components.Common.workspace_identity
+            project={(@project && @project.name) || @ws_name}
+            workspace={@project && @ws_name}
+            state={ws_identity_state(@global_tree, @workspace.id)}
+            class="min-w-0"
+          />
         </:current>
         <LoopyardWeb.Components.ProjectList.project_groups
           projects={@global_tree}

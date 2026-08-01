@@ -1786,22 +1786,26 @@ defmodule LoopyardWeb.WorkspaceLive do
           } />
         </div>
 
-        <div class="min-w-0 flex items-center justify-center gap-1.5">
-          <.link
-            navigate={"/projects/#{@project.id}"}
-            class="focus-ring rounded-sm text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors truncate"
-          >
-            {@project.name}
-          </.link>
-          <span class="text-zinc-300 dark:text-zinc-600 flex-none">/</span>
-          <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">
-            {(@workspace_entry || %{})[:name] || @workspace.id}
-          </span>
+        <%!-- The canonical project·workspace identity — the SAME component the
+    dashboard, the rails and the switcher render, so the thing you're looking
+    at is drawn identically wherever you meet it. Hand-assembling spans here
+    is exactly how a "/" separator crept in where every other surface uses
+    "·", and how the status dot went missing. --%>
+        <div class="min-w-0 flex items-center justify-center gap-2">
+          <LoopyardWeb.Components.Common.workspace_identity
+            project={@project.name}
+            workspace={(@workspace_entry || %{})[:name] || @workspace.id}
+            state={
+              LoopyardWeb.Components.Common.workspace_state(tree_entry(@global_tree, @workspace.id)) ||
+                :asleep
+            }
+            class="min-w-0"
+          />
           <LoopyardWeb.Components.Common.status_label
             state={
               LoopyardWeb.Components.Common.workspace_state(tree_entry(@global_tree, @workspace.id))
             }
-            class="text-sm ml-1"
+            class="text-sm"
           />
         </div>
 

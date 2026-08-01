@@ -82,35 +82,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       expanded={@expanded}
       toggle_event="toggle_agent_details"
     >
-      <:collapsed_actions>
-        <%!-- Restart is the one action worth reaching without expanding: it's
-        the escape hatch for a wedged harness. Remove stays behind the fold —
-        a destructive action shouldn't be one stray tap from the surface. --%>
-        <button
-          type="button"
-          phx-click="restart_agent"
-          phx-value-id={@agent.id}
-          data-confirm={"Restart agent \"#{@agent.name}\"? Reloads its tools and reconnects the harness. Any in-progress turn stops; the conversation is kept."}
-          aria-label="Restart agent"
-          class="focus-ring inline-flex items-center gap-1.5 h-8 px-2.5 rounded-sm border border-zinc-300 dark:border-zinc-600 chat-meta text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-zinc-700/50 transition-colors"
-        >
-          <svg
-            class="w-3.5 h-3.5 flex-none"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="2"
-            aria-hidden="true"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
-          Restart
-        </button>
-      </:collapsed_actions>
       <:facts>
         {short_model(@agent[:model]) || "default"} · {if @estimating?, do: "~"}{compact_number(
           @total_tokens
@@ -159,35 +130,42 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
         </.section>
 
         <.docker_context agent={@agent} />
-
-        <%!-- STICKY FOOTER: a full "Restart agent" (escape hatch for a wedged harness
-    or a dropped/changed MCP tool — reloads tools, keeps the conversation),
-    then the destructive "Remove agent" set apart below the divider. --%>
-        <.action_bar>
-          <:main>
-            <.control_btn
-              phx-click="restart_session"
-              phx-value-id={@agent.id}
-              data-confirm={"Restart agent \"#{@agent.name}\"? Reloads its tools and reconnects the harness. Any in-progress turn stops; the conversation is kept."}
-              class="w-full justify-center"
-            >
-              Restart agent
-            </.control_btn>
-          </:main>
-          <:danger>
-            <.control_btn
-              variant={:danger}
-              phx-click="remove_agent"
-              phx-value-id={@agent.id}
-              data-confirm={"Remove agent \"#{@agent.name}\"? Its session stops and it's removed from this workspace. The code in the volume is not touched."}
-              class="w-full justify-center"
-            >
-              Remove agent
-            </.control_btn>
-          </:danger>
-        </.action_bar>
       </div>
     </div>
+
+    <%!-- STICKY FOOTER, OUTSIDE the collapsible: `overflow-hidden` on the
+    slide's child kills `position: sticky` for anything inside it, so nesting
+    these clipped them the moment you expanded. Always visible, always pinned
+    to the bottom — the actions shouldn't hide behind a fold anyway.
+    Laid out like the Service panel: a ghost-button grid, two-up where there's
+    room. Destructive stays below the divider. --%>
+    <.action_bar>
+      <:main>
+        <%!-- Grid so this scales the way the Service panel does when an agent
+        grows more actions; with one it simply fills the row. --%>
+        <div class="grid grid-cols-1 gap-1.5">
+          <.control_btn
+            phx-click="restart_session"
+            phx-value-id={@agent.id}
+            data-confirm={"Restart agent \"#{@agent.name}\"? Reloads its tools and reconnects the harness. Any in-progress turn stops; the conversation is kept."}
+            class="w-full justify-center"
+          >
+            Restart
+          </.control_btn>
+        </div>
+      </:main>
+      <:danger>
+        <.control_btn
+          variant={:danger}
+          phx-click="remove_agent"
+          phx-value-id={@agent.id}
+          data-confirm={"Remove agent \"#{@agent.name}\"? Its session stops and it's removed from this workspace. The code in the volume is not touched."}
+          class="w-full justify-center"
+        >
+          Remove agent
+        </.control_btn>
+      </:danger>
+    </.action_bar>
     """
   end
 
