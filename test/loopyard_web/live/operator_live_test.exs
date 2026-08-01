@@ -4,14 +4,14 @@ defmodule LoopyardWeb.OperatorLiveTest do
 
   import Phoenix.LiveViewTest
 
-  test "mounts and the mobile For-you tab toggles to the rail and back", %{conn: conn} do
+  test "mounts and the mobile Decisions tab toggles to the rail and back", %{conn: conn} do
     {:ok, view, html} = live(conn, "/operator")
 
-    assert html =~ "For you"
+    assert html =~ "Decisions"
 
     # Tab taps must never be dead: the event is handled and flips the pane.
     html = view |> element("button[phx-value-v=rail]") |> render_click()
-    assert html =~ "For you"
+    assert html =~ "Decisions"
 
     _html = view |> element("button[phx-value-v=chat]") |> render_click()
 

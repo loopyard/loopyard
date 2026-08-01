@@ -304,7 +304,7 @@ defmodule LoopyardWeb.DashboardLive do
                  only question that matters — six WHAT? — and answers none of
                  them; the breakdown by kind does. --%>
             <.gauge navigate="/review" tone={(@waiting > 0 && :needs_you) || :calm}>
-              {(@waiting > 0 && attention_headline(@attention)) || "Nothing waiting on you"}
+              {(@waiting > 0 && attention_headline(@attention)) || "No decisions waiting"}
               <:detail>Running the shop as {@operator}</:detail>
             </.gauge>
 
@@ -553,7 +553,7 @@ defmodule LoopyardWeb.DashboardLive do
       "#{counts[kind]} #{plural(counts[kind], noun)}"
     end)
     |> case do
-      "" -> "#{length(items)} waiting on you"
+      "" -> "#{length(items)} #{plural(length(items), "decision")} waiting on you"
       line -> line <> " waiting on you"
     end
   end

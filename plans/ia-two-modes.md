@@ -80,3 +80,25 @@ safe-area-*).
 - No per-page redesigns beyond the chrome (bands/cards/type stay as shipped).
 - No auth/roles.
 - No merging of workspace internals (Agents/Services/Files) — that IA stays.
+
+---
+
+## Update (Aug 1) — the flip is an ALTITUDE, and the gear is gone
+
+Two changes from using it:
+
+**The Operator is ABOVE the workspaces, not beside them.** The mode nav was a
+flat row of three peer icons, which said grid / trefoil / gear were siblings —
+they aren't. `Common.mode_nav` is now ONE control that always points away from
+where you are: UP to the Operator from anywhere else, DOWN into the work from
+the Operator. There is no "current mode" styling left, because the control
+never represents where you already are.
+
+**System came out of the nav entirely.** It's a destination you visit
+deliberately, not a mode you toggle, and a gear one tap from every screen
+invites poking around in plumbing. It lives on the home dashboard — which the
+brand crumb reaches from every surface — plus its own `/system/*` routes.
+
+Naming followed the same logic: the things waiting on a human are
+**Decisions**, not "needs your input" / "For you". Approvals and questions are
+both decisions, and that's what a chief of staff would call them.

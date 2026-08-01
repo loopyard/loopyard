@@ -398,10 +398,14 @@ answer). `LoopyardWeb.Components.FocusedView` is the shared full-screen shell
 
 ## Design system (see also packages/brand)
 
-- **IA: two modes + System** (`plans/ia-two-modes.md`): Workspaces ⇄ Operator,
-  System as the click-off. `Common.mode_nav` renders the three fixed icons
-  (grid / trefoil / gear) on every shell; keep the three roots URL-rooted —
-  they're the future native tab bar.
+- **IA: an ALTITUDE, not a tab bar** (`plans/ia-two-modes.md`): the Operator
+  sits ABOVE the workspaces. `Common.mode_nav` is ONE control that always
+  points away from where you are — UP to the Operator from anywhere else, DOWN
+  to the workspaces from the Operator. A flat row of peer icons said these were
+  siblings, which is not how the product is organised. System is NOT a mode: it
+  is a deliberate destination reached from the home dashboard (the brand crumb
+  always gets you there), never a gear one tap from every screen. Keep the
+  roots URL-rooted — they're the future native tab bar.
 - **Brand**: `packages/brand` is the source of truth (mark + motion +
   `colors.brand.*` Tailwind preset). One job per color: paper/ink grounds,
   iris (violet) = interactive/"you", flame (≡ orange-600) = blocked-on-a-human

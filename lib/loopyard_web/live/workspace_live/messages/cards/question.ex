@@ -47,7 +47,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
               "text-zinc-500 dark:text-zinc-400"
           ]}>
             {case @msg.status do
-              :pending -> "Needs your input"
+              :pending -> "Decision"
               :timeout -> "No answer"
               _ -> "Answered"
             end}

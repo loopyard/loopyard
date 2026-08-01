@@ -72,7 +72,7 @@ defmodule LoopyardWeb.OperatorLive.Rail do
   # name) — enough to recognize, not the whole card.
   defp attention_summary(%{kind: :question, msg: %{questions: [q | _]}}), do: q.prompt
   defp attention_summary(%{kind: :secret, msg: %{name: name}}), do: "Needs a secret: #{name}"
-  defp attention_summary(item), do: item[:label] || "Needs your input"
+  defp attention_summary(item), do: item[:label] || "Decision"
 
   # One waiting item in the rail. The question's OWN WORDS are the row — no
   # icon, because "this is a question" is the one thing the reader already
@@ -100,7 +100,7 @@ defmodule LoopyardWeb.OperatorLive.Rail do
            they lead the rail. Same flame mini-language; tap → the Reviewer. --%>
       <section :if={@operator_attention != []} class="p-3 pb-0">
         <div class="section-label text-orange-700/80 dark:text-orange-400/80 px-1 pb-1">
-          Operator · needs you
+          Operator · decisions
         </div>
         <div class="space-y-0.5">
           <.attention_row

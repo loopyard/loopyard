@@ -409,7 +409,7 @@ defmodule LoopyardWeb.ReviewLive do
             }
           >
             <:label>
-              {(@msg.status == :pending && "Needs your input") || "Answered"}
+              {(@msg.status == :pending && "Decision") || "Answered"}
             </:label>
           </LoopyardWeb.Components.StreamCard.header>
           <Cards.question_block msg={@msg} q={@q} chat_path={@slide.path} />

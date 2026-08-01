@@ -674,7 +674,7 @@ defmodule LoopyardWeb.OperatorLive do
               "border-transparent text-zinc-500 dark:text-zinc-400"
           ]}
         >
-          For you
+          Decisions
           <span
             :if={@needs_count > 0}
             class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-violet-600 text-white text-xs font-semibold tabular-nums"

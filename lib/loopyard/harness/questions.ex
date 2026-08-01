@@ -67,7 +67,7 @@ defmodule Loopyard.Harness.Questions do
       first_prompt = questions |> List.first() |> then(&(&1 && &1[:prompt])) |> to_string()
 
       Loopyard.WebPush.notify_question(
-        "Needs your input#{(msg[:source] && " — #{msg.source}") || ""}",
+        "Decision#{(msg[:source] && " — #{msg.source}") || ""}",
         first_prompt,
         "/review/#{agent_id}/#{msg_id}"
       )
