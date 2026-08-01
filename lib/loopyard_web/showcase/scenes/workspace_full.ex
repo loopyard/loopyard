@@ -50,6 +50,7 @@ defmodule LoopyardWeb.Showcase.Scenes.WorkspaceFull do
       live_action: :chat,
       booting_agent_id: nil,
       mobile_detail_open: false,
+      agent_details_expanded: true,
       project: project(),
       workspace: workspace(),
       workspace_entry: workspace_entry(),

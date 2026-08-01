@@ -850,17 +850,16 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
     end
 
     @tag timeout: 15_000
-    test "context panel always shows agent info", %{conn: conn, agent_id: id, workspace: ws} do
+    test "context panel always shows the agent hero and a way to open detail",
+         %{conn: conn, agent_id: id, workspace: ws} do
       {:ok, _view, html} = live(conn, ws_chat_path(ws, id))
 
-      # Section headers + the agent name prove the agent-detail panel
-      # rendered. The redesigned panel uses a section-labeled rhythm
-      # (Activity, Usage, Docker) — the old "Info" / "Tool calls"
-      # sections were dropped as transcript-redundant. Pin the two
-      # sections that always render.
+      # The hero (name + live state) is what ALWAYS renders — Activity /
+      # Usage / Docker now live behind the collapsed "Details" fold, so
+      # asserting them here would be asserting the fold is open, not that
+      # the panel rendered.
       assert html =~ "Context Test"
-      assert html =~ "Activity"
-      assert html =~ "Usage"
+      assert html =~ "Details"
     end
   end
 end
