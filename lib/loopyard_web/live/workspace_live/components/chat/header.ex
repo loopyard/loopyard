@@ -243,11 +243,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
     ~H"""
     <div class="hidden lg:block flex-none border-b border-zinc-200 dark:border-zinc-700/80">
       <div class="flex items-center justify-between px-5 h-12 gap-3">
+        <%!-- Identity left, timestamp pushed to the RIGHT of this zone — same
+    anatomy as the prompt band and the queue band, so "who/what" and
+    "when" always live in the same two places. --%>
         <div class="flex items-center gap-3 min-w-0 flex-1">
           <.dot color={status_dot(@agent.status)} />
           <span class="text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate">
             {@agent.name}
           </span>
+          <div class="flex-1"></div>
           <span
             :if={@agent[:last_activity_at]}
             class="text-sm text-zinc-500 dark:text-zinc-400 flex-none"

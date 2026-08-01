@@ -155,16 +155,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     >
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
+          <%!-- Identity left, timestamp pushed to the RIGHT edge. They used to
+    sit adjacent on the left, so the eye had to parse "who" and "when"
+    as one run of text; separating them gives each a fixed place to
+    look, and matches the band header anatomy elsewhere. --%>
           <div
             :if={@show_user_label}
-            class="flex items-center gap-2 mb-2"
+            class="flex items-center justify-between gap-3 mb-2"
           >
             <span class="chat-meta inline-flex items-center gap-1.5 font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
               <.icon name={:user} class="w-3.5 h-3.5 flex-none self-center" /> {@user_label}
             </span>
             <span
               :if={@msg[:timestamp]}
-              class="chat-meta text-violet-500/80 dark:text-violet-300/60"
+              class="chat-meta flex-none text-violet-500/80 dark:text-violet-300/60"
             >
               {Calendar.strftime(@msg.timestamp, "%b %-d, %-I:%M %p")}
             </span>

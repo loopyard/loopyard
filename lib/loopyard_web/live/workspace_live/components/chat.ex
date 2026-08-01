@@ -159,11 +159,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     agent streams) animates instead of jumping, so following the thinking
     glides. Pure CSS — honors prefers-reduced-motion automatically. --%>
       <div id="messages" class="flex-1 overflow-y-auto flex flex-col pb-4">
-        <%!-- `mt-auto` anchors the transcript to the BOTTOM: the most recent
-    message sits just above the input on first paint, so there's no
-    post-load scroll jump (that animated slide-down was the jank).
-    Older messages load in chunks as you scroll up (ScrollBottom hook →
-    load_more). Normal flow (NOT col-reverse) so the human prompts can
+        <%!-- Normal flow, TOP-aligned. This used to be `mt-auto`, which
+    bottom-anchors the column so the newest message sits just above the
+    input on first paint. That's right for a long transcript and wrong
+    for a short one: with less content than viewport, the whole
+    conversation was shoved to the bottom of the screen and the
+    `sticky top-0` prompt had nothing to pin against — it was already
+    down by the composer. Top alignment fixes the short case, and the
+    long case is unaffected because ScrollBottom scrolls to the end on
+    mount and `_initialReveal` masks it, which is what actually prevents
+    the slide-down jank.
+    Normal flow (NOT col-reverse) is what lets the human prompts
     `position: sticky` to the top of their section. --%>
         <%!-- The document column: transcript + composer share this centered,
     capped measure so their gutters LINE UP. The outer div is a
@@ -175,7 +181,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     negative margins that mirror this padding exactly) until the `wide`
     ultrawide cutover, where it caps + centers — a full-bleed bar across
     an ultrawide monitor is the only case that earns the side gap. --%>
-        <div class="mt-auto w-full">
+        <div class="w-full">
           <div class="space-y-3 w-full wide:max-w-3xl mx-auto px-4 md:px-6">
             <%!-- Progressive loader: while there's older history above the window,
     a soft shimmer sits at the very top. Scroll into it and load_more
@@ -361,28 +367,37 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     the turn, the queue drains: these lines become the committed prompt
     band above (dated, highlighted) with the live Working/Stop status
     below — the ✕'s are gone because it's no longer editable. --%>
+          <%!-- Desaturated a notch against the committed prompt band
+    (violet-100 / #2b2348). Queued lines aren't part of the transcript
+    yet — they're waiting on the agent — so they read as the quieter
+    sibling of the band they'll become, not as an equal. --%>
           <div
             :if={(@agent[:pending_count] || 0) > 0}
-            class="-mx-3 md:-mx-6 wide:-mx-4 wide:mt-2 bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 pt-3 pb-3"
+            class="-mx-3 md:-mx-6 wide:-mx-4 wide:mt-2 bg-violet-50 dark:bg-[#241f3a] px-4 md:px-6 pt-3 pb-3"
           >
-            <div class="flex items-baseline justify-between gap-2 mb-1.5">
-              <div class="flex items-baseline gap-2 min-w-0">
-                <span class="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
-                  <.icon name={:user} class="w-3.5 h-3.5 flex-none self-center" /> {@user_label}
-                </span>
-                <span class="text-sm text-violet-500/80 dark:text-violet-300/60">
+            <%!-- Identity left, state to the RIGHT — same anatomy as the
+      committed prompt band above, so the queue reads as that same
+      object in a different state. "Clear all" rides with the state on
+      the right; three justify-between children would have centred the
+      state instead of right-aligning it. --%>
+            <div class="flex items-baseline justify-between gap-3 mb-1.5">
+              <span class="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-violet-600/90 dark:text-violet-300/80 flex-none">
+                <.icon name={:user} class="w-3.5 h-3.5 flex-none self-center" /> {@user_label}
+              </span>
+              <div class="flex items-baseline gap-3 min-w-0">
+                <span class="text-sm text-violet-500/70 dark:text-violet-300/50 truncate">
                   queued · sends when the agent finishes
                 </span>
+                <button
+                  :if={(@agent[:pending_count] || 0) > 1}
+                  type="button"
+                  phx-click="clear_pending"
+                  phx-value-id={@agent.id}
+                  class="focus-ring flex-none text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                >
+                  Clear all
+                </button>
               </div>
-              <button
-                :if={(@agent[:pending_count] || 0) > 1}
-                type="button"
-                phx-click="clear_pending"
-                phx-value-id={@agent.id}
-                class="focus-ring flex-none text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-              >
-                Clear all
-              </button>
             </div>
             <ul class="space-y-1.5">
               <li
