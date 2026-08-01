@@ -14,6 +14,60 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
 
   use Phoenix.Component
 
+  @doc """
+  The ANCESTORS: the brand root + everything between it and the current thing,
+  chevron-separated. Pair with `current/1`, which renders the last crumb in the
+  header's centre zone.
+
+  The model (three zones, every header):
+
+      [ loopyard > project > ]      [ current + status ]      [ modes ]
+
+  The brand root is always present and always first; only the middle segments
+  take chevron treatment. Splitting trail from current is what lets the thing
+  you are actually looking at sit centred while the path to it stays anchored
+  left — the same shape on the dashboard, the reviewer, and the chat view, so
+  navigating between them never moves the frame.
+  """
+  attr :crumbs, :list, required: true
+  attr :class, :string, default: ""
+
+  def trail(assigns) do
+    assigns = assign(assigns, :crumbs, Enum.drop(assigns.crumbs, -1))
+
+    ~H"""
+    <.breadcrumbs :if={@crumbs != []} crumbs={@crumbs} class={@class} />
+    """
+  end
+
+  @doc """
+  The CURRENT thing — the last crumb — for the header's centre zone. Solid ink
+  (ancestors are muted), with an optional trailing slot for a status badge.
+  """
+  attr :crumbs, :list, required: true
+  attr :class, :string, default: ""
+  slot :status
+
+  def current(assigns) do
+    assigns = assign(assigns, :label, current_label(assigns.crumbs))
+
+    ~H"""
+    <div :if={@label} class={["flex items-center gap-2 min-w-0", @class]}>
+      <span class="text-lg md:text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">
+        {@label}
+      </span>
+      {render_slot(@status)}
+    </div>
+    """
+  end
+
+  defp current_label(crumbs) do
+    case List.last(crumbs || []) do
+      {label, _} when is_binary(label) -> label
+      _ -> nil
+    end
+  end
+
   attr :crumbs, :list, required: true
   attr :class, :string, default: ""
 

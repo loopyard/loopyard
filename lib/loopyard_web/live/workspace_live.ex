@@ -1806,24 +1806,33 @@ defmodule LoopyardWeb.WorkspaceLive do
     left (loopyard > project > workspace, with the workspace's status),
     modes right. Phones keep the two-row chat_header above (md:hidden) —
     this bar is desktop-only so mobile is untouched. --%>
-      <div class="hidden md:flex flex-none items-center gap-3 h-14 px-4 md:px-5 border-b border-zinc-200 dark:border-zinc-800">
-        <LoopyardWeb.Components.Breadcrumbs.breadcrumbs crumbs={
+      <div class="hidden md:grid grid-cols-[1fr_auto_1fr] items-center gap-3 flex-none h-14 px-4 md:px-5 border-b border-zinc-200 dark:border-zinc-800">
+        <% crumbs =
           LoopyardWeb.Components.AppHeader.with_root([
             {@project.name, "/projects/#{@project.id}"},
             {(@workspace_entry || %{})[:name] || @workspace.id, nil}
-          ])
-        } />
-        <span
-          :if={ws_status_word(tree_entry(@global_tree, @workspace.id))}
-          class={[
-            "flex-none text-sm font-medium",
-            ws_status_class(tree_entry(@global_tree, @workspace.id))
-          ]}
-        >
-          {ws_status_word(tree_entry(@global_tree, @workspace.id))}
-        </span>
-        <div class="flex-1"></div>
-        <LoopyardWeb.Components.Common.mode_nav active={:workspaces} />
+          ]) %>
+        <div class="min-w-0">
+          <LoopyardWeb.Components.Breadcrumbs.trail crumbs={crumbs} />
+        </div>
+
+        <LoopyardWeb.Components.Breadcrumbs.current crumbs={crumbs} class="justify-center">
+          <:status>
+            <span
+              :if={ws_status_word(tree_entry(@global_tree, @workspace.id))}
+              class={[
+                "flex-none text-sm font-medium",
+                ws_status_class(tree_entry(@global_tree, @workspace.id))
+              ]}
+            >
+              {ws_status_word(tree_entry(@global_tree, @workspace.id))}
+            </span>
+          </:status>
+        </LoopyardWeb.Components.Breadcrumbs.current>
+
+        <div class="flex items-center justify-end min-w-0">
+          <LoopyardWeb.Components.Common.mode_nav active={:workspaces} />
+        </div>
       </div>
 
       <.flash_banner flash={@flash} kind={:error} class="mx-4 mt-2" />

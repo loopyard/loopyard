@@ -40,18 +40,18 @@ defmodule LoopyardWeb.Components.FocusedView do
            attention-hungry screens in the product as the only ones with no
            visible way home. --%>
       <div class="flex-none grid grid-cols-[1fr_auto_1fr] items-center gap-3 h-14 px-4 md:px-6 border-b border-zinc-200 dark:border-zinc-800">
+        <%!-- Three zones (see Breadcrumbs.trail/1): brand + ancestors left, the
+             CURRENT thing centred, nav right. Through with_root/1 so the trail
+             always leads with the brand crumb — brand_root?/2 matches the exact
+             label "Loopyard" to swap in the trefoil, and a hand-written crumb
+             that misses it renders as bare text with no mark. --%>
+        <% crumbs = LoopyardWeb.Components.AppHeader.with_root(@crumbs) %>
         <div class="min-w-0">
-          <%!-- Through with_root/1 so the trail always leads with the BRAND
-               crumb — Breadcrumbs.brand_root?/2 matches the exact label
-               "Loopyard" to swap in the trefoil + wordmark, and a hand-written
-               crumb that misses it renders as bare text with no mark. --%>
-          <LoopyardWeb.Components.Breadcrumbs.breadcrumbs
-            :if={@crumbs != []}
-            crumbs={LoopyardWeb.Components.AppHeader.with_root(@crumbs)}
-          />
+          <LoopyardWeb.Components.Breadcrumbs.trail :if={@crumbs != []} crumbs={crumbs} />
         </div>
 
         <div class="flex items-center gap-2 justify-center min-w-0">
+          <LoopyardWeb.Components.Breadcrumbs.current :if={@crumbs != []} crumbs={crumbs} />
           <span class={["chat-meta font-semibold uppercase tracking-wide", @label_class]}>
             {@label}
           </span>
