@@ -98,7 +98,7 @@ defmodule LoopyardWeb.Components.Nav do
     assigns =
       assign(assigns, :cls, [
         "focus-ring flex-none inline-flex items-center justify-center rounded-sm text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors",
-        if(assigns.size == :sm, do: "w-9 h-9 -ml-1", else: "w-11 h-11 -ml-1.5")
+        if(assigns.size == :sm, do: "tap-target w-9 h-9 -ml-1", else: "w-11 h-11 -ml-1.5")
       ])
 
     ~H"""

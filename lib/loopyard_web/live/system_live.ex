@@ -203,14 +203,11 @@ defmodule LoopyardWeb.SystemLive do
     ~H"""
     <section class="space-y-1.5">
       <h2 class="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Also in System</h2>
-      <div class="flex flex-wrap gap-x-6 gap-y-1.5">
+      <div class="flex flex-wrap gap-x-6">
         <.link
-          navigate="/remote/"
-          class="chat-sub text-violet-600 dark:text-violet-400 hover:underline"
+          navigate="/sound"
+          class="chat-sub inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
         >
-          Remote access →
-        </.link>
-        <.link navigate="/sound" class="chat-sub text-violet-600 dark:text-violet-400 hover:underline">
           Ambient sound →
         </.link>
       </div>
@@ -238,7 +235,7 @@ defmodule LoopyardWeb.SystemLive do
           type="button"
           phx-click="reboot"
           data-confirm="Reboot the server? Every agent session stops and re-spawns (containers keep running). The page reconnects when it's back up."
-          class="focus-ring flex-none inline-flex items-center rounded-sm bg-red-600 hover:bg-red-700 px-4 py-2 text-sm font-medium text-white transition-colors"
+          class="focus-ring flex-none inline-flex items-center rounded-sm bg-red-600 hover:bg-red-700 px-4 min-h-11 md:min-h-0 md:py-2 text-sm font-medium text-white transition-colors"
         >
           Reboot
         </button>

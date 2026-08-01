@@ -280,7 +280,7 @@ defmodule LoopyardWeb.DashboardLive do
               <.link
                 :for={w <- @recent}
                 navigate={w.path}
-                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+                class="flex items-center gap-2 -mx-2 px-2 py-3 md:py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
               >
                 <LoopyardWeb.Components.Common.workspace_identity
                   project={w.project}
@@ -315,7 +315,7 @@ defmodule LoopyardWeb.DashboardLive do
               <.link
                 :for={item <- Enum.take(@attention, 4)}
                 navigate={(item.msg && "/review/#{item.agent_id}/#{item.msg.id}") || "/review"}
-                class="block -mx-2 px-2 py-2 md:py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+                class="block -mx-2 px-2 py-3 md:py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
               >
                 <span class="text-sm text-zinc-700 dark:text-zinc-200 line-clamp-2">
                   {item.label}
@@ -330,7 +330,7 @@ defmodule LoopyardWeb.DashboardLive do
               <.link
                 :if={length(@attention) > 4}
                 navigate="/review"
-                class="block -mx-2 px-2 py-2 md:py-1.5 text-sm font-medium text-orange-700 dark:text-orange-400 hover:underline"
+                class="block -mx-2 px-2 py-3 md:py-1.5 text-sm font-medium text-orange-700 dark:text-orange-400 hover:underline"
               >
                 +{length(@attention) - 4} more to decide →
               </.link>
@@ -338,7 +338,7 @@ defmodule LoopyardWeb.DashboardLive do
               <.link
                 :if={@attention == []}
                 navigate="/operator"
-                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+                class="flex items-center gap-2 -mx-2 px-2 py-3 md:py-1.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
               >
                 Chat with the operator
               </.link>
@@ -399,19 +399,19 @@ defmodule LoopyardWeb.DashboardLive do
             <div class="relative z-10 mt-4 space-y-1">
               <.link
                 navigate="/system"
-                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+                class="flex items-center gap-2 -mx-2 px-2 py-3 md:py-1.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
               >
                 Health
               </.link>
               <.link
                 navigate="/system/ports"
-                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+                class="flex items-center gap-2 -mx-2 px-2 py-3 md:py-1.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
               >
                 Ports
               </.link>
               <.link
                 navigate="/system/secrets"
-                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+                class="flex items-center gap-2 -mx-2 px-2 py-3 md:py-1.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
               >
                 Secrets
               </.link>
