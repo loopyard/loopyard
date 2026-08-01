@@ -43,11 +43,25 @@ defmodule Loopyard.Attention do
   def line(host \\ nil) do
     raw = raw_items()
 
+    # CONCURRENTLY. get_state/1 is a GenServer call with a 500ms cap, so
+    # resolving N agents serially made this O(N x 500ms) in the worst case —
+    # and this function is on the mount path for the dashboard AND the operator
+    # rail. One wedged agent used to delay every other agent's lookup behind
+    # it; now a slow one only spends its own budget.
     states =
       raw
       |> Enum.map(fn {_kind, _id, e} -> e.agent_id end)
       |> Enum.uniq()
-      |> Map.new(fn aid -> {aid, safe_state(aid)} end)
+      |> Task.async_stream(&{&1, safe_state(&1)},
+        max_concurrency: 16,
+        timeout: 1_000,
+        on_timeout: :kill_task,
+        ordered: false
+      )
+      |> Enum.reduce(%{}, fn
+        {:ok, {aid, state}}, acc -> Map.put(acc, aid, state)
+        {:exit, _}, acc -> acc
+      end)
 
     ws_lookup = workspace_lookup(host)
 

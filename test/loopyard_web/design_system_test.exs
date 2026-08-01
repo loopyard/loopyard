@@ -9,9 +9,23 @@ defmodule LoopyardWeb.DesignSystemTest do
 
   @web_root "lib/loopyard_web"
 
-  defp web_sources do
-    Path.wildcard("#{@web_root}/**/*.{ex,heex}")
-    |> Enum.map(&{&1, File.read!(&1)})
+  setup_all do
+    sources =
+      Path.wildcard("#{@web_root}/**/*.{ex,heex}")
+      |> Enum.map(&{&1, File.read!(&1)})
+
+    %{sources: sources}
+  end
+
+  defp web_sources, do: Process.get(:web_sources) || cache_sources()
+
+  defp cache_sources do
+    sources =
+      Path.wildcard("#{@web_root}/**/*.{ex,heex}")
+      |> Enum.map(&{&1, File.read!(&1)})
+
+    Process.put(:web_sources, sources)
+    sources
   end
 
   test "sharp editorial: no large corner radii in the web layer" do
@@ -107,9 +121,9 @@ defmodule LoopyardWeb.DesignSystemTest do
     banned = ~r/\b(?:text-(?:xs|sm|base|lg|xl|[2-9]xl|\[[^\]]+\])|chat-(?:body|sub|meta))\b/
 
     offenders =
-      Path.wildcard("lib/loopyard_web/**/*.{ex,heex}")
-      |> Enum.filter(&Regex.match?(banned, File.read!(&1)))
-      |> Enum.map(&Path.relative_to_cwd/1)
+      web_sources()
+      |> Enum.filter(fn {_p, src} -> Regex.match?(banned, src) end)
+      |> Enum.map(fn {p, _} -> Path.relative_to_cwd(p) end)
 
     assert offenders == [],
            """

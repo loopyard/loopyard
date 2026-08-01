@@ -297,6 +297,26 @@ defmodule Loopyard.Docker do
   """
   def docker(args, opts \\ []) do
     guard_real_resources!(args)
+
+    if daemon_disabled?() do
+      # The default test run does NOT talk to the Docker daemon. A unit test
+      # that shells out to Docker is slow (whole seconds), non-deterministic
+      # (it depends on what's running on this machine), and — before the
+      # per-environment prefix landed — capable of mutating the developer's
+      # live state. With names now namespaced, the calls started CREATING
+      # test volumes instead of hitting existing ones, which pushed the suite
+      # past its 2s-per-test budget and produced timeouts in unrelated,
+      # innocent tests. Tests that genuinely exercise Docker carry the :docker
+      # tag and enable it explicitly.
+      {:error, "docker disabled in this environment"}
+    else
+      run_docker(args, opts)
+    end
+  end
+
+  defp daemon_disabled?, do: not Application.get_env(:loopyard, :docker_enabled, true)
+
+  defp run_docker(args, opts) do
     timeout = Keyword.get(opts, :timeout, 120_000)
     env = Keyword.get(opts, :env, [])
     retry = Keyword.get(opts, :retry, true)

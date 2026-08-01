@@ -88,3 +88,9 @@ config :loopyard, resource_prefix: "loopyard-test-"
 # The backstop behind the prefix: naming a REAL Docker resource from a test
 # raises at the call. See Loopyard.Docker.prefix/0.
 config :loopyard, forbid_real_docker_resources: true
+
+# The default suite does not talk to the Docker daemon: shelling out is slow,
+# depends on what happens to be running on this machine, and blew the
+# 2s-per-test budget in unrelated tests. Tests that genuinely exercise Docker
+# carry the :docker tag and turn it on for themselves.
+config :loopyard, docker_enabled: false
