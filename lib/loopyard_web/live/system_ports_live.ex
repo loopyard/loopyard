@@ -112,11 +112,11 @@ defmodule LoopyardWeb.SystemPortsLive do
       max_width={:lg}
       flash={@flash}
     >
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+      <h2 class="text-body font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
         Ports <span class="text-zinc-400 font-normal">({length(@rows)})</span>
       </h2>
 
-      <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+      <p class="text-meta text-zinc-500 dark:text-zinc-400 mb-4">
         Every row is a host port Loopyard has assigned to a workspace service.
         By default each one is bound to <code>127.0.0.1</code>
         — only this machine
@@ -125,11 +125,13 @@ defmodule LoopyardWeb.SystemPortsLive do
         so anything that can route to this host (LAN, tunnel, VPN, public IP) can reach it.
       </p>
 
-      <div :if={@rows == []} class="text-sm text-zinc-500 dark:text-zinc-400">No ports assigned</div>
+      <div :if={@rows == []} class="text-body text-zinc-500 dark:text-zinc-400">
+        No ports assigned
+      </div>
 
       <div :if={@rows != []} class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead class="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 border-b border-zinc-200 dark:border-zinc-700">
+        <table class="w-full text-body">
+          <thead class="text-meta uppercase tracking-wider text-zinc-500 dark:text-zinc-400 border-b border-zinc-200 dark:border-zinc-700">
             <tr>
               <th class="text-left font-semibold py-2 px-2">Workspace</th>
               <th class="text-left font-semibold py-2 px-2">Service</th>
@@ -157,7 +159,7 @@ defmodule LoopyardWeb.SystemPortsLive do
 
     ~H"""
     <tr>
-      <td class="py-2 px-2 font-mono text-xs">
+      <td class="py-2 px-2 font-mono text-meta">
         <.link
           navigate={"/projects/#{@r.project_id}/workspaces/#{@r.workspace_id}"}
           class="text-violet-600 dark:text-violet-400 hover:underline"
@@ -166,7 +168,7 @@ defmodule LoopyardWeb.SystemPortsLive do
         </.link>
       </td>
       <td class="py-2 px-2">{@r.service}</td>
-      <td class="py-2 px-2 text-right font-mono text-xs">
+      <td class="py-2 px-2 text-right font-mono text-meta">
         <a
           :if={@r.exposed}
           href={@url}
@@ -183,19 +185,19 @@ defmodule LoopyardWeb.SystemPortsLive do
       <td class="py-2 px-2">
         <span
           :if={@r.exposed}
-          class="text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 rounded-full px-2 py-0.5"
+          class="text-meta font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 rounded-full px-2 py-0.5"
         >
           Open
         </span>
-        <span :if={!@r.exposed} class="text-xs text-zinc-500">Closed</span>
+        <span :if={!@r.exposed} class="text-meta text-zinc-500">Closed</span>
       </td>
-      <td class="py-2 px-2 text-right font-mono text-xs">
+      <td class="py-2 px-2 text-right font-mono text-meta">
         {if @r.live, do: @r.live.connection_count, else: "—"}
       </td>
-      <td class="py-2 px-2 text-right font-mono text-xs text-zinc-500">
+      <td class="py-2 px-2 text-right font-mono text-meta text-zinc-500">
         {bytes(@r.live, :bytes_in)} / {bytes(@r.live, :bytes_out)}
       </td>
-      <td class="py-2 px-2 font-mono text-xs text-zinc-500 truncate max-w-[200px]">
+      <td class="py-2 px-2 font-mono text-meta text-zinc-500 truncate max-w-[200px]">
         {if @r.live, do: Enum.join(@r.live.peers, ", "), else: ""}
       </td>
       <td class="py-2 px-2 text-right">
@@ -206,7 +208,7 @@ defmodule LoopyardWeb.SystemPortsLive do
           phx-value-cport={@r.container_port}
           phx-value-expose={to_string(!@r.exposed)}
           class={[
-            "text-xs font-medium rounded-sm px-2 py-1 transition-colors",
+            "text-meta font-medium rounded-sm px-2 py-1 transition-colors",
             if(@r.exposed,
               do: "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700",
               else:

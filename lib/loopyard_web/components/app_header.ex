@@ -103,7 +103,7 @@ defmodule LoopyardWeb.Components.AppHeader do
       |> assign(:time_ago, relative_time(assigns.session.at))
 
     ~H"""
-    <div class={"flex items-center gap-2 px-3 py-1 rounded-full text-sm #{@bg_color}"}>
+    <div class={"flex items-center gap-2 px-3 py-1 rounded-full text-body #{@bg_color}"}>
       <span class={"w-2 h-2 rounded-full flex-none #{@dot_color}"}></span>
       <span class="font-medium">IEx</span>
       <span class="opacity-75">{@session.label}</span>

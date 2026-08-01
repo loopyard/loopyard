@@ -141,7 +141,7 @@ defmodule LoopyardWeb.SystemDockerLive do
   defp containers_section(assigns) do
     ~H"""
     <section>
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+      <h2 class="text-body font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
         Containers
         <span :if={is_list(@containers)} class="text-zinc-400 font-normal">
           ({length(@containers)})
@@ -152,10 +152,12 @@ defmodule LoopyardWeb.SystemDockerLive do
         <% !is_list(@containers) -> %>
           <.skeleton rows={4} />
         <% @containers == [] -> %>
-          <div class="text-sm text-zinc-500 dark:text-zinc-400">No loopyard-* containers running</div>
+          <div class="text-body text-zinc-500 dark:text-zinc-400">
+            No loopyard-* containers running
+          </div>
         <% true -> %>
           <div class="rounded-sm border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
-            <table class="w-full text-xs">
+            <table class="w-full text-meta">
               <thead>
                 <tr class="bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-left">
                   <th class="px-3 py-2 font-medium w-8"></th>
@@ -203,7 +205,7 @@ defmodule LoopyardWeb.SystemDockerLive do
   defp volumes_section(assigns) do
     ~H"""
     <section>
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+      <h2 class="text-body font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
         Volumes
         <span :if={is_list(@volumes)} class="text-zinc-400 font-normal">({length(@volumes)})</span>
       </h2>
@@ -212,10 +214,10 @@ defmodule LoopyardWeb.SystemDockerLive do
         <% !is_list(@volumes) -> %>
           <.skeleton rows={4} />
         <% @volumes == [] -> %>
-          <div class="text-sm text-zinc-500 dark:text-zinc-400">No loopyard-* volumes</div>
+          <div class="text-body text-zinc-500 dark:text-zinc-400">No loopyard-* volumes</div>
         <% true -> %>
           <div class="rounded-sm border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
-            <table class="w-full text-xs">
+            <table class="w-full text-meta">
               <thead>
                 <tr class="bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-left">
                   <th class="px-3 py-2 font-medium">Volume</th>

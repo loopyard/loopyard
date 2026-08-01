@@ -421,7 +421,7 @@ defmodule LoopyardWeb.ReviewLive do
     floating underneath. --%>
         <p
           :if={@slide.path && @msg.status == :pending}
-          class="chat-meta text-zinc-400 dark:text-zinc-500 mt-4"
+          class="text-meta text-zinc-400 dark:text-zinc-500 mt-4"
         >
           Options and "Other…" answer just this question.
         </p>
@@ -440,19 +440,19 @@ defmodule LoopyardWeb.ReviewLive do
       </div>
 
       <div :if={is_nil(@msg)} class="flex flex-col items-center justify-center gap-4 py-24">
-        <p class="chat-sub text-zinc-400 dark:text-zinc-500">
+        <p class="text-body text-zinc-400 dark:text-zinc-500">
           {(@history? && "No questions asked yet.") || "Nothing waiting on you."}
         </p>
         <.link
           :if={!@history?}
           navigate="/review/history"
-          class="chat-sub font-medium inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
+          class="text-body font-medium inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
         >
           Flip through past questions →
         </.link>
         <.link
           navigate="/operator"
-          class="chat-sub font-medium inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
+          class="text-body font-medium inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
         >
           ← Back to the operator
         </.link>
@@ -461,7 +461,7 @@ defmodule LoopyardWeb.ReviewLive do
       <div :if={@slide && @slide.path && is_nil(@q) && @msg} class="mt-4">
         <.link
           navigate={@slide.path}
-          class="chat-meta text-violet-600 dark:text-violet-400 hover:underline"
+          class="text-meta text-violet-600 dark:text-violet-400 hover:underline"
         >
           Open in chat for context →
         </.link>

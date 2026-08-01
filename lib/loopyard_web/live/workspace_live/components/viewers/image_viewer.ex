@@ -18,7 +18,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.ImageViewer do
         alt={Path.basename(@path)}
         class="max-w-full max-h-[50vh] object-contain rounded-sm border border-zinc-200 dark:border-zinc-700"
       />
-      <span class="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{Path.basename(@path)}</span>
+      <span class="mt-2 text-meta text-zinc-500 dark:text-zinc-400">{Path.basename(@path)}</span>
     </div>
     """
   end

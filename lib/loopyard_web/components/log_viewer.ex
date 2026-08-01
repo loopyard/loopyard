@@ -40,7 +40,7 @@ defmodule LoopyardWeb.Components.LogViewer do
     <pre
       id={@id}
       phx-hook="TailScroll"
-      class={"flex-1 px-4 py-3 text-sm md:text-[13px] font-mono leading-snug overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300 #{@class}"}
+      class={"flex-1 px-4 py-3 text-body md:text-[13px] font-mono leading-snug overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300 #{@class}"}
     >{@ansi_html}</pre>
     """
   end
@@ -113,12 +113,12 @@ defmodule LoopyardWeb.Components.LogViewer do
       <div class="flex items-center gap-2 px-3.5 pt-2 pb-1">
         <span
           title={@command}
-          class="text-sm md:text-[13px] font-mono text-zinc-700 dark:text-zinc-200 truncate min-w-0 flex-1"
+          class="text-body md:text-[13px] font-mono text-zinc-700 dark:text-zinc-200 truncate min-w-0 flex-1"
         >
           <span :if={@command} class="select-none text-zinc-400 dark:text-zinc-500">$ </span>{@command ||
             @status_label}
         </span>
-        <span :if={@truncated} data-truncated class="text-xs text-zinc-400 flex-none">
+        <span :if={@truncated} data-truncated class="text-meta text-zinc-400 flex-none">
           … truncated
         </span>
         <button
@@ -146,7 +146,7 @@ defmodule LoopyardWeb.Components.LogViewer do
       <pre
         data-log-pre
         class={[
-          "text-sm md:text-[13px] font-mono leading-snug text-zinc-800 dark:text-zinc-200 bg-transparent whitespace-pre overflow-auto px-3.5 py-1.5",
+          "text-body md:text-[13px] font-mono leading-snug text-zinc-800 dark:text-zinc-200 bg-transparent whitespace-pre overflow-auto px-3.5 py-1.5",
           if(@status == :building, do: "max-h-64", else: "max-h-32")
         ]}
       >{Ansi.to_html(@display)}</pre>
@@ -160,7 +160,7 @@ defmodule LoopyardWeb.Components.LogViewer do
           phx-hook="Elapsed"
           phx-update="ignore"
           data-since={elapsed_since(@started)}
-          class="text-xs tabular-nums text-amber-500 dark:text-amber-400 flex-none"
+          class="text-meta tabular-nums text-amber-500 dark:text-amber-400 flex-none"
         >
           0s
         </span>
@@ -170,7 +170,7 @@ defmodule LoopyardWeb.Components.LogViewer do
             [
               # Calm footnote, not an alarm — a failed command (often a probe /
               # expected non-zero) shouldn't demand attention. Muted + medium weight.
-              "text-xs font-medium tabular-nums flex-none",
+              "text-meta font-medium tabular-nums flex-none",
               if(@status == :done,
                 do: "text-emerald-600/70 dark:text-emerald-500/60",
                 else: "text-rose-500/70 dark:text-rose-400/60"
@@ -275,7 +275,7 @@ defmodule LoopyardWeb.Components.LogViewer do
     assigns = assign(assigns, lines: lines, padded_name: padded_name)
 
     ~H"""
-    <div :for={line <- @lines} class="flex text-sm md:text-[13px] font-mono leading-snug">
+    <div :for={line <- @lines} class="flex text-body md:text-[13px] font-mono leading-snug">
       <span class={"#{@color} w-36 text-right flex-none select-none"}>{@padded_name} |</span>
       <span class="text-zinc-300 ml-2 whitespace-pre-wrap break-all">{Ansi.to_html(line)}</span>
     </div>

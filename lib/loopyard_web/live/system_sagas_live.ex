@@ -96,7 +96,7 @@ defmodule LoopyardWeb.SystemSagasLive do
       <div class="space-y-6">
         <section>
           <div class="flex items-baseline justify-between mb-3">
-            <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+            <h2 class="text-body font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
               Sagas
               <span class="text-zinc-400 font-normal">
                 (last 100 multi-step operations; refreshes every 1s)
@@ -104,7 +104,7 @@ defmodule LoopyardWeb.SystemSagasLive do
             </h2>
           </div>
 
-          <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+          <p class="text-meta text-zinc-500 dark:text-zinc-400 mb-4">
             Every `Loopyard.Saga.run/2` call is recorded here. Each saga is a multi-step
             operation (start workspace, boot agent, etc.) that either fully succeeded or
             fully rolled back. A saga in
@@ -129,12 +129,12 @@ defmodule LoopyardWeb.SystemSagasLive do
     ~H"""
     <div class="mb-4 rounded-sm border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4">
       <div class="flex items-start gap-3">
-        <div class="flex-shrink-0 text-red-600 dark:text-red-400 text-xl leading-none">!</div>
+        <div class="flex-shrink-0 text-red-600 dark:text-red-400 text-title leading-none">!</div>
         <div class="flex-1">
-          <div class="text-sm font-semibold text-red-800 dark:text-red-200">
+          <div class="text-body font-semibold text-red-800 dark:text-red-200">
             {length(@incomplete)} incomplete saga{if length(@incomplete) == 1, do: "", else: "s"} — BEAM crashed mid-run
           </div>
-          <p class="text-xs text-red-700 dark:text-red-300 mt-1">
+          <p class="text-meta text-red-700 dark:text-red-300 mt-1">
             These sagas were recorded in the on-disk journal but never completed or rolled back.
             On the next boot (or right now, via the automatic resume path) each is handled per its
             declared <code class="font-mono">on_resume</code>
@@ -153,7 +153,7 @@ defmodule LoopyardWeb.SystemSagasLive do
 
   defp incomplete_row(assigns) do
     ~H"""
-    <div class="flex items-center gap-2 text-xs font-mono">
+    <div class="flex items-center gap-2 text-meta font-mono">
       <span class="text-red-700 dark:text-red-300 font-semibold">{@saga.name}</span>
       <span class="text-red-500 dark:text-red-400">#{@saga.saga_id}</span>
       <span class="text-red-600 dark:text-red-400">
@@ -194,7 +194,7 @@ defmodule LoopyardWeb.SystemSagasLive do
       <div class="section-label">
         {@label}
       </div>
-      <div class="text-lg font-mono font-semibold mt-0.5">{@value}</div>
+      <div class="text-lead font-mono font-semibold mt-0.5">{@value}</div>
     </div>
     """
   end
@@ -234,16 +234,16 @@ defmodule LoopyardWeb.SystemSagasLive do
   end
 
   defp filter_pill_class(true),
-    do: "rounded-full px-3 py-1 text-xs font-medium bg-violet-600 text-white"
+    do: "rounded-full px-3 py-1 text-meta font-medium bg-violet-600 text-white"
 
   defp filter_pill_class(false),
     do:
-      "rounded-full px-3 py-1 text-xs font-medium border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-violet-400 dark:hover:border-violet-500"
+      "rounded-full px-3 py-1 text-meta font-medium border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-violet-400 dark:hover:border-violet-500"
 
   defp saga_table(assigns) do
     ~H"""
     <%= if @sagas == [] do %>
-      <div class="text-sm text-zinc-500 dark:text-zinc-400 italic py-8 text-center">
+      <div class="text-body text-zinc-500 dark:text-zinc-400 italic py-8 text-center">
         No sagas recorded yet. Start a workspace or boot an agent to populate this page.
       </div>
     <% else %>
@@ -263,19 +263,19 @@ defmodule LoopyardWeb.SystemSagasLive do
         <span class={status_badge_class(@saga.status)}>
           {humanize_status(@saga.status)}
         </span>
-        <span class="text-xs font-mono font-semibold text-violet-700 dark:text-violet-400">
+        <span class="text-meta font-mono font-semibold text-violet-700 dark:text-violet-400">
           {@saga.saga}
         </span>
-        <span class="text-xs font-mono text-zinc-500">
+        <span class="text-meta font-mono text-zinc-500">
           {Calendar.strftime(@saga.started_at, "%H:%M:%S")}
         </span>
-        <span class="text-xs text-zinc-500">
+        <span class="text-meta text-zinc-500">
           {length(@saga.completed_steps)}/{@saga.step_count} steps
         </span>
-        <span :if={@saga.failed_step} class="text-xs text-red-600 dark:text-red-400 font-mono">
+        <span :if={@saga.failed_step} class="text-meta text-red-600 dark:text-red-400 font-mono">
           failed at {@saga.failed_step}
         </span>
-        <span :if={meta_preview(@saga.metadata)} class="text-xs font-mono text-zinc-400 ml-auto">
+        <span :if={meta_preview(@saga.metadata)} class="text-meta font-mono text-zinc-400 ml-auto">
           {meta_preview(@saga.metadata)}
         </span>
       </summary>
@@ -289,7 +289,7 @@ defmodule LoopyardWeb.SystemSagasLive do
 
         <div
           :if={@saga.failure_reason}
-          class="mt-2 text-xs font-mono text-red-600 dark:text-red-400"
+          class="mt-2 text-meta font-mono text-red-600 dark:text-red-400"
         >
           reason: {@saga.failure_reason}
         </div>
@@ -298,14 +298,14 @@ defmodule LoopyardWeb.SystemSagasLive do
           <div class="section-label text-red-600 dark:text-red-400 mb-1">
             Failed rollbacks
           </div>
-          <ul class="text-xs font-mono text-red-700 dark:text-red-400 space-y-0.5">
+          <ul class="text-meta font-mono text-red-700 dark:text-red-400 space-y-0.5">
             <%= for {step, reason} <- @saga.failed_rollbacks do %>
               <li>{step}: {reason}</li>
             <% end %>
           </ul>
         </div>
 
-        <div :if={map_size(@saga.metadata) > 0} class="mt-2 text-xs font-mono text-zinc-500">
+        <div :if={map_size(@saga.metadata) > 0} class="mt-2 text-meta font-mono text-zinc-500">
           metadata: {inspect(@saga.metadata)}
         </div>
       </div>
@@ -319,19 +319,19 @@ defmodule LoopyardWeb.SystemSagasLive do
 
   defp step_list(assigns) do
     ~H"""
-    <ol class="text-xs font-mono space-y-1">
+    <ol class="text-meta font-mono space-y-1">
       <li :for={step <- @steps} class="flex items-center gap-2">
         <span class={"w-1.5 h-1.5 rounded-full " <> step_dot_class(step.status)}></span>
         <span class={step_name_class(step.status)}>{step.name}</span>
-        <span :if={step.status == :failed} class="text-red-500 text-xs">
+        <span :if={step.status == :failed} class="text-red-500 text-meta">
           — failed: {step[:reason]}
         </span>
-        <span :if={step.name in @rolled_back} class="text-amber-600 dark:text-amber-400 text-xs">
+        <span :if={step.name in @rolled_back} class="text-amber-600 dark:text-amber-400 text-meta">
           — rolled back
         </span>
         <span
           :if={rollback_failed?(step.name, @failed_rollbacks)}
-          class="text-red-600 dark:text-red-400 text-xs font-semibold"
+          class="text-red-600 dark:text-red-400 text-meta font-semibold"
         >
           — rollback failed
         </span>
@@ -361,23 +361,23 @@ defmodule LoopyardWeb.SystemSagasLive do
 
   defp status_badge_class(:in_flight),
     do:
-      "rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-semibold uppercase tracking-wider px-2 py-0.5"
+      "rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-meta font-semibold uppercase tracking-wider px-2 py-0.5"
 
   defp status_badge_class(:succeeded),
     do:
-      "rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs font-semibold uppercase tracking-wider px-2 py-0.5"
+      "rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-meta font-semibold uppercase tracking-wider px-2 py-0.5"
 
   defp status_badge_class(:rolled_back),
     do:
-      "rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-xs font-semibold uppercase tracking-wider px-2 py-0.5"
+      "rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-meta font-semibold uppercase tracking-wider px-2 py-0.5"
 
   defp status_badge_class(:rollback_failed),
     do:
-      "rounded-full bg-red-200 dark:bg-red-900/50 text-red-700 dark:text-red-300 text-xs font-semibold uppercase tracking-wider px-2 py-0.5 animate-pulse"
+      "rounded-full bg-red-200 dark:bg-red-900/50 text-red-700 dark:text-red-300 text-meta font-semibold uppercase tracking-wider px-2 py-0.5 animate-pulse"
 
   defp status_badge_class(_),
     do:
-      "rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 text-xs font-semibold uppercase tracking-wider px-2 py-0.5"
+      "rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 text-meta font-semibold uppercase tracking-wider px-2 py-0.5"
 
   defp humanize_status(:in_flight), do: "in flight"
   defp humanize_status(:succeeded), do: "succeeded"

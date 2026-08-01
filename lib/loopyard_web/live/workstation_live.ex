@@ -218,8 +218,8 @@ defmodule LoopyardWeb.WorkstationLive do
     >
       <div class="space-y-8">
         <div class="space-y-1">
-          <h1 class="text-xl font-semibold tracking-tight">Workstations</h1>
-          <p class="text-sm text-zinc-500 dark:text-zinc-400">
+          <h1 class="text-title font-semibold tracking-tight">Workstations</h1>
+          <p class="text-body text-zinc-500 dark:text-zinc-400">
             An identity is a home folder of credentials — every agent you spin up inherits it.
           </p>
         </div>
@@ -237,7 +237,7 @@ defmodule LoopyardWeb.WorkstationLive do
               }
             >
               <:trailing :if={id == @current_id}>
-                <span class="inline-flex items-center gap-1.5 text-xs text-sky-600 dark:text-sky-400">
+                <span class="inline-flex items-center gap-1.5 text-meta text-sky-600 dark:text-sky-400">
                   <span class="w-1.5 h-1.5 rounded-full bg-sky-500"></span> current
                 </span>
               </:trailing>
@@ -257,7 +257,7 @@ defmodule LoopyardWeb.WorkstationLive do
               placeholder="new-id"
               pattern="[a-z0-9][a-z0-9-]*"
               title="Lowercase letters, digits, dashes"
-              class="flex-1 rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm placeholder:text-zinc-400 focus-ring"
+              class="flex-1 rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-body placeholder:text-zinc-400 focus-ring"
             />
             <.button variant={:primary} type="submit" class="flex-none">Create</.button>
           </form>
@@ -278,10 +278,10 @@ defmodule LoopyardWeb.WorkstationLive do
     >
       <div id="ws-page" phx-hook="WsScroll" class="space-y-8">
         <div class="flex items-baseline gap-3">
-          <h1 class="text-xl font-semibold tracking-tight">{@current_id}</h1>
+          <h1 class="text-title font-semibold tracking-tight">{@current_id}</h1>
           <.link
             navigate="/workstations"
-            class="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+            class="text-meta text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
           >
             All workstations
           </.link>
@@ -337,7 +337,7 @@ defmodule LoopyardWeb.WorkstationLive do
     >
       <div id="ws-page" phx-hook="WsScroll" class="space-y-3">
         <div class="flex items-center justify-between gap-3">
-          <p class="text-sm text-zinc-500 dark:text-zinc-400">
+          <p class="text-body text-zinc-500 dark:text-zinc-400">
             A shell on <span class="font-medium text-zinc-700 dark:text-zinc-200">{@current_id}</span>
             — logins persist in $HOME.
           </p>
@@ -358,7 +358,7 @@ defmodule LoopyardWeb.WorkstationLive do
           </div>
           <div
             :if={!@console_container && !@console_error}
-            class="h-full flex items-center justify-center text-sm text-zinc-500"
+            class="h-full flex items-center justify-center text-body text-zinc-500"
           >
             <span class="inline-flex items-center gap-2">
               <.spinner /> {if @restarting,
@@ -368,7 +368,7 @@ defmodule LoopyardWeb.WorkstationLive do
           </div>
           <div
             :if={@console_error}
-            class="rounded-sm border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-600 dark:text-red-400"
+            class="rounded-sm border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-3 text-body text-red-600 dark:text-red-400"
           >
             Couldn't start the workstation console: {@console_error}
           </div>
@@ -413,7 +413,7 @@ defmodule LoopyardWeb.WorkstationLive do
               autocomplete="off"
               autocapitalize="characters"
               spellcheck="false"
-              class="sm:w-56 font-mono text-sm rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+              class="sm:w-56 font-mono text-body rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
             />
             <input
               name="value"
@@ -421,7 +421,7 @@ defmodule LoopyardWeb.WorkstationLive do
               placeholder="value"
               autocomplete="off"
               spellcheck="false"
-              class="flex-1 font-mono text-sm rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+              class="flex-1 font-mono text-body rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
             />
             <.button variant={:secondary} type="submit" class="flex-none">Add</.button>
           </form>
@@ -430,15 +430,15 @@ defmodule LoopyardWeb.WorkstationLive do
             class="divide-y divide-zinc-100 dark:divide-zinc-800 rounded-sm border border-zinc-200 dark:border-zinc-800 px-3"
           >
             <li :for={k <- @other_env_keys} class="flex items-center gap-3 py-2">
-              <span class="font-mono text-sm text-zinc-700 dark:text-zinc-300">{k}</span>
-              <span class="font-mono text-xs text-zinc-500 dark:text-zinc-400 select-none">
+              <span class="font-mono text-body text-zinc-700 dark:text-zinc-300">{k}</span>
+              <span class="font-mono text-meta text-zinc-500 dark:text-zinc-400 select-none">
                 ••••••••
               </span>
               <button
                 phx-click="delete_env"
                 phx-value-key={k}
                 data-confirm={"Remove #{k}?"}
-                class="ml-auto text-xs text-zinc-400 hover:text-red-500 transition-colors"
+                class="ml-auto text-meta text-zinc-400 hover:text-red-500 transition-colors"
               >
                 Remove
               </button>
@@ -451,15 +451,15 @@ defmodule LoopyardWeb.WorkstationLive do
           hint="Each tool's page has the easy path. For a custom key or a remote Loopyard, this is the general form (carries your push token):"
         >
           <div id="ws-push" phx-hook="PushCmd" data-token={@push_token} class="relative">
-            <pre class="overflow-x-auto rounded-sm bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-xs leading-relaxed font-mono p-3 pr-16 ring-1 ring-zinc-800"><code class="ws-push-cmd">{push_cmd(@push_token, @current_id)}</code></pre>
+            <pre class="overflow-x-auto rounded-sm bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-meta leading-relaxed font-mono p-3 pr-16 ring-1 ring-zinc-800"><code class="ws-push-cmd">{push_cmd(@push_token, @current_id)}</code></pre>
             <button
               type="button"
-              class="ws-push-copy focus-ring absolute top-2 right-2 rounded-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2 py-1 text-xs"
+              class="ws-push-copy focus-ring absolute top-2 right-2 rounded-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2 py-1 text-meta"
             >
               Copy
             </button>
           </div>
-          <p class="text-xs text-zinc-500 dark:text-zinc-400">
+          <p class="text-meta text-zinc-500 dark:text-zinc-400">
             Swap GITHUB_TOKEN for any key. On this machine you can drop the token entirely. Restart to apply — keep this command secret.
           </p>
         </.section>

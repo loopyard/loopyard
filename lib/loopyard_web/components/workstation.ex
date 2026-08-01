@@ -22,8 +22,8 @@ defmodule LoopyardWeb.Components.Workstation do
     ~H"""
     <section class="space-y-2">
       <div>
-        <h2 class="text-sm font-medium text-zinc-800 dark:text-zinc-100">{@title}</h2>
-        <p :if={@hint} class="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+        <h2 class="text-body font-medium text-zinc-800 dark:text-zinc-100">{@title}</h2>
+        <p :if={@hint} class="text-meta text-zinc-500 dark:text-zinc-400 leading-relaxed">
           {@hint}
         </p>
       </div>
@@ -59,10 +59,10 @@ defmodule LoopyardWeb.Components.Workstation do
       class="flex items-center justify-between gap-3 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
     >
       <div class="min-w-0">
-        <div class="text-sm font-medium text-zinc-800 dark:text-zinc-100">{@title}</div>
-        <div :if={@desc} class="text-xs text-zinc-500 dark:text-zinc-400 truncate">{@desc}</div>
+        <div class="text-body font-medium text-zinc-800 dark:text-zinc-100">{@title}</div>
+        <div :if={@desc} class="text-meta text-zinc-500 dark:text-zinc-400 truncate">{@desc}</div>
       </div>
-      <span class="flex items-center gap-2 flex-none text-xs">
+      <span class="flex items-center gap-2 flex-none text-meta">
         {render_slot(@trailing)}
         <.chevron />
       </span>
@@ -75,7 +75,7 @@ defmodule LoopyardWeb.Components.Workstation do
 
   def status_pill(%{status: :connected} = assigns) do
     ~H"""
-    <span class="flex-none text-xs font-medium rounded-full px-2.5 py-1 bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400">
+    <span class="flex-none text-meta font-medium rounded-full px-2.5 py-1 bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400">
       Connected
     </span>
     """
@@ -83,7 +83,7 @@ defmodule LoopyardWeb.Components.Workstation do
 
   def status_pill(%{status: :checking} = assigns) do
     ~H"""
-    <span class="flex-none text-xs rounded-full px-2.5 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-400 animate-pulse">
+    <span class="flex-none text-meta rounded-full px-2.5 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-400 animate-pulse">
       Checking…
     </span>
     """
@@ -91,7 +91,7 @@ defmodule LoopyardWeb.Components.Workstation do
 
   def status_pill(assigns) do
     ~H"""
-    <span class="flex-none text-xs font-medium rounded-full px-2.5 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400">
+    <span class="flex-none text-meta font-medium rounded-full px-2.5 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400">
       Not connected
     </span>
     """
@@ -117,14 +117,14 @@ defmodule LoopyardWeb.Components.Workstation do
   def command_box(assigns) do
     ~H"""
     <div class="flex items-stretch gap-2">
-      <pre class="flex-1 min-w-0 whitespace-pre-wrap break-all md:whitespace-pre md:break-normal md:overflow-x-auto rounded-sm bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-xs leading-relaxed font-mono px-3 py-3 md:py-2.5 ring-1 ring-zinc-800">{@command}</pre>
+      <pre class="flex-1 min-w-0 whitespace-pre-wrap break-all md:whitespace-pre md:break-normal md:overflow-x-auto rounded-sm bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-meta leading-relaxed font-mono px-3 py-3 md:py-2.5 ring-1 ring-zinc-800">{@command}</pre>
       <button
         id={@id}
         type="button"
         phx-hook="Clip"
         data-label="Copy"
         data-copy={@command}
-        class="focus-ring flex-none self-stretch md:self-start rounded-sm bg-zinc-900 hover:bg-zinc-700 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white px-4 md:px-3.5 py-3 md:py-2.5 text-sm md:text-xs font-medium transition-colors"
+        class="focus-ring flex-none self-stretch md:self-start rounded-sm bg-zinc-900 hover:bg-zinc-700 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white px-4 md:px-3.5 py-3 md:py-2.5 text-body font-medium transition-colors"
       >
         Copy
       </button>
@@ -157,11 +157,11 @@ defmodule LoopyardWeb.Components.Workstation do
 
   defp button_class(:primary),
     do:
-      "focus-ring inline-flex items-center justify-center gap-1.5 rounded-sm bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white px-4 py-2 text-sm font-semibold transition-colors"
+      "focus-ring inline-flex items-center justify-center gap-1.5 rounded-sm bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white px-4 py-2 text-body font-semibold transition-colors"
 
   defp button_class(:secondary),
     do:
-      "focus-ring inline-flex items-center justify-center rounded-sm border border-zinc-300 dark:border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-60 transition-colors"
+      "focus-ring inline-flex items-center justify-center rounded-sm border border-zinc-300 dark:border-zinc-600 px-4 py-2 text-body font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-60 transition-colors"
 
   @doc "A small Restart button — recreates the workstation container ($HOME kept)."
   attr :restarting, :boolean, required: true
@@ -174,7 +174,7 @@ defmodule LoopyardWeb.Components.Workstation do
       disabled={@restarting}
       title="Recreate the workstation container (your $HOME / logins are kept)"
       class={[
-        "focus-ring inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50 transition-colors",
+        "focus-ring inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-meta font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50 transition-colors",
         @class
       ]}
     >

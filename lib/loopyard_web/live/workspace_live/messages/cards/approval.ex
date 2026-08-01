@@ -34,11 +34,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Approval do
             project={elem(@identity, 0)}
             workspace={elem(@identity, 1)}
             state={if @msg.status == :pending, do: :needs_you, else: :done}
-            size={:sm}
             class="min-w-0"
           />
           <span class={[
-            "chat-meta flex items-center gap-1.5 font-semibold uppercase tracking-wide flex-none",
+            "text-meta flex items-center gap-1.5 font-semibold uppercase tracking-wide flex-none",
             (@msg.status == :pending && "text-orange-700 dark:text-orange-400/90") ||
               "text-zinc-500 dark:text-zinc-400"
           ]}>
@@ -88,42 +87,42 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Approval do
 
         <div
           :if={@action.verb == :create_project}
-          class="chat-sub text-zinc-800 dark:text-zinc-100 mb-1"
+          class="text-body text-zinc-800 dark:text-zinc-100 mb-1"
         >
           Create project
-          <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded-sm px-1 py-0.5">
+          <code class="text-body bg-violet-200/70 dark:bg-violet-800/50 rounded-sm px-1 py-0.5">
             {@action.name}
           </code>
           <span class="text-zinc-400">— {@action.detail}</span>
         </div>
         <div
           :if={@action.verb == :integrate}
-          class="chat-sub text-zinc-800 dark:text-zinc-100 mb-1"
+          class="text-body text-zinc-800 dark:text-zinc-100 mb-1"
         >
           Merge
-          <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded-sm px-1 py-0.5">
+          <code class="text-body bg-violet-200/70 dark:bg-violet-800/50 rounded-sm px-1 py-0.5">
             {@action.branch}
           </code>
           →
-          <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded-sm px-1 py-0.5">main</code>
+          <code class="text-body bg-zinc-200/70 dark:bg-zinc-700/70 rounded-sm px-1 py-0.5">main</code>
           <span class="text-zinc-400">(rebase + merge into the green main)</span>
         </div>
         <div
           :if={@action.verb == :delete_workspace}
-          class="chat-sub text-zinc-800 dark:text-zinc-100 mb-1"
+          class="text-body text-zinc-800 dark:text-zinc-100 mb-1"
         >
           Delete workspace
-          <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded-sm px-1 py-0.5">
+          <code class="text-body bg-zinc-200/70 dark:bg-zinc-700/70 rounded-sm px-1 py-0.5">
             {@action.branch}
           </code>
           <span class="text-zinc-400">— removes its env + containers (the code stays in main)</span>
         </div>
         <div
           :if={@action.verb == :delete_project}
-          class="chat-sub text-zinc-800 dark:text-zinc-100 mb-1"
+          class="text-body text-zinc-800 dark:text-zinc-100 mb-1"
         >
           Delete project
-          <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded-sm px-1 py-0.5">
+          <code class="text-body bg-zinc-200/70 dark:bg-zinc-700/70 rounded-sm px-1 py-0.5">
             {@action[:name] || @action.project_id}
           </code>
           <span class="text-zinc-400">
@@ -132,32 +131,32 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Approval do
         </div>
         <div
           :if={@action.verb in [:rename_workspace, :rename_project]}
-          class="chat-sub text-zinc-800 dark:text-zinc-100 mb-1"
+          class="text-body text-zinc-800 dark:text-zinc-100 mb-1"
         >
           Rename {if @action.verb == :rename_project, do: "project", else: "workspace"}
-          <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded-sm px-1 py-0.5">
+          <code class="text-body bg-zinc-200/70 dark:bg-zinc-700/70 rounded-sm px-1 py-0.5">
             {@action[:old_name]}
           </code>
           →
-          <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded-sm px-1 py-0.5">
+          <code class="text-body bg-violet-200/70 dark:bg-violet-800/50 rounded-sm px-1 py-0.5">
             {@action[:name]}
           </code>
         </div>
         <div
           :if={@action.verb == :fork}
-          class="chat-sub text-zinc-800 dark:text-zinc-100 mb-1"
+          class="text-body text-zinc-800 dark:text-zinc-100 mb-1"
         >
           Fork
-          <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded-sm px-1 py-0.5">
+          <code class="text-body bg-zinc-200/70 dark:bg-zinc-700/70 rounded-sm px-1 py-0.5">
             {@action.base}
           </code>
           → new branch
-          <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded-sm px-1 py-0.5">
+          <code class="text-body bg-violet-200/70 dark:bg-violet-800/50 rounded-sm px-1 py-0.5">
             {@action.branch}
           </code>
           <span class="text-zinc-400">(its own isolated workspace)</span>
         </div>
-        <div :if={@action[:reason]} class="chat-meta text-zinc-500 dark:text-zinc-400 mb-3">
+        <div :if={@action[:reason]} class="text-meta text-zinc-500 dark:text-zinc-400 mb-3">
           {@action.reason}
         </div>
         <div :if={!@action[:reason]} class="mb-3"></div>
@@ -171,7 +170,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Approval do
                 phx-value-approval_id={@msg.approval_id}
                 phx-value-decision="approve"
                 class={[
-                  "focus-ring chat-sub inline-flex items-center gap-1.5 rounded-sm px-5 py-2 font-semibold text-white shadow-sm transition-colors",
+                  "focus-ring text-body inline-flex items-center gap-1.5 rounded-sm px-5 py-2 font-semibold text-white shadow-sm transition-colors",
                   if(@action.verb in [:delete_workspace, :delete_project],
                     do: "bg-red-600 hover:bg-red-700 shadow-red-900/20",
                     else: "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-900/20"
@@ -189,13 +188,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Approval do
                 phx-click="decide_approval"
                 phx-value-approval_id={@msg.approval_id}
                 phx-value-decision="deny"
-                class="focus-ring chat-sub inline-flex items-center rounded-sm border border-zinc-300 dark:border-zinc-600 px-5 py-2 font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                class="focus-ring text-body inline-flex items-center rounded-sm border border-zinc-300 dark:border-zinc-600 px-5 py-2 font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
               >
                 Deny
               </button>
             </div>
           <% s when s in [:creating, :integrating, :deleting, :renaming] -> %>
-            <div class="chat-sub flex items-center gap-2 text-zinc-500">
+            <div class="text-body flex items-center gap-2 text-zinc-500">
               <svg
                 class="w-4 h-4 animate-spin flex-none"
                 xmlns="http://www.w3.org/2000/svg"
@@ -246,28 +245,28 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Approval do
           <% :approved -> %>
             <.link
               navigate={approved_link(@msg)}
-              class="focus-ring chat-sub inline-flex items-center gap-1.5 rounded-sm bg-emerald-500/15 px-3 py-1.5 font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+              class="focus-ring text-body inline-flex items-center gap-1.5 rounded-sm bg-emerald-500/15 px-3 py-1.5 font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
             >
-              Ready — open <code class="text-sm">{@action[:name] || @action[:branch]}</code> →
+              Ready — open <code class="text-body">{@action[:name] || @action[:branch]}</code> →
             </.link>
           <% :integrated -> %>
-            <span class="chat-sub inline-flex items-center gap-1.5 rounded-sm bg-emerald-500/15 px-3 py-1.5 font-medium text-emerald-600 dark:text-emerald-400">
-              Merged <code class="text-sm">{@action.branch}</code> → main ✓
+            <span class="text-body inline-flex items-center gap-1.5 rounded-sm bg-emerald-500/15 px-3 py-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+              Merged <code class="text-body">{@action.branch}</code> → main ✓
             </span>
           <% :deleted -> %>
-            <span class="chat-sub inline-flex items-center gap-1.5 rounded-sm bg-zinc-500/15 px-3 py-1.5 font-medium text-zinc-600 dark:text-zinc-300">
+            <span class="text-body inline-flex items-center gap-1.5 rounded-sm bg-zinc-500/15 px-3 py-1.5 font-medium text-zinc-600 dark:text-zinc-300">
               Deleted
-              <code class="text-sm">{@action[:name] || @action[:branch] || @action[:workspace_id]}</code>
+              <code class="text-body">{@action[:name] || @action[:branch] || @action[:workspace_id]}</code>
               ✓
             </span>
           <% :renamed -> %>
-            <span class="chat-sub inline-flex items-center gap-1.5 rounded-sm bg-emerald-500/15 px-3 py-1.5 font-medium text-emerald-600 dark:text-emerald-400">
-              Renamed → <code class="text-sm">{@action[:name]}</code> ✓
+            <span class="text-body inline-flex items-center gap-1.5 rounded-sm bg-emerald-500/15 px-3 py-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+              Renamed → <code class="text-body">{@action[:name]}</code> ✓
             </span>
           <% :denied -> %>
-            <span class="chat-meta text-zinc-500 dark:text-zinc-400">Declined.</span>
+            <span class="text-meta text-zinc-500 dark:text-zinc-400">Declined.</span>
           <% :failed -> %>
-            <span class="chat-sub text-red-500">
+            <span class="text-body text-red-500">
               {case @action.verb do
                 :integrate -> "Merge failed"
                 :create_project -> "Couldn't create the project"

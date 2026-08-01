@@ -162,10 +162,10 @@ defmodule LoopyardWeb.WorkstationToolLive do
         <%!-- Header: what this is + status --%>
         <div class="space-y-1">
           <div class="flex items-center justify-between gap-3">
-            <h1 class="text-xl font-semibold tracking-tight">Connect {@ig.label}</h1>
+            <h1 class="text-title font-semibold tracking-tight">Connect {@ig.label}</h1>
             <.status_pill status={@status} />
           </div>
-          <p class="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed">{@ig.blurb}</p>
+          <p class="text-body text-zinc-500 dark:text-zinc-400 leading-relaxed">{@ig.blurb}</p>
         </div>
 
         <%!-- DEFAULT: run it on your Mac --%>
@@ -174,7 +174,7 @@ defmodule LoopyardWeb.WorkstationToolLive do
           hint="On the machine where you're already logged in — it pipes the credential into this workstation."
         >
           <.command_box id="clip-mac" command={@mac_cmd} />
-          <div class="flex items-center gap-4 text-xs text-zinc-500 dark:text-zinc-400">
+          <div class="flex items-center gap-4 text-meta text-zinc-500 dark:text-zinc-400">
             <button
               phx-click="recheck"
               class="focus-ring hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
@@ -190,13 +190,13 @@ defmodule LoopyardWeb.WorkstationToolLive do
           :if={@ig.env || @ig.console}
           class="space-y-5 border-t border-zinc-100 dark:border-zinc-800 pt-6"
         >
-          <h2 class="text-sm font-medium text-zinc-500 dark:text-zinc-400">Other ways</h2>
+          <h2 class="text-body font-medium text-zinc-500 dark:text-zinc-400">Other ways</h2>
 
           <%!-- Set a token --%>
           <form :if={@ig.env} phx-submit="save_env" class="space-y-2">
             <div>
-              <h3 class="text-xs font-medium text-zinc-700 dark:text-zinc-200">Set a token</h3>
-              <p class="text-xs text-zinc-500 dark:text-zinc-400">
+              <h3 class="text-meta font-medium text-zinc-700 dark:text-zinc-200">Set a token</h3>
+              <p class="text-meta text-zinc-500 dark:text-zinc-400">
                 <%!-- Credential keys hot-apply: Env.put -> maybe_reload_agents ->
                      Workstation.reload_agents, so agents pick up a new token on
                      their own. Telling the user to restart contradicted the
@@ -212,7 +212,7 @@ defmodule LoopyardWeb.WorkstationToolLive do
                 name="value"
                 autocomplete="off"
                 placeholder={"paste #{@ig.env}"}
-                class="flex-1 rounded-sm border border-zinc-200 dark:border-zinc-700 bg-transparent px-3 py-2 text-sm font-mono placeholder:font-sans placeholder:text-zinc-400 focus-ring"
+                class="flex-1 rounded-sm border border-zinc-200 dark:border-zinc-700 bg-transparent px-3 py-2 text-body font-mono placeholder:font-sans placeholder:text-zinc-400 focus-ring"
               />
               <.button variant={:secondary} type="submit" class="flex-none">Save</.button>
             </div>
@@ -221,12 +221,12 @@ defmodule LoopyardWeb.WorkstationToolLive do
           <%!-- Use the terminal --%>
           <div :if={@ig.console} class="space-y-2">
             <div class="flex items-center justify-between gap-2">
-              <h3 class="text-xs font-medium text-zinc-700 dark:text-zinc-200">Use the terminal</h3>
+              <h3 class="text-meta font-medium text-zinc-700 dark:text-zinc-200">Use the terminal</h3>
               <button
                 type="button"
                 phx-click="run_in_console"
                 phx-value-cmd={@ig.console}
-                class="focus-ring rounded-sm border border-zinc-200 dark:border-zinc-700 px-2.5 py-1 text-xs font-mono text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                class="focus-ring rounded-sm border border-zinc-200 dark:border-zinc-700 px-2.5 py-1 text-meta font-mono text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
               >
                 ▶ {@ig[:console_label] || @ig.console}
               </button>
@@ -246,7 +246,7 @@ defmodule LoopyardWeb.WorkstationToolLive do
               </div>
               <div
                 :if={!@console_container}
-                class="h-full flex items-center justify-center text-xs text-zinc-500"
+                class="h-full flex items-center justify-center text-meta text-zinc-500"
               >
                 Starting console…
               </div>
@@ -256,9 +256,9 @@ defmodule LoopyardWeb.WorkstationToolLive do
 
         <%!-- Reference doc — inline; child .markdown-body is where the hook renders. --%>
         <section class="space-y-2 border-t border-zinc-100 dark:border-zinc-800 pt-6">
-          <h2 class="text-sm font-medium text-zinc-500 dark:text-zinc-400">Reference</h2>
+          <h2 class="text-body font-medium text-zinc-500 dark:text-zinc-400">Reference</h2>
           <div id="ws-tool-doc" phx-hook="OriginText" phx-update="ignore">
-            <div class="markdown-body text-sm text-zinc-700 dark:text-zinc-300">
+            <div class="markdown-body text-body text-zinc-700 dark:text-zinc-300">
               {Loopyard.Markdown.to_html(@doc)}
             </div>
           </div>

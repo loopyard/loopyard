@@ -84,15 +84,15 @@ defmodule LoopyardWeb.SystemOrphansLive do
       <div class="space-y-6">
         <section>
           <div class="flex items-baseline justify-between mb-3">
-            <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+            <h2 class="text-body font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
               Tracked resources <span class="text-zinc-400 font-normal">({@total})</span>
             </h2>
-            <div :if={@stale_count > 0} class="text-xs font-medium text-red-600 dark:text-red-400">
+            <div :if={@stale_count > 0} class="text-meta font-medium text-red-600 dark:text-red-400">
               {@stale_count} stale — owner DOWN cleanup leak?
             </div>
           </div>
 
-          <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+          <p class="text-meta text-zinc-500 dark:text-zinc-400 mb-4">
             Every resource tracked via <code class="font-mono">Loopyard.Resources.track/4</code>.
             Each owner pid owns one or more resources; when an owner goes DOWN the janitor
             releases them automatically. Any row with a red "stale" badge means the janitor
@@ -101,7 +101,7 @@ defmodule LoopyardWeb.SystemOrphansLive do
           </p>
 
           <%= if @groups == [] do %>
-            <div class="text-sm text-zinc-500 dark:text-zinc-400 italic">
+            <div class="text-body text-zinc-500 dark:text-zinc-400 italic">
               No tracked resources. Every subsystem is either not yet migrated or has no
               live allocations.
             </div>
@@ -113,24 +113,24 @@ defmodule LoopyardWeb.SystemOrphansLive do
         </section>
 
         <section>
-          <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
+          <h3 class="text-meta font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
             Coverage
           </h3>
-          <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">
+          <p class="text-meta text-zinc-500 dark:text-zinc-400 mb-2">
             In-scope resources migrated to the janitor:
           </p>
-          <ul class="text-xs text-zinc-600 dark:text-zinc-300 list-disc list-inside space-y-1">
+          <ul class="text-meta text-zinc-600 dark:text-zinc-300 list-disc list-inside space-y-1">
             <li>
               <code class="font-mono">:port_binding</code>
               — PortRegistry, owned by WorkspaceGroup supervisor
             </li>
           </ul>
-          <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-3">
+          <p class="text-meta text-zinc-500 dark:text-zinc-400 mt-3">
             Non-migrated owner-resource pairs (by design — see
             <code class="font-mono">Loopyard.Resources</code>
             @moduledoc):
           </p>
-          <ul class="text-xs text-zinc-600 dark:text-zinc-300 list-disc list-inside space-y-1">
+          <ul class="text-meta text-zinc-600 dark:text-zinc-300 list-disc list-inside space-y-1">
             <li>Docker containers — lifecycle tied to compose up/down</li>
             <li>Claude CLI port — linked to ChatAgent GenServer via BEAM Port semantics</li>
             <li>Mutagen sync sessions — session OUTLIVES GenServer restart by design</li>
@@ -153,7 +153,7 @@ defmodule LoopyardWeb.SystemOrphansLive do
         <div class="flex items-center gap-2">
           <div class={"w-2 h-2 rounded-full " <> if(@group.owner_alive?, do: "bg-emerald-500", else: "bg-red-500 animate-pulse")}>
           </div>
-          <div class="text-xs font-mono">{inspect(@group.owner)}</div>
+          <div class="text-meta font-mono">{inspect(@group.owner)}</div>
           <div
             :if={not @group.owner_alive?}
             class="section-label text-red-600 dark:text-red-400"
@@ -167,7 +167,7 @@ defmodule LoopyardWeb.SystemOrphansLive do
             else: "resources"}
         </div>
       </div>
-      <table class="w-full text-xs">
+      <table class="w-full text-meta">
         <thead>
           <tr class="text-zinc-500 dark:text-zinc-400 text-left">
             <th class="px-3 py-1.5 font-medium">Kind</th>

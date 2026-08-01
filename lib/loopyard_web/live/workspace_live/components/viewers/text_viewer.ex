@@ -43,7 +43,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.TextViewer do
 
     ~H"""
     <div class="flex flex-col overflow-hidden h-full">
-      <div class="flex-none px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
+      <div class="flex-none px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-between text-meta text-zinc-500 dark:text-zinc-400">
         <div class="flex items-center gap-3">
           <span>{@line_count} lines</span>
           <span :if={@language} class="font-mono">{@language}</span>
@@ -53,13 +53,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.TextViewer do
           href={"/raw/#{@volume_name}/#{@path}"}
           target="_blank"
           rel="noopener"
-          class="px-2 py-0.5 rounded-sm text-xs hover:bg-zinc-200 dark:hover:bg-zinc-700"
+          class="px-2 py-0.5 rounded-sm text-meta hover:bg-zinc-200 dark:hover:bg-zinc-700"
         >
           Raw
         </a>
       </div>
       <div class="flex-1 overflow-auto highlight">
-        <table class="text-sm font-mono leading-relaxed w-full border-collapse">
+        <table class="text-body font-mono leading-relaxed w-full border-collapse">
           <tbody>
             <%!-- phx-no-format + hugged tags: the code cell is whitespace-pre-wrap, so any
     template indentation/newlines around the content render as literal leading

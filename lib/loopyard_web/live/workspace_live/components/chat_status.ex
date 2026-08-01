@@ -36,7 +36,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
     top, no matter how long the work runs. --%>
     <div :if={@activity != [] || @stall_hint} class="py-1.5">
       <ul :if={@activity != []} class="space-y-1.5">
-        <li :for={a <- @activity} class="flex items-start gap-2 text-sm leading-relaxed">
+        <li :for={a <- @activity} class="flex items-start gap-2 text-body leading-relaxed">
           <span class={[
             "flex-none w-3.5 text-center mt-0.5",
             a.active && "text-violet-500 animate-pulse",
@@ -58,7 +58,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
     system is handling it, and a real failure surfaces its own error. --%>
       <p
         :if={@stall_hint}
-        class="mt-2.5 flex items-start gap-2 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400"
+        class="mt-2.5 flex items-start gap-2 text-body leading-relaxed text-zinc-500 dark:text-zinc-400"
       >
         <span class="flex-none text-zinc-400 dark:text-zinc-500" aria-hidden="true">↻</span>
         <span class="min-w-0">{@stall_hint}</span>
@@ -119,14 +119,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
       <span class={["flex-none", @text_class]} aria-hidden="true">
         <Brand.mark animated class="w-5 h-5" />
       </span>
-      <span class={["text-sm font-semibold flex-none", @text_class]}>{@word}…</span>
+      <span class={["text-body font-semibold flex-none", @text_class]}>{@word}…</span>
       <span
         :if={@turn_since}
         id="turn-elapsed"
         phx-hook="Elapsed"
         phx-update="ignore"
         data-since={@turn_since}
-        class={["text-sm flex-none tabular-nums", @elapsed_class]}
+        class={["text-body flex-none tabular-nums", @elapsed_class]}
       ></span>
       <%!-- Context fuel gauge: how full the window is THIS turn. Quiet zinc
     when there's headroom, amber/red as it approaches a compaction. NOT
@@ -134,14 +134,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
     agent with an empty context never looks like a runaway. --%>
       <span
         :if={@ctx_pct > 0}
-        class={["text-sm flex-none tabular-nums", @ctx_class]}
+        class={["text-body flex-none tabular-nums", @ctx_class]}
         title="context window filled this turn — compaction kicks in near full; lifetime token cost is in the sidebar"
       >
         · {@ctx_pct}% ctx
       </span>
       <span
         :if={@active_tool && @streaming_text == ""}
-        class="text-sm flex-none truncate font-mono text-zinc-400"
+        class="text-body flex-none truncate font-mono text-zinc-400"
       >
         · {short_tool(@active_tool)}
       </span>
@@ -150,7 +150,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
         type="button"
         phx-click="interrupt_agent"
         phx-value-id={@agent_id}
-        class="focus-ring inline-flex items-center gap-2 rounded-full border border-zinc-200 dark:border-zinc-700 px-3.5 py-1.5 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:border-red-300 hover:text-red-600 dark:hover:border-red-500/50 dark:hover:text-red-400 hover:bg-red-500/10 active:bg-red-500/20 transition-colors flex-none"
+        class="focus-ring inline-flex items-center gap-2 rounded-full border border-zinc-200 dark:border-zinc-700 px-3.5 py-1.5 text-body font-medium text-zinc-600 dark:text-zinc-300 hover:border-red-300 hover:text-red-600 dark:hover:border-red-500/50 dark:hover:text-red-400 hover:bg-red-500/10 active:bg-red-500/20 transition-colors flex-none"
       >
         <span class="w-2.5 h-2.5 rounded-[3px] bg-red-500"></span> Stop
       </button>
@@ -233,18 +233,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
       <span class="flex-none text-violet-500 dark:text-violet-400" aria-hidden="true">
         <Brand.mark animated class="w-4 h-4" />
       </span>
-      <span class="text-sm font-medium text-violet-600 dark:text-violet-300 flex-none">{@word}…</span>
+      <span class="text-body font-medium text-violet-600 dark:text-violet-300 flex-none">{@word}…</span>
       <span
         :if={@turn_since}
         id="turn-elapsed"
         phx-hook="Elapsed"
         phx-update="ignore"
         data-since={@turn_since}
-        class="text-sm text-zinc-500 dark:text-zinc-400 flex-none tabular-nums"
+        class="text-body text-zinc-500 dark:text-zinc-400 flex-none tabular-nums"
       ></span>
       <span
         :if={@current_action}
-        class="hidden sm:block text-sm text-zinc-500 dark:text-zinc-400 truncate min-w-0"
+        class="hidden sm:block text-body text-zinc-500 dark:text-zinc-400 truncate min-w-0"
       >
         · {@current_action}
       </span>
@@ -253,7 +253,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
         type="button"
         phx-click="interrupt_agent"
         phx-value-id={@agent_id}
-        class="focus-ring inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 transition-colors flex-none"
+        class="focus-ring inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1 text-body font-medium text-zinc-600 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 transition-colors flex-none"
       >
         <span class="w-2 h-2 rounded-[2px] bg-red-500"></span> Stop
       </button>

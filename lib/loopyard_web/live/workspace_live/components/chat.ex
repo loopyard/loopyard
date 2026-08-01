@@ -144,7 +144,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       <button
         :if={not @window_tail?}
         phx-click="load_latest"
-        class="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 rounded-full bg-violet-600 text-white text-sm font-medium px-3.5 py-1.5 shadow-lg shadow-violet-900/20 hover:bg-violet-700 transition-colors"
+        class="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 rounded-full bg-violet-600 text-white text-body font-medium px-3.5 py-1.5 shadow-lg shadow-violet-900/20 hover:bg-violet-700 transition-colors"
       >
         Jump to latest
         <svg viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5">
@@ -221,11 +221,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               :if={@transcript_sections == []}
               class="py-10 md:py-14 text-center"
             >
-              <p class="chat-sub text-zinc-600 dark:text-zinc-300">
+              <p class="text-body text-zinc-600 dark:text-zinc-300">
                 This agent can read and write the code, run commands, and build the dev
                 environment for you.
               </p>
-              <p class="chat-meta text-zinc-500 dark:text-zinc-400 mt-2">
+              <p class="text-meta text-zinc-500 dark:text-zinc-400 mt-2">
                 A good first ask:
                 <span class="italic">"set up the dev environment and get it running"</span>
               </p>
@@ -381,11 +381,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       the right; three justify-between children would have centred the
       state instead of right-aligning it. --%>
             <div class="flex items-baseline justify-between gap-3 mb-1.5">
-              <span class="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-violet-600/90 dark:text-violet-300/80 flex-none">
+              <span class="inline-flex items-center gap-1.5 text-body font-semibold uppercase tracking-wide text-violet-600/90 dark:text-violet-300/80 flex-none">
                 <.icon name={:user} class="w-3.5 h-3.5 flex-none self-center" /> {@user_label}
               </span>
               <div class="flex items-baseline gap-3 min-w-0">
-                <span class="text-sm text-violet-500/70 dark:text-violet-300/50 truncate">
+                <span class="text-body text-violet-500/70 dark:text-violet-300/50 truncate">
                   Queued
                 </span>
                 <button
@@ -393,7 +393,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                   type="button"
                   phx-click="clear_pending"
                   phx-value-id={@agent.id}
-                  class="focus-ring flex-none text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                  class="focus-ring flex-none text-meta text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
                 >
                   Clear all
                 </button>
@@ -410,7 +410,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                   phx-value-id={@agent.id}
                   phx-value-index={i}
                   title="Edit — pull back into the message box"
-                  class="focus-ring flex-1 min-w-0 text-left text-base leading-relaxed text-zinc-800 dark:text-zinc-100 line-clamp-3"
+                  class="focus-ring flex-1 min-w-0 text-left text-body leading-relaxed text-zinc-800 dark:text-zinc-100 line-clamp-3"
                 >
                   {text}
                 </button>
@@ -436,7 +436,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     so it never needs a sentence or an alarm. --%>
           <div
             :if={(@agent[:context_utilization] || 0.0) >= 0.92}
-            class="flex items-center gap-1.5 my-2 text-sm text-zinc-500 dark:text-zinc-400"
+            class="flex items-center gap-1.5 my-2 text-body text-zinc-500 dark:text-zinc-400"
           >
             <span class="flex-none">🗜</span>
             <span class="min-w-0">Compacting…</span>
@@ -455,12 +455,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             phx-update="ignore"
             class="hidden -mx-3 md:-mx-6 wide:-mx-4 wide:mt-2 bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 pt-3 pb-3"
           >
-            <div class="chat-meta font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300 mb-1.5">
+            <div class="text-meta font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300 mb-1.5">
               Queued
             </div>
             <div
               data-echo-text
-              class="chat-sub text-zinc-800 dark:text-zinc-100 whitespace-pre-wrap line-clamp-3"
+              class="text-body text-zinc-800 dark:text-zinc-100 whitespace-pre-wrap line-clamp-3"
             >
             </div>
           </div>
@@ -484,7 +484,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                 placeholder="Type a message..."
                 aria-label="Message"
                 autocomplete="off"
-                class="focus-ring chat-body flex-1 bg-transparent border-0 rounded-sm px-1 py-2.5
+                class="focus-ring text-body flex-1 bg-transparent border-0 rounded-sm px-1 py-2.5
     text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none
     focus:outline-none focus:ring-0"
               ></textarea>
@@ -499,7 +499,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             </form>
             <%!-- Why a send failed — the ChatForm hook fills + reveals this so a
     rejected send is never just a silent red flash. --%>
-            <p id="send-status" class="hidden mt-1.5 text-sm text-red-500 dark:text-red-400"></p>
+            <p id="send-status" class="hidden mt-1.5 text-body text-red-500 dark:text-red-400"></p>
           </div>
         </div>
       </div>
@@ -512,7 +512,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   def container_panel(%{has_container: false} = assigns) do
     ~H"""
     <div class="flex-1 flex items-center justify-center">
-      <p class="text-base text-zinc-500 dark:text-zinc-400">No container running</p>
+      <p class="text-body text-zinc-500 dark:text-zinc-400">No container running</p>
     </div>
     """
   end
@@ -523,20 +523,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       <div class="flex items-center justify-end px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
         <button
           phx-click="refresh_container"
-          class="text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+          class="text-body text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
         >
           Refresh
         </button>
       </div>
       <div :if={@env} class="border-b border-zinc-200 dark:border-zinc-700/80">
         <div class="px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50">
-          <h3 class="text-sm font-semibold uppercase tracking-wider text-zinc-500">Environment</h3>
+          <h3 class="text-body font-semibold uppercase tracking-wider text-zinc-500">Environment</h3>
         </div>
-        <pre class="px-4 py-3 text-sm md:text-[13px] font-mono leading-snug text-zinc-600 dark:text-zinc-400 overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto">{@env}</pre>
+        <pre class="px-4 py-3 text-body md:text-[13px] font-mono leading-snug text-zinc-600 dark:text-zinc-400 overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto">{@env}</pre>
       </div>
       <div class="flex-1 flex flex-col min-h-0">
         <div class="flex items-center justify-between px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
-          <h3 class="text-sm font-semibold uppercase tracking-wider text-zinc-500">Logs</h3>
+          <h3 class="text-body font-semibold uppercase tracking-wider text-zinc-500">Logs</h3>
           <form phx-change="filter_container_service" class="inline">
             <input
               type="text"
@@ -544,12 +544,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               value={@log_service || ""}
               placeholder="Filter service..."
               aria-label="Filter logs by service"
-              class="text-sm rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 w-28
+              class="text-body rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 w-28
     focus:outline-none focus:ring-1 focus:ring-violet-500/30"
             />
           </form>
         </div>
-        <pre class="flex-1 px-4 py-3 text-sm md:text-[13px] font-mono leading-snug overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400 min-h-[200px]">{@logs}</pre>
+        <pre class="flex-1 px-4 py-3 text-body md:text-[13px] font-mono leading-snug overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400 min-h-[200px]">{@logs}</pre>
       </div>
     </div>
     """

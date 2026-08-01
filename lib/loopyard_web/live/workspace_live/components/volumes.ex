@@ -47,10 +47,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Volumes do
     <.detail_panel>
       <:header>
         <.dot color="bg-blue-400" />
-        <span class="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+        <span class="text-body font-semibold text-zinc-900 dark:text-zinc-100">
           {@description || @volume_name}
         </span>
-        <span class="text-xs text-zinc-500 dark:text-zinc-400">
+        <span class="text-meta text-zinc-500 dark:text-zinc-400">
           {section_label(@volume_tab)}
         </span>
         <%!-- Volume info: desktop right rail + mobile "volume-context" sheet,
@@ -137,7 +137,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Volumes do
     ~H"""
     <div class="flex flex-col h-full">
       <%!-- File header with breadcrumb back to directory --%>
-      <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center gap-1 text-xs">
+      <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center gap-1 text-meta">
         <.link
           patch={"#{@base_path}/volumes/#{@volume_name}/files"}
           class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
@@ -176,7 +176,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Volumes do
       <%!-- Breadcrumb --%>
       <div
         :if={@browse_path != "."}
-        class="px-4 py-2 flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400 border-b border-zinc-200 dark:border-zinc-700/80"
+        class="px-4 py-2 flex items-center gap-1 text-meta text-zinc-500 dark:text-zinc-400 border-b border-zinc-200 dark:border-zinc-700/80"
       >
         <.link
           patch={"#{@base_path}/volumes/#{@volume_name}/files"}
@@ -205,7 +205,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Volumes do
         <.link
           :if={@browse_path != "."}
           patch={"#{@base_path}/volumes/#{@volume_name}/files/#{parent_path(@browse_path)}"}
-          class="block w-full px-4 py-2 text-sm text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+          class="block w-full px-4 py-2 text-body text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
         >
           ..
         </.link>
@@ -213,18 +213,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Volumes do
         <.link
           :for={entry <- @file_tree}
           patch={"#{@base_path}/volumes/#{@volume_name}/files/#{entry.path}"}
-          class="flex items-center justify-between px-4 py-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+          class="flex items-center justify-between px-4 py-2 text-body hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
         >
           <span class="flex items-center gap-2">
             <span
               :if={entry.type == :dir}
-              class="text-zinc-500 dark:text-zinc-400 text-xs w-4 text-center"
+              class="text-zinc-500 dark:text-zinc-400 text-meta w-4 text-center"
             >
               &#x25B8;
             </span>
             <span
               :if={entry.type == :file}
-              class="text-zinc-300 dark:text-zinc-600 text-xs w-4 text-center"
+              class="text-zinc-300 dark:text-zinc-600 text-meta w-4 text-center"
             >
               -
             </span>
@@ -238,7 +238,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Volumes do
           </span>
           <span
             :if={entry.type == :file}
-            class="text-xs text-zinc-500 dark:text-zinc-400 tabular-nums"
+            class="text-meta text-zinc-500 dark:text-zinc-400 tabular-nums"
           >
             {format_bytes(entry.size)}
           </span>
@@ -246,7 +246,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Volumes do
 
         <div
           :if={@file_tree == []}
-          class="px-4 py-6 text-sm text-zinc-500 dark:text-zinc-400 text-center"
+          class="px-4 py-6 text-body text-zinc-500 dark:text-zinc-400 text-center"
         >
           Empty directory
         </div>

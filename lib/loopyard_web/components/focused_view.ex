@@ -63,14 +63,14 @@ defmodule LoopyardWeb.Components.FocusedView do
              corruption. It now shortens rather than wraps. --%>
         <div class="flex items-center gap-2 justify-start sm:justify-center min-w-0 overflow-hidden">
           <span class={[
-            "chat-meta font-semibold uppercase tracking-wide whitespace-nowrap truncate",
+            "text-meta font-semibold uppercase tracking-wide whitespace-nowrap truncate",
             @label_class
           ]}>
             {@label}
           </span>
           <span
             :if={@position}
-            class="chat-meta tabular-nums whitespace-nowrap flex-none text-zinc-500 dark:text-zinc-400"
+            class="text-meta tabular-nums whitespace-nowrap flex-none text-zinc-500 dark:text-zinc-400"
           >
             {@position}
           </span>
@@ -113,14 +113,14 @@ defmodule LoopyardWeb.Components.FocusedView do
             LoopyardWeb.Components.Common.state_light(@state)
           ]}
         ></span>
-        <h1 class="min-w-0 truncate text-xl md:text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+        <h1 class="min-w-0 truncate text-title font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
           {@project}<span
             :if={@workspace not in [nil, ""]}
             class="font-normal text-zinc-400 dark:text-zinc-500"
           > · {@workspace}</span>
         </h1>
       </div>
-      <p :if={@context} class="chat-meta text-zinc-500 dark:text-zinc-400 mt-1.5 ml-[1.375rem]">
+      <p :if={@context} class="text-meta text-zinc-500 dark:text-zinc-400 mt-1.5 ml-[1.375rem]">
         {@context}
       </p>
     </div>

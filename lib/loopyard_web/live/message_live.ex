@@ -177,20 +177,20 @@ defmodule LoopyardWeb.MessageLive do
       <Nav.bar height="h-12" pad="px-4">
         <.link
           navigate={"/messages/#{@agent_id}/#{@msg_id}"}
-          class="text-sm font-medium text-zinc-600 dark:text-zinc-300"
+          class="text-body font-medium text-zinc-600 dark:text-zinc-300"
         >
           {if @mode == :single, do: "Message", else: "Turn"}
         </.link>
         <span
           :if={!@closed? && @streaming_text != ""}
-          class="flex items-center gap-1.5 text-xs text-violet-500"
+          class="flex items-center gap-1.5 text-meta text-violet-500"
         >
           <span class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse"></span> live
         </span>
         <:actions>
           <.link
             navigate={@chat_path}
-            class="chat-meta font-medium text-violet-600 dark:text-violet-400 hover:underline mr-2"
+            class="text-meta font-medium text-violet-600 dark:text-violet-400 hover:underline mr-2"
           >
             Open in chat →
           </.link>
@@ -201,7 +201,7 @@ defmodule LoopyardWeb.MessageLive do
             id="share-sheet"
             phx-hook="ShareSheet"
             data-share="sheet"
-            class="focus-ring tap-target chat-meta inline-flex items-center gap-1 rounded-sm px-2 py-1 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+            class="focus-ring tap-target text-meta inline-flex items-center gap-1 rounded-sm px-2 py-1 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
             title="Share…"
           >
             <svg viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5" aria-hidden="true">
@@ -220,7 +220,7 @@ defmodule LoopyardWeb.MessageLive do
             phx-hook="CopySource"
             data-source={@raw_url}
             data-copy="fetch"
-            class="focus-ring tap-target chat-meta inline-flex items-center gap-1 rounded-sm px-2 py-1 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors cursor-pointer"
+            class="focus-ring tap-target text-meta inline-flex items-center gap-1 rounded-sm px-2 py-1 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors cursor-pointer"
             title="Copy the markdown"
           >
             <.icon name={:copy} class="w-3.5 h-3.5 copy-icon" />
@@ -231,7 +231,7 @@ defmodule LoopyardWeb.MessageLive do
             id="copy-share-url"
             phx-hook="ShareSheet"
             data-share="url"
-            class="focus-ring tap-target chat-meta inline-flex items-center gap-1 rounded-sm px-2 py-1 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+            class="focus-ring tap-target text-meta inline-flex items-center gap-1 rounded-sm px-2 py-1 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
             title="Copy the link"
           >
             Copy link
@@ -259,14 +259,14 @@ defmodule LoopyardWeb.MessageLive do
           <div class="markdown-body">
             {Phoenix.HTML.raw(Loopyard.Markdown.to_html(@streaming_text))}
           </div>
-          <div class="mt-2 flex items-center gap-1.5 text-xs text-violet-500">
+          <div class="mt-2 flex items-center gap-1.5 text-meta text-violet-500">
             <span class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse"></span> streaming…
           </div>
         </div>
       </div>
 
       <div :if={@turn == []} class="flex items-center justify-center h-64">
-        <p class="text-sm text-zinc-400">Turn not found or link expired</p>
+        <p class="text-body text-zinc-400">Turn not found or link expired</p>
       </div>
     </div>
     """
@@ -292,20 +292,20 @@ defmodule LoopyardWeb.MessageLive do
 
   def turn_msg(%{msg: %{role: :tool}} = assigns) do
     ~H"""
-    <div class="font-mono text-xs text-zinc-500 dark:text-zinc-400">⚙ {@msg[:tool] || "tool"}</div>
+    <div class="font-mono text-meta text-zinc-500 dark:text-zinc-400">⚙ {@msg[:tool] || "tool"}</div>
     """
   end
 
   def turn_msg(%{msg: %{role: role, content: c}} = assigns)
       when role in [:tool_result, :build, :build_done, :build_failed] and is_binary(c) do
     ~H"""
-    <pre class="text-xs font-mono whitespace-pre-wrap overflow-x-auto rounded-sm bg-zinc-100 dark:bg-zinc-950 text-zinc-700 dark:text-zinc-300 p-3 max-h-64 overflow-y-auto">{@msg.content}</pre>
+    <pre class="text-meta font-mono whitespace-pre-wrap overflow-x-auto rounded-sm bg-zinc-100 dark:bg-zinc-950 text-zinc-700 dark:text-zinc-300 p-3 max-h-64 overflow-y-auto">{@msg.content}</pre>
     """
   end
 
   def turn_msg(%{msg: %{role: :system, content: c}} = assigns) when is_binary(c) do
     ~H"""
-    <div class="py-1 text-center text-sm italic text-zinc-400/70 dark:text-zinc-600">
+    <div class="py-1 text-center text-body italic text-zinc-400/70 dark:text-zinc-600">
       {@msg.content}
     </div>
     """
@@ -313,7 +313,7 @@ defmodule LoopyardWeb.MessageLive do
 
   def turn_msg(%{msg: %{role: :error, content: c}} = assigns) when is_binary(c) do
     ~H"""
-    <div class="text-sm text-red-600 dark:text-red-400 whitespace-pre-wrap">{@msg.content}</div>
+    <div class="text-body text-red-600 dark:text-red-400 whitespace-pre-wrap">{@msg.content}</div>
     """
   end
 
@@ -321,7 +321,7 @@ defmodule LoopyardWeb.MessageLive do
     ~H"""
     <.link
       navigate={"/projects/#{@msg[:project_id]}/workspaces/#{@msg[:workspace_id]}/agents/#{@msg[:agent_id]}"}
-      class="inline-flex items-center gap-2 rounded-sm border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-sm text-violet-600 dark:text-violet-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+      class="inline-flex items-center gap-2 rounded-sm border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-body text-violet-600 dark:text-violet-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
     >
       ▸ {@msg[:label] || "workspace"} — open in chat →
     </.link>

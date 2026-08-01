@@ -96,21 +96,44 @@ defmodule LoopyardWeb.DesignSystemTest do
     assert offenders == [], "use the packaged `Brand` module: #{inspect(offenders)}"
   end
 
-  test "chat type scale: chat surfaces don't reintroduce ad-hoc prose sizes" do
-    # The stream reads from THREE tokens (chat-body/sub/meta). text-lg/text-base
-    # in the chat renderers means someone is bypassing the scale.
-    files = [
-      "lib/loopyard_web/live/workspace_live/messages.ex",
-      "lib/loopyard_web/live/workspace_live/messages/cards.ex"
-    ]
+  test "the type scale is five tokens, everywhere, with no escapes" do
+    # It once rendered NINE sizes — 13, 14, 14.25, 15, 15.2, 16, 18, 20, 24 —
+    # with four of them inside a 2px band. Differences that small can't read as
+    # hierarchy, but they're plainly visible as inconsistency, which is exactly
+    # how they read. The scale is now meta/body/lead/title/hero and Tailwind's
+    # default sizes are REPLACED rather than extended, so `text-sm` generates no
+    # CSS at all. This test catches the ones a build can't: leftovers, arbitrary
+    # values, and the chat's old private tokens.
+    banned = ~r/\b(?:text-(?:xs|sm|base|lg|xl|[2-9]xl|\[[^\]]+\])|chat-(?:body|sub|meta))\b/
 
     offenders =
-      for f <- files,
-          Regex.match?(~r/text-(?:lg|base)\b/, File.read!(f)),
-          do: f
+      Path.wildcard("lib/loopyard_web/**/*.{ex,heex}")
+      |> Enum.filter(&Regex.match?(banned, File.read!(&1)))
+      |> Enum.map(&Path.relative_to_cwd/1)
 
     assert offenders == [],
-           "ad-hoc text sizes in chat surfaces (use chat-body/chat-sub/chat-meta): #{inspect(offenders)}"
+           """
+           Off-scale text sizes. Use text-meta (13) / text-body (16) /
+           text-lead (18) / text-title (20) / text-hero (24) — see the scale
+           at the top of assets/tailwind.config.js.
+
+           #{Enum.map_join(offenders, "\n", &("  " <> &1))}
+           """
+  end
+
+  test "no element changes size between breakpoints" do
+    # A responsive size flip (text-lead md:text-body) means the same element is
+    # two sizes depending on the window — the page's own title changing size
+    # when you rotate. If a size is right, it's right at every width.
+    offenders =
+      Path.wildcard("lib/loopyard_web/**/*.{ex,heex}")
+      |> Enum.filter(
+        &Regex.match?(~r/\b(?:sm|md|lg|xl):text-(?:meta|body|lead|title|hero)\b/, File.read!(&1))
+      )
+      |> Enum.map(&Path.relative_to_cwd/1)
+
+    assert offenders == [],
+           "responsive font-size flips: #{inspect(offenders)}"
   end
 
   test "safe-area-top lives on page shells ONLY (one inset per page, ever)" do

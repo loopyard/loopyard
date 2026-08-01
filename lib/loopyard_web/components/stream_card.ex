@@ -9,7 +9,7 @@ defmodule LoopyardWeb.Components.StreamCard do
   toned by meaning: `:needs_you` amber, `:you` violet, `:neutral` quiet.
   * `header/1` — the standard top row: the canonical `workspace_identity`
   chip TOP-LEFT (when the card knows its subject), the card's label
-  TOP-RIGHT opposite it (icon + uppercase `chat-meta` text). Without a
+  TOP-RIGHT opposite it (icon + uppercase `text-meta` text). Without a
   chip the label holds the left edge.
   * Actions/links belong at the BOTTOM of the card (convention, not markup).
 
@@ -83,11 +83,10 @@ defmodule LoopyardWeb.Components.StreamCard do
         project={@project}
         workspace={@workspace}
         state={@state}
-        size={:sm}
         class="min-w-0"
       />
       <span class={[
-        "chat-meta flex items-center gap-1.5 font-semibold uppercase tracking-wide flex-none",
+        "text-meta flex items-center gap-1.5 font-semibold uppercase tracking-wide flex-none",
         @label_class
       ]}>
         {render_slot(@label)}

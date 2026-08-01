@@ -22,6 +22,27 @@ module.exports = {
   // marketing site consumes. See packages/brand/tailwind.preset.js.
   presets: [require("../packages/brand/tailwind.preset")],
   theme: {
+    // THE TYPE SCALE — five sizes, each with a job, each visibly a step.
+    //
+    //   meta  13  eyebrows, uppercase labels, timestamps, secondary detail
+    //   body  16  EVERYTHING you read — prose, rows, options, buttons, inputs
+    //   lead  18  card and section titles
+    //   title 20  page section headings
+    //   hero  24  the one big number or name on a page
+    //
+    // This REPLACES Tailwind's default scale rather than extending it, on
+    // purpose: `text-sm` and `text-base` no longer exist, so the drift that
+    // produced NINE rendered sizes — four of them (13/14/14.25/15/15.2) inside
+    // a 2px band, differences too small to read as hierarchy but big enough to
+    // look like a mistake — cannot come back by habit. If you reach for a size
+    // that isn't here, the answer is one of these five, not a sixth.
+    fontSize: {
+      meta: ['0.8125rem', '1.4'],
+      body: ['1rem', '1.5'],
+      lead: ['1.125rem', '1.6'],
+      title: ['1.25rem', '1.4'],
+      hero: ['1.5rem', '1.25']
+    },
     extend: {
       // The ULTRAWIDE cutover. Below it the chat's prompt bands + composer run
       // edge-to-edge of the pane (a bar touching the sides is the normal look);
@@ -34,20 +55,6 @@ module.exports = {
       // re-sizes every `text-xs`/`text-sm`/`text-base` in one place — no more
       // 12px chrome, and the small end is compressed toward base so the UI reads
       // uniformly instead of a jumble of tiny sizes. `[size, lineHeight]` tuples.
-      fontSize: {
-        xs: ['0.875rem', '1.25rem'],    // 14px (was 12) — the smallest text allowed
-        sm: ['0.9375rem', '1.375rem'],  // 15px (was 14)
-        base: ['1rem', '1.5rem'],        // 16px — the anchor
-        lg: ['1.125rem', '1.75rem'],     // 18px — chat prose
-        // The chat stream's THREE-step type scale (see .chat-body/.chat-sub/
-        // .chat-meta in app.css — they @apply these). ONE place to tune how big
-        // the chat reads; a future per-user font-size preference scales these.
-        'chat-body': ['1.125rem', '1.7'],     // 18px — prose, prompts, question heroes, composer (mobile)
-        'chat-body-md': ['1rem', '1.7'], // 16px — chat-body on md+ (17px read HUGE on desktop)
-        'chat-sub': ['1rem', '1.55'],         // 16px — options, card details, buttons (mobile)
-        'chat-sub-md': ['0.9375rem', '1.55'], // 15px — chat-sub on md+ screens
-        'chat-meta': ['0.8125rem', '1.4'],    // 13px — eyebrows, timestamps, footers
-      },
       fontFamily: {
         // System stacks only — no custom font downloads. Serif is the
         // primary family (applied via <body class="font-serif">); mono

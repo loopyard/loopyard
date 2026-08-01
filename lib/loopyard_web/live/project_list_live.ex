@@ -279,12 +279,12 @@ defmodule LoopyardWeb.ProjectListLive do
     live status + what each agent is doing + openable ports. The big
     mission-control twin of the sidebar. --%>
           <header class="mb-8 flex items-end justify-between gap-4">
-            <p class="text-sm text-zinc-500 dark:text-zinc-400">
+            <p class="text-body text-zinc-500 dark:text-zinc-400">
               {home_subtitle(@projects)}
             </p>
             <.link
               navigate="/projects/new"
-              class="hidden sm:inline-flex items-center gap-1.5 rounded-sm border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:border-violet-300 dark:hover:border-violet-500/40 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+              class="hidden sm:inline-flex items-center gap-1.5 rounded-sm border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-body font-medium text-zinc-600 dark:text-zinc-300 hover:border-violet-300 dark:hover:border-violet-500/40 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
             >
               <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" /></svg>
               New project
@@ -297,7 +297,7 @@ defmodule LoopyardWeb.ProjectListLive do
           <div class="mt-6 sm:hidden">
             <.link
               navigate="/projects/new"
-              class="flex items-center justify-center gap-1.5 w-full  border border-dashed border-zinc-300 dark:border-zinc-700 px-3 py-3 text-sm font-medium text-zinc-500 dark:text-zinc-400 active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors"
+              class="flex items-center justify-center gap-1.5 w-full  border border-dashed border-zinc-300 dark:border-zinc-700 px-3 py-3 text-body font-medium text-zinc-500 dark:text-zinc-400 active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors"
             >
               <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" /></svg>
               New project
@@ -305,8 +305,8 @@ defmodule LoopyardWeb.ProjectListLive do
           </div>
         <% :new -> %>
           <div class="max-w-2xl">
-            <h1 class="text-xl font-semibold mb-1">New project</h1>
-            <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-5">How do you want to start?</p>
+            <h1 class="text-title font-semibold mb-1">New project</h1>
+            <p class="text-body text-zinc-500 dark:text-zinc-400 mb-5">How do you want to start?</p>
             <div class="space-y-2.5">
               <.method_card
                 navigate="/projects/new/github"
@@ -327,8 +327,8 @@ defmodule LoopyardWeb.ProjectListLive do
           </div>
         <% :new_scratch -> %>
           <div class="max-w-2xl">
-            <h1 class="text-xl font-semibold mb-1">From scratch</h1>
-            <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-5">
+            <h1 class="text-title font-semibold mb-1">From scratch</h1>
+            <p class="text-body text-zinc-500 dark:text-zinc-400 mb-5">
               A fresh repo, ready instantly. No GitHub needed — connect one later when it matters.
             </p>
             <form phx-submit="create_project" class="space-y-3">
@@ -340,14 +340,14 @@ defmodule LoopyardWeb.ProjectListLive do
                 autofocus
                 disabled={@creating != nil}
                 value={@creating}
-                class="w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-brand-paper dark:bg-brand-ink px-3 py-2.5 text-sm
+                class="w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-brand-paper dark:bg-brand-ink px-3 py-2.5 text-body
     text-zinc-900 dark:text-zinc-200 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 disabled:opacity-60
     focus:outline-none focus:ring-1 focus:ring-violet-500/30 focus:border-violet-400"
               />
               <button
                 type="submit"
                 disabled={@creating != nil}
-                class="focus-ring w-full inline-flex items-center justify-center gap-1.5 rounded-sm bg-violet-600 hover:bg-violet-700 disabled:opacity-70 px-5 py-2.5 text-sm font-semibold text-white transition-colors"
+                class="focus-ring w-full inline-flex items-center justify-center gap-1.5 rounded-sm bg-violet-600 hover:bg-violet-700 disabled:opacity-70 px-5 py-2.5 text-body font-semibold text-white transition-colors"
               >
                 <svg
                   :if={@creating}
@@ -378,8 +378,8 @@ defmodule LoopyardWeb.ProjectListLive do
           </div>
         <% :new_folder -> %>
           <div class="max-w-2xl">
-            <h1 class="text-xl font-semibold mb-1">From a folder on this machine</h1>
-            <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-5">
+            <h1 class="text-title font-semibold mb-1">From a folder on this machine</h1>
+            <p class="text-body text-zinc-500 dark:text-zinc-400 mb-5">
               Point Loopyard at a directory you already have.
             </p>
             <form phx-submit="add_project" class="flex items-center gap-2 mb-5">
@@ -389,30 +389,30 @@ defmodule LoopyardWeb.ProjectListLive do
                 placeholder="/Users/you/projects/my-app"
                 autocomplete="off"
                 autofocus
-                class="flex-1 min-w-0 rounded-sm border border-zinc-300 dark:border-zinc-600 bg-brand-paper dark:bg-brand-ink px-3 py-2.5 text-sm font-mono
+                class="flex-1 min-w-0 rounded-sm border border-zinc-300 dark:border-zinc-600 bg-brand-paper dark:bg-brand-ink px-3 py-2.5 text-body font-mono
     text-zinc-900 dark:text-zinc-300 placeholder:text-zinc-400 dark:placeholder:text-zinc-600
     focus:outline-none focus:ring-1 focus:ring-violet-500/20 focus:border-violet-400"
               />
               <button
                 type="submit"
-                class="focus-ring flex-none rounded-sm bg-zinc-900 dark:bg-zinc-200 hover:bg-zinc-800 dark:hover:bg-white px-5 py-2.5 text-sm font-semibold text-white dark:text-zinc-900 transition-colors"
+                class="focus-ring flex-none rounded-sm bg-zinc-900 dark:bg-zinc-200 hover:bg-zinc-800 dark:hover:bg-white px-5 py-2.5 text-body font-semibold text-white dark:text-zinc-900 transition-colors"
               >
                 Open
               </button>
             </form>
             <div class=" border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-4">
-              <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-1.5">
+              <p class="text-meta text-zinc-500 dark:text-zinc-400 mb-1.5">
                 Or run this from that folder in your terminal:
               </p>
               <div class="flex items-center gap-2">
-                <div class="flex-1 min-w-0 bg-zinc-900 dark:bg-zinc-950 rounded-sm px-3 py-1.5 font-mono text-xs text-zinc-300 overflow-x-auto whitespace-nowrap select-all">
+                <div class="flex-1 min-w-0 bg-zinc-900 dark:bg-zinc-950 rounded-sm px-3 py-1.5 font-mono text-meta text-zinc-300 overflow-x-auto whitespace-nowrap select-all">
                   <span class="text-zinc-500 select-none">$ </span>{@launch_cmd}
                 </div>
                 <button
                   id="copy-launch"
                   phx-hook="CopySource"
                   data-source={@launch_cmd}
-                  class="flex-none rounded-sm border border-zinc-300 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-300 transition-colors"
+                  class="flex-none rounded-sm border border-zinc-300 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 px-3 py-1.5 text-meta font-medium text-zinc-600 dark:text-zinc-300 transition-colors"
                 >
                   Copy
                 </button>
@@ -421,8 +421,8 @@ defmodule LoopyardWeb.ProjectListLive do
           </div>
         <% :new_github -> %>
           <div class="max-w-2xl">
-            <h1 class="text-xl font-semibold mb-1">From GitHub</h1>
-            <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-5">
+            <h1 class="text-title font-semibold mb-1">From GitHub</h1>
+            <p class="text-body text-zinc-500 dark:text-zinc-400 mb-5">
               Clone a repo into its own workspace. This is the only route that works when
               Loopyard runs on a different machine than the one you're sitting at.
             </p>
@@ -437,7 +437,7 @@ defmodule LoopyardWeb.ProjectListLive do
                   autocomplete="off"
                   autofocus
                   disabled={@creating != nil}
-                  class="flex-1 min-w-0 rounded-sm border border-zinc-300 dark:border-zinc-600 bg-brand-paper dark:bg-brand-ink px-3 py-3 md:py-2.5 text-sm font-mono
+                  class="flex-1 min-w-0 rounded-sm border border-zinc-300 dark:border-zinc-600 bg-brand-paper dark:bg-brand-ink px-3 py-3 md:py-2.5 text-body font-mono
     text-zinc-900 dark:text-zinc-300 placeholder:text-zinc-400 dark:placeholder:text-zinc-600
     focus:outline-none focus:ring-1 focus:ring-violet-500/20 focus:border-violet-400 disabled:opacity-60"
                 />
@@ -448,13 +448,13 @@ defmodule LoopyardWeb.ProjectListLive do
                   placeholder="branch (optional)"
                   aria-label="Branch — blank uses the repo default"
                   disabled={@creating != nil}
-                  class="sm:w-32 flex-none rounded-sm border border-zinc-300 dark:border-zinc-600 bg-brand-paper dark:bg-brand-ink px-3 py-3 md:py-2.5 text-sm font-mono
+                  class="sm:w-32 flex-none rounded-sm border border-zinc-300 dark:border-zinc-600 bg-brand-paper dark:bg-brand-ink px-3 py-3 md:py-2.5 text-body font-mono
     text-zinc-900 dark:text-zinc-300 focus:outline-none focus:ring-1 focus:ring-violet-500/20 focus:border-violet-400 disabled:opacity-60"
                 />
                 <button
                   type="submit"
                   disabled={@creating != nil}
-                  class="focus-ring flex-none rounded-sm bg-zinc-900 dark:bg-zinc-200 hover:bg-zinc-800 dark:hover:bg-white px-5 py-3 md:py-2.5 text-sm font-semibold text-white dark:text-zinc-900 transition-colors disabled:opacity-60"
+                  class="focus-ring flex-none rounded-sm bg-zinc-900 dark:bg-zinc-200 hover:bg-zinc-800 dark:hover:bg-white px-5 py-3 md:py-2.5 text-body font-semibold text-white dark:text-zinc-900 transition-colors disabled:opacity-60"
                 >
                   {if @creating, do: "Cloning…", else: "Clone"}
                 </button>
@@ -467,7 +467,7 @@ defmodule LoopyardWeb.ProjectListLive do
               :if={not @github_connected?}
               class="border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-4"
             >
-              <p class="text-sm text-zinc-700 dark:text-zinc-300">
+              <p class="text-body text-zinc-700 dark:text-zinc-300">
                 Public repos clone as-is. For private ones,
                 <.link
                   navigate={"/workstations/#{@workstation}/github"}
@@ -478,7 +478,7 @@ defmodule LoopyardWeb.ProjectListLive do
             </div>
             <p
               :if={@github_connected?}
-              class="text-xs text-zinc-500 dark:text-zinc-400"
+              class="text-meta text-zinc-500 dark:text-zinc-400"
             >
               GitHub is connected — private repos work too.
             </p>
@@ -502,7 +502,7 @@ defmodule LoopyardWeb.ProjectListLive do
     >
       <div class="min-w-0">
         <div class="flex items-center gap-2">
-          <span class="text-sm font-semibold">{@title}</span>
+          <span class="text-body font-semibold">{@title}</span>
           <span
             :if={@badge}
             class="section-label rounded-full bg-zinc-200 dark:bg-zinc-700 px-1.5 py-0.5"
@@ -510,7 +510,7 @@ defmodule LoopyardWeb.ProjectListLive do
             {@badge}
           </span>
         </div>
-        <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{@desc}</p>
+        <p class="text-meta text-zinc-500 dark:text-zinc-400 mt-0.5">{@desc}</p>
       </div>
       <.chevron />
     </.link>

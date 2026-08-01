@@ -33,7 +33,7 @@ defmodule LoopyardWeb.Components.Common do
       :if={Phoenix.Flash.get(@flash, @kind)}
       class={[
         "fixed top-3 left-1/2 -translate-x-1/2 z-[60] w-[min(92vw,34rem)] flex items-start gap-2",
-        " px-4 py-2.5 text-sm shadow-lg shadow-black/10",
+        " px-4 py-2.5 text-body shadow-lg shadow-black/10",
         banner_class(@kind)
       ]}
       role="alert"
@@ -47,7 +47,7 @@ defmodule LoopyardWeb.Components.Common do
         phx-click="lv:clear-flash"
         phx-value-key={@kind}
         aria-label="Dismiss"
-        class="flex-none -mr-1 -mt-0.5 px-1 opacity-50 hover:opacity-100 leading-none text-base cursor-pointer"
+        class="flex-none -mr-1 -mt-0.5 px-1 opacity-50 hover:opacity-100 leading-none text-body cursor-pointer"
       >
         &times;
       </button>
@@ -154,7 +154,7 @@ defmodule LoopyardWeb.Components.Common do
   # min-h-11 (44px) is the WCAG/HIG touch-target floor on mobile; md:min-h-8
   # (~32px) keeps the dense desktop toolbar size. So every action button is
   # comfortably tappable on a phone without bloating the desktop rail.
-  @control_btn_base "inline-flex items-center min-h-11 md:min-h-8 px-3 py-1.5 rounded-sm text-sm font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+  @control_btn_base "inline-flex items-center min-h-11 md:min-h-8 px-3 py-1.5 rounded-sm text-body font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
 
   def control_btn(assigns) do
     color =
@@ -213,7 +213,7 @@ defmodule LoopyardWeb.Components.Common do
   one concept).
 
   <.workspace_identity project="firehose-site" workspace="main" state={:working} />
-  <.workspace_identity project="Loopyard" workspace="cleanup" state={:done} size={:sm} />
+  <.workspace_identity project="Loopyard" workspace="cleanup" state={:done} muted />
 
   `state` is the ONE status vocabulary the light speaks — map your local status
   to it so a color always means the same thing:
@@ -231,7 +231,6 @@ defmodule LoopyardWeb.Components.Common do
   attr :project, :string, required: true
   attr :workspace, :string, default: nil
   attr :state, :atom, default: :asleep, values: [:working, :needs_you, :done, :asleep, :broken]
-  attr :size, :atom, default: :md, values: [:sm, :md]
   # Ambient contexts (a nav rail that should recede behind the chat) pass
   # muted={true}: the name dims to a quiet weight so the identity is legible
   # without competing for attention.
@@ -240,19 +239,17 @@ defmodule LoopyardWeb.Components.Common do
 
   def workspace_identity(assigns) do
     ~H"""
-    <span class={["inline-flex items-center min-w-0", (@size == :sm && "gap-1.5") || "gap-2", @class]}>
+    <%!-- ONE size. It used to take size={:sm|:md}, so the SAME badge rendered at
+    13px in the left rail and 16px on the dashboard — the identity of a
+    workspace changing size depending on where you met it, which reads as a
+    bug because it is one. If a surface needs it quieter, that's `muted`,
+    not a different size. --%>
+    <span class={["inline-flex items-center gap-2 min-w-0", @class]}>
       <span
         aria-hidden="true"
-        class={[
-          "flex-none rounded-full",
-          (@size == :sm && "w-1.5 h-1.5") || "w-2 h-2",
-          state_light(@state)
-        ]}
+        class={["flex-none rounded-full w-2 h-2", state_light(@state)]}
       ></span>
-      <%!-- :sm rides the chat-meta token — the same size as every other
-    stream-top label (BRAD, timestamps, card labels), so header rows
-    never mix slightly-different sizes. --%>
-      <span class={["min-w-0 truncate", (@size == :sm && "text-chat-meta") || "text-sm"]}>
+      <span class="min-w-0 truncate text-body">
         <span class={
           (@muted && "text-zinc-500 dark:text-zinc-400") ||
             "font-medium text-zinc-800 dark:text-zinc-100"
@@ -335,7 +332,7 @@ defmodule LoopyardWeb.Components.Common do
   nothing for a resting one (see `notable_state?/1`) — the dot has it covered.
   """
   attr :state, :atom, default: nil
-  attr :class, :string, default: "text-sm"
+  attr :class, :string, default: "text-body"
 
   def status_label(assigns) do
     ~H"""
@@ -449,8 +446,8 @@ defmodule LoopyardWeb.Components.Common do
       @class
     ]}>
       <div class="min-w-0">
-        <h2 class="text-lg md:text-xl font-semibold">{@title}</h2>
-        <p :if={@subtitle} class="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">{@subtitle}</p>
+        <h2 class="text-lead font-semibold">{@title}</h2>
+        <p :if={@subtitle} class="text-body text-zinc-500 dark:text-zinc-400 mt-0.5">{@subtitle}</p>
       </div>
       <div :if={@action != []} class="flex-none">
         {render_slot(@action)}
@@ -471,7 +468,7 @@ defmodule LoopyardWeb.Components.Common do
     ~H"""
     <.link
       navigate={@navigate}
-      class="focus-ring inline-flex items-center justify-center gap-1.5 w-full sm:w-auto rounded-sm bg-violet-600 hover:bg-violet-700 text-white px-4 py-2.5 text-sm font-semibold transition-colors"
+      class="focus-ring inline-flex items-center justify-center gap-1.5 w-full sm:w-auto rounded-sm bg-violet-600 hover:bg-violet-700 text-white px-4 py-2.5 text-body font-semibold transition-colors"
       {@rest}
     >
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">

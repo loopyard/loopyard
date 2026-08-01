@@ -86,18 +86,18 @@ defmodule LoopyardWeb.SystemRecoveryLive do
       <div class="space-y-6">
         <section>
           <div class="flex items-baseline justify-between mb-3">
-            <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+            <h2 class="text-body font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
               Checkpoint health <span class="text-zinc-400 font-normal">({@total} workspaces)</span>
             </h2>
             <div
               :if={@failed_count > 0}
-              class="text-xs font-medium text-red-600 dark:text-red-400"
+              class="text-meta font-medium text-red-600 dark:text-red-400"
             >
               {@failed_count} failed last checkpoint — investigate
             </div>
           </div>
 
-          <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+          <p class="text-meta text-zinc-500 dark:text-zinc-400 mb-4">
             Each row is one workspace's agent-log checkpointer. Snapshots run periodically
             (or after N records are written) and rewrite the log to a minimal form, keeping
             the prior version as <code class="font-mono">.prev</code> so a corrupt primary
@@ -117,12 +117,12 @@ defmodule LoopyardWeb.SystemRecoveryLive do
   defp recovery_table(assigns) do
     ~H"""
     <%= if @entries == [] do %>
-      <div class="text-sm text-zinc-500 dark:text-zinc-400 italic py-8 text-center">
+      <div class="text-body text-zinc-500 dark:text-zinc-400 italic py-8 text-center">
         No checkpointers running. Start a workspace to populate this page.
       </div>
     <% else %>
       <div class="overflow-x-auto">
-        <table class="min-w-full text-xs font-mono">
+        <table class="min-w-full text-meta font-mono">
           <thead class="text-zinc-500 dark:text-zinc-400">
             <tr class="border-b border-zinc-200 dark:border-zinc-700/80">
               <th class="text-left py-2 pr-4 font-semibold">Workspace</th>

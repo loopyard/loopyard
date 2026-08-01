@@ -473,10 +473,10 @@ defmodule LoopyardWeb.ProjectLive do
         <div class="text-center py-16">
           <div class="inline-block w-6 h-6 border-2 border-zinc-300 dark:border-zinc-600 border-t-violet-500 rounded-full animate-spin mb-4">
           </div>
-          <h2 class="text-lg font-semibold text-zinc-600 dark:text-zinc-300">
+          <h2 class="text-lead font-semibold text-zinc-600 dark:text-zinc-300">
             Removing {@project.name}...
           </h2>
-          <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+          <p class="text-body text-zinc-500 dark:text-zinc-400 mt-1">
             Stopping containers and cleaning up volumes
           </p>
         </div>
@@ -491,10 +491,10 @@ defmodule LoopyardWeb.ProjectLive do
           <% true -> %>
             <div class="flex items-start justify-between mb-6 gap-3">
               <div class="min-w-0 flex-1">
-                <h2 class="text-2xl font-semibold truncate text-zinc-900 dark:text-zinc-100">
+                <h2 class="text-hero font-semibold truncate text-zinc-900 dark:text-zinc-100">
                   {@project.name}
                 </h2>
-                <p class="text-xs md:text-sm font-mono text-zinc-500 dark:text-zinc-400 mt-1 truncate">
+                <p class="text-meta text-body font-mono text-zinc-500 dark:text-zinc-400 mt-1 truncate">
                   {project_location(@project)}
                 </p>
               </div>
@@ -503,7 +503,7 @@ defmodule LoopyardWeb.ProjectLive do
               <.link
                 navigate={"/projects/#{@project.id}/settings"}
                 aria-label="Project settings"
-                class="flex-none inline-flex items-center gap-1.5 rounded-sm border border-zinc-200 dark:border-zinc-700 px-3 min-h-[2.75rem] text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
+                class="flex-none inline-flex items-center gap-1.5 rounded-sm border border-zinc-200 dark:border-zinc-700 px-3 min-h-[2.75rem] text-body font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -542,7 +542,6 @@ defmodule LoopyardWeb.ProjectLive do
                     project={@project.name}
                     workspace={workspace.name}
                     state={ws_card_state(workspace)}
-                    size={:md}
                     class="min-w-0 flex-1"
                   />
                   <span
@@ -556,7 +555,7 @@ defmodule LoopyardWeb.ProjectLive do
                 <% setup_phase = setup[:phase] %>
                 <p
                   :if={setup_phase in [:pending, :running, :worktree, :volume, :seeding]}
-                  class="text-xs md:text-sm text-blue-600 dark:text-blue-400 mt-1.5"
+                  class="text-meta text-body text-blue-600 dark:text-blue-400 mt-1.5"
                 >
                   <%= case setup_phase do %>
                     <% :pending -> %>
@@ -574,13 +573,13 @@ defmodule LoopyardWeb.ProjectLive do
                 </p>
                 <p
                   :if={setup_phase == :failed}
-                  class="text-xs md:text-sm text-red-600 dark:text-red-400 mt-1.5"
+                  class="text-meta text-body text-red-600 dark:text-red-400 mt-1.5"
                 >
                   Failed — click to retry
                 </p>
                 <p
                   :if={setup_phase in [:ready, nil] && workspace.status == :running}
-                  class="text-xs md:text-sm text-zinc-500 dark:text-zinc-400 mt-1.5"
+                  class="text-meta text-body text-zinc-500 dark:text-zinc-400 mt-1.5"
                 >
                   {workspace.agent_count} agent{if workspace.agent_count != 1, do: "s"} · {workspace.services_running} service{if workspace.services_running !=
                                                                                                                                     1,
@@ -589,7 +588,7 @@ defmodule LoopyardWeb.ProjectLive do
                 </p>
                 <p
                   :if={setup_phase in [:ready, nil] && workspace.status != :running}
-                  class="text-xs md:text-sm text-zinc-500 dark:text-zinc-400 mt-1.5"
+                  class="text-meta text-body text-zinc-500 dark:text-zinc-400 mt-1.5"
                 >
                   Stopped
                 </p>
@@ -637,8 +636,8 @@ defmodule LoopyardWeb.ProjectLive do
     ~H"""
     <div class="max-w-lg">
       <div class="mb-8">
-        <h2 class="text-xl font-semibold text-zinc-900 dark:text-zinc-100">New workspace</h2>
-        <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+        <h2 class="text-title font-semibold text-zinc-900 dark:text-zinc-100">New workspace</h2>
+        <p class="text-body text-zinc-500 dark:text-zinc-400 mt-1">
           A workspace is a branch in its own isolated environment — fork from any branch,
           build, then merge it back into <span class="font-mono">{@default_branch}</span>.
         </p>
@@ -646,7 +645,7 @@ defmodule LoopyardWeb.ProjectLive do
 
       <form phx-submit="add_workspace" class="space-y-4">
         <div>
-          <label class="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1.5">
+          <label class="block text-meta font-medium text-zinc-500 dark:text-zinc-400 mb-1.5">
             Branch from
           </label>
           <input
@@ -654,13 +653,13 @@ defmodule LoopyardWeb.ProjectLive do
             name="from"
             value={@default_branch}
             autocomplete="off"
-            class="w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-800/50 px-3 py-2.5 text-sm font-mono
+            class="w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-800/50 px-3 py-2.5 text-body font-mono
     text-zinc-600 dark:text-zinc-300
     focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
           />
         </div>
         <div>
-          <label class="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1.5">
+          <label class="block text-meta font-medium text-zinc-500 dark:text-zinc-400 mb-1.5">
             New branch name
           </label>
           <input
@@ -669,7 +668,7 @@ defmodule LoopyardWeb.ProjectLive do
             placeholder="e.g. bradgessler/fix-login"
             autocomplete="off"
             autofocus
-            class="w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2.5 text-sm font-mono
+            class="w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2.5 text-body font-mono
     text-zinc-600 dark:text-zinc-300 placeholder:text-zinc-400
     focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
           />
@@ -677,13 +676,13 @@ defmodule LoopyardWeb.ProjectLive do
         <div class="flex items-center gap-3 pt-1">
           <button
             type="submit"
-            class="rounded-sm bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium px-4 py-2.5 transition-colors"
+            class="rounded-sm bg-violet-600 hover:bg-violet-700 text-white text-body font-medium px-4 py-2.5 transition-colors"
           >
             Create workspace
           </button>
           <.link
             navigate={"/projects/#{@project.id}"}
-            class="text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+            class="text-body font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
           >
             Cancel
           </.link>
@@ -697,14 +696,14 @@ defmodule LoopyardWeb.ProjectLive do
     ~H"""
     <div class="space-y-8 max-w-2xl">
       <div>
-        <h2 class="text-xl font-semibold text-zinc-900 dark:text-zinc-100">Project settings</h2>
-        <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+        <h2 class="text-title font-semibold text-zinc-900 dark:text-zinc-100">Project settings</h2>
+        <p class="text-body text-zinc-500 dark:text-zinc-400 mt-1">
           {@project.name}
         </p>
       </div>
 
       <form phx-submit="rename_project" class="space-y-2">
-        <label for="project-name" class="block text-xs font-medium text-zinc-500 dark:text-zinc-400">
+        <label for="project-name" class="block text-meta font-medium text-zinc-500 dark:text-zinc-400">
           Name
         </label>
         <input
@@ -713,14 +712,14 @@ defmodule LoopyardWeb.ProjectLive do
           name="name"
           value={@project.name}
           autocomplete="off"
-          class="w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2.5 text-base
+          class="w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2.5 text-body
     text-zinc-900 dark:text-zinc-100
     focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
         />
         <div class="pt-1">
           <button
             type="submit"
-            class="rounded-sm bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium px-4 py-2 transition-colors"
+            class="rounded-sm bg-violet-600 hover:bg-violet-700 text-white text-body font-medium px-4 py-2 transition-colors"
           >
             Save name
           </button>
@@ -728,22 +727,22 @@ defmodule LoopyardWeb.ProjectLive do
       </form>
 
       <div class="space-y-2">
-        <div class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Location</div>
-        <p class="text-sm font-mono text-zinc-600 dark:text-zinc-300 break-all">
+        <div class="text-meta font-medium text-zinc-500 dark:text-zinc-400">Location</div>
+        <p class="text-body font-mono text-zinc-600 dark:text-zinc-300 break-all">
           {project_location(@project)}
         </p>
       </div>
 
       <div class="pt-6 border-t border-zinc-200 dark:border-zinc-700/80 space-y-2">
-        <div class="text-xs font-semibold uppercase tracking-wider text-red-500 dark:text-red-400">
+        <div class="text-meta font-semibold uppercase tracking-wider text-red-500 dark:text-red-400">
           Danger zone
         </div>
-        <p class="text-sm text-zinc-500 dark:text-zinc-400">
+        <p class="text-body text-zinc-500 dark:text-zinc-400">
           Remove this project from Loopyard. Your source code on disk is not affected.
         </p>
         <button
           phx-click="confirm_remove"
-          class="rounded-sm border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 text-sm font-medium px-4 py-2 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+          class="rounded-sm border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 text-body font-medium px-4 py-2 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
         >
           Remove project
         </button>
@@ -756,46 +755,48 @@ defmodule LoopyardWeb.ProjectLive do
     ~H"""
     <div class="space-y-6 max-w-2xl">
       <div>
-        <h2 class="text-xl font-semibold text-red-600 dark:text-red-400">Remove {@project.name}</h2>
-        <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+        <h2 class="text-title font-semibold text-red-600 dark:text-red-400">
+          Remove {@project.name}
+        </h2>
+        <p class="text-body text-zinc-500 dark:text-zinc-400 mt-1">
           This will permanently remove the project from Loopyard. Your source code is not affected.
         </p>
       </div>
 
       <div class="rounded-sm border border-zinc-200 dark:border-zinc-700 divide-y divide-zinc-200 dark:divide-zinc-700">
         <div class="px-4 py-3">
-          <div class="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
+          <div class="text-meta font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
             Directory to delete
           </div>
-          <p class="text-sm font-mono text-zinc-600 dark:text-zinc-400">{@details.loopyard_dir}/</p>
+          <p class="text-body font-mono text-zinc-600 dark:text-zinc-400">{@details.loopyard_dir}/</p>
           <ul :if={@details.generated_files != []} class="mt-1.5 space-y-0.5">
             <li
               :for={file <- @details.generated_files}
-              class="text-xs font-mono text-zinc-500 dark:text-zinc-400 pl-4"
+              class="text-meta font-mono text-zinc-500 dark:text-zinc-400 pl-4"
             >
               {file}
             </li>
           </ul>
-          <p :if={@details.config_exists} class="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
+          <p :if={@details.config_exists} class="text-meta text-amber-600 dark:text-amber-400 mt-1.5">
             Includes workspace.json config (workspace settings, Dockerfile, services)
           </p>
         </div>
 
         <div class="px-4 py-3">
-          <div class="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
+          <div class="text-meta font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
             Docker containers to stop
           </div>
           <%= if @details.containers != [] do %>
             <ul class="space-y-0.5">
               <li
                 :for={container <- @details.containers}
-                class="text-sm font-mono text-zinc-600 dark:text-zinc-400"
+                class="text-body font-mono text-zinc-600 dark:text-zinc-400"
               >
                 {container}
               </li>
             </ul>
           <% else %>
-            <p class="text-sm text-zinc-500 dark:text-zinc-400">No running containers</p>
+            <p class="text-body text-zinc-500 dark:text-zinc-400">No running containers</p>
           <% end %>
         </div>
       </div>
@@ -803,13 +804,13 @@ defmodule LoopyardWeb.ProjectLive do
       <div class="flex items-center gap-3">
         <button
           phx-click="remove_project"
-          class="rounded-sm bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-4 py-2 transition-colors"
+          class="rounded-sm bg-red-600 hover:bg-red-700 text-white text-body font-medium px-4 py-2 transition-colors"
         >
           Remove project
         </button>
         <button
           phx-click="cancel_remove"
-          class="text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+          class="text-body font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
         >
           Cancel
         </button>

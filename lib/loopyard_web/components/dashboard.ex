@@ -33,15 +33,15 @@ defmodule LoopyardWeb.Components.Dashboard do
     >
       <div class="flex items-center gap-2.5">
         <span class={["w-2.5 h-2.5 rounded-full flex-none", dot_tone(@tone)]}></span>
-        <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-50">{@title}</h2>
+        <h2 class="text-body font-semibold text-zinc-900 dark:text-zinc-50">{@title}</h2>
         <span
           :if={@status}
-          class={["ml-auto text-xs font-semibold uppercase tracking-wide", text_tone(@tone)]}
+          class={["ml-auto text-meta font-semibold uppercase tracking-wide", text_tone(@tone)]}
         >
           {@status}
         </span>
       </div>
-      <div class="mt-3 text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed">
+      <div class="mt-3 text-body text-zinc-500 dark:text-zinc-400 leading-relaxed">
         {render_slot(@inner_block)}
       </div>
     </.link>

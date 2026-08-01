@@ -202,11 +202,11 @@ defmodule LoopyardWeb.SystemLive do
   defp destinations_section(assigns) do
     ~H"""
     <section class="space-y-1.5">
-      <h2 class="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Also in System</h2>
+      <h2 class="text-body font-semibold text-zinc-900 dark:text-zinc-50">Also in System</h2>
       <div class="flex flex-wrap gap-x-6">
         <.link
           navigate="/sound"
-          class="chat-sub inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
+          class="text-body inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
         >
           Ambient sound →
         </.link>
@@ -218,13 +218,13 @@ defmodule LoopyardWeb.SystemLive do
   defp reboot_section(assigns) do
     ~H"""
     <section class="space-y-3">
-      <h2 class="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+      <h2 class="text-body font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
         Server
       </h2>
       <div class=" border border-red-200 dark:border-red-900/40 bg-red-50/40 dark:bg-red-900/10 p-4 flex items-start justify-between gap-4">
         <div class="min-w-0">
-          <div class="text-sm font-medium text-zinc-800 dark:text-zinc-200">Reboot the server</div>
-          <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5 max-w-prose">
+          <div class="text-body font-medium text-zinc-800 dark:text-zinc-200">Reboot the server</div>
+          <p class="text-body text-zinc-500 dark:text-zinc-400 mt-0.5 max-w-prose">
             Tears the Loopyard runtime down and restarts it in place: every agent
             session stops and re-spawns (reconnecting to the running containers),
             and boot recovery re-runs. Docker containers keep running. The page
@@ -235,7 +235,7 @@ defmodule LoopyardWeb.SystemLive do
           type="button"
           phx-click="reboot"
           data-confirm="Reboot the server? Every agent session stops and re-spawns (containers keep running). The page reconnects when it's back up."
-          class="focus-ring flex-none inline-flex items-center rounded-sm bg-red-600 hover:bg-red-700 px-4 min-h-11 md:min-h-0 md:py-2 text-sm font-medium text-white transition-colors"
+          class="focus-ring flex-none inline-flex items-center rounded-sm bg-red-600 hover:bg-red-700 px-4 min-h-11 md:min-h-0 md:py-2 text-body font-medium text-white transition-colors"
         >
           Reboot
         </button>
@@ -247,7 +247,7 @@ defmodule LoopyardWeb.SystemLive do
   defp health_section(assigns) do
     ~H"""
     <section>
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+      <h2 class="text-body font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
         Component Health
       </h2>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -264,10 +264,10 @@ defmodule LoopyardWeb.SystemLive do
     ~H"""
     <div class={health_card_class(@status)}>
       <div class="flex items-center justify-between mb-1">
-        <div class="text-sm font-semibold">{humanize_component(@component)}</div>
+        <div class="text-body font-semibold">{humanize_component(@component)}</div>
         <div class={"w-2 h-2 rounded-full " <> health_dot_class(@status)}></div>
       </div>
-      <div class="text-xs text-zinc-600 dark:text-zinc-400">{Loopyard.Health.format(@status)}</div>
+      <div class="text-meta text-zinc-600 dark:text-zinc-400">{Loopyard.Health.format(@status)}</div>
     </div>
     """
   end
@@ -308,15 +308,15 @@ defmodule LoopyardWeb.SystemLive do
   defp host_section(assigns) do
     ~H"""
     <section>
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+      <h2 class="text-body font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
         Host System
       </h2>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <.host_card :let={cpu} label="CPU" async={@host_cpu}>
-          <div class="text-2xl font-semibold font-mono">
-            {cpu.cores} <span class="text-sm text-zinc-400">cores</span>
+          <div class="text-hero font-semibold font-mono">
+            {cpu.cores} <span class="text-body text-zinc-400">cores</span>
           </div>
-          <div class="mt-2 text-xs font-mono text-zinc-500">
+          <div class="mt-2 text-meta font-mono text-zinc-500">
             Load avg:
             <span
               :for={{load, i} <- Enum.with_index(cpu.load_avg)}
@@ -329,9 +329,9 @@ defmodule LoopyardWeb.SystemLive do
 
         <.host_card :let={mem} label="Memory" async={@host_memory}>
           <% pct = mem_bar_pct(mem) %>
-          <div class="text-2xl font-semibold font-mono">
+          <div class="text-hero font-semibold font-mono">
             {format_bytes(mem.used)}
-            <span class="text-sm text-zinc-400">/ {format_bytes(mem.total)}</span>
+            <span class="text-body text-zinc-400">/ {format_bytes(mem.total)}</span>
           </div>
           <div class="mt-2 h-2 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
             <div
@@ -340,12 +340,12 @@ defmodule LoopyardWeb.SystemLive do
             >
             </div>
           </div>
-          <div class="mt-1 text-xs font-mono text-zinc-400">{pct}% used</div>
+          <div class="mt-1 text-meta font-mono text-zinc-400">{pct}% used</div>
         </.host_card>
 
         <.host_card :let={disk} label="Disk (/)" async={@host_disk}>
-          <div class="text-2xl font-semibold font-mono">
-            {disk.used} <span class="text-sm text-zinc-400">/ {disk.total}</span>
+          <div class="text-hero font-semibold font-mono">
+            {disk.used} <span class="text-body text-zinc-400">/ {disk.total}</span>
           </div>
           <div class="mt-2 h-2 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
             <div
@@ -354,12 +354,12 @@ defmodule LoopyardWeb.SystemLive do
             >
             </div>
           </div>
-          <div class="mt-1 text-xs font-mono text-zinc-400">
+          <div class="mt-1 text-meta font-mono text-zinc-400">
             {disk.use_pct} used &middot; {disk.available} free
           </div>
         </.host_card>
       </div>
-      <div class="mt-2 text-xs text-zinc-500 dark:text-zinc-400 font-mono min-h-[1em]">
+      <div class="mt-2 text-meta text-zinc-500 dark:text-zinc-400 font-mono min-h-[1em]">
         <%= case @host_uptime do %>
           <% %{ok?: true, result: uptime} -> %>
             {uptime}
@@ -388,7 +388,7 @@ defmodule LoopyardWeb.SystemLive do
         <% %{ok?: true, result: result} -> %>
           {render_slot(@inner_block, result)}
         <% %{failed: failed} when failed != nil -> %>
-          <div class="text-xs text-red-500">failed to load</div>
+          <div class="text-meta text-red-500">failed to load</div>
         <% _ -> %>
           <.skeleton variant={:card} />
       <% end %>
@@ -401,7 +401,7 @@ defmodule LoopyardWeb.SystemLive do
   defp beam_section(assigns) do
     ~H"""
     <section>
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+      <h2 class="text-body font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
         BEAM VM
       </h2>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -423,7 +423,7 @@ defmodule LoopyardWeb.SystemLive do
       <div class="section-label">
         {@label}
       </div>
-      <div class="text-sm font-semibold font-mono mt-0.5">{@value}</div>
+      <div class="text-body font-semibold font-mono mt-0.5">{@value}</div>
     </div>
     """
   end
@@ -433,7 +433,7 @@ defmodule LoopyardWeb.SystemLive do
   defp drilldown_section(assigns) do
     ~H"""
     <section>
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+      <h2 class="text-body font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
         Cluster
       </h2>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -593,9 +593,9 @@ defmodule LoopyardWeb.SystemLive do
     >
       <div class="flex items-center justify-between">
         <div>
-          <div class="text-sm font-semibold">{@title}</div>
-          <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{@subtitle}</div>
-          <div class="text-xs text-zinc-600 dark:text-zinc-400 font-mono mt-2">
+          <div class="text-body font-semibold">{@title}</div>
+          <div class="text-meta text-zinc-500 dark:text-zinc-400 mt-0.5">{@subtitle}</div>
+          <div class="text-meta text-zinc-600 dark:text-zinc-400 font-mono mt-2">
             {render_slot(@inner_block)}
           </div>
         </div>
@@ -621,11 +621,11 @@ defmodule LoopyardWeb.SystemLive do
   defp log_section(assigns) do
     ~H"""
     <section>
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+      <h2 class="text-body font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
         Recent Logs <span class="text-zinc-400 font-normal">(last 20)</span>
       </h2>
       <div class="rounded-sm border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 overflow-hidden">
-        <div class="px-4 py-3 text-xs font-mono text-zinc-600 dark:text-zinc-400 space-y-0.5 max-h-64 overflow-y-auto">
+        <div class="px-4 py-3 text-meta font-mono text-zinc-600 dark:text-zinc-400 space-y-0.5 max-h-64 overflow-y-auto">
           <div :if={@logs == []} class="text-zinc-400">no recent logs</div>
           <div :for={entry <- @logs}>
             <span class={log_level_class(entry.level)}>[{entry.level}]</span>

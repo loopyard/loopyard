@@ -650,8 +650,8 @@ defmodule LoopyardWeb.OperatorLive do
       <%!-- Mobile only: chat ⇄ rail toggle. Both panes are co-equal but can't
     share a phone screen, so show one at a time. Hidden on lg+ (both show). --%>
       <%!-- Finger-sized tabs: this bar is mobile-only, so padding is sized for
-    touch (py-4, text-base ≈ 48px target), not for a pointer. --%>
-      <div class="lg:hidden flex-none flex border-b border-zinc-200 dark:border-zinc-800 text-base">
+    touch (py-4, text-body ≈ 48px target), not for a pointer. --%>
+      <div class="lg:hidden flex-none flex border-b border-zinc-200 dark:border-zinc-800 text-body">
         <button
           type="button"
           phx-click="mobile_view"
@@ -677,7 +677,7 @@ defmodule LoopyardWeb.OperatorLive do
           Decisions
           <span
             :if={@needs_count > 0}
-            class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-violet-600 text-white text-xs font-semibold tabular-nums"
+            class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-violet-600 text-white text-meta font-semibold tabular-nums"
           >
             {@needs_count}
           </span>

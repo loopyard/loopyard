@@ -23,30 +23,30 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.SyncDetail do
     <.detail_panel>
       <:header>
         <.dot color={dot_color(@status)} />
-        <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Local Sync</span>
-        <span class="text-xs text-zinc-500 dark:text-zinc-400">{status_label(@status)}</span>
+        <span class="text-body font-semibold text-zinc-900 dark:text-zinc-100">Local Sync</span>
+        <span class="text-meta text-zinc-500 dark:text-zinc-400">{status_label(@status)}</span>
       </:header>
       <div class="flex-1 overflow-y-auto p-6 md:p-8">
         <div class="max-w-lg space-y-4">
           <div class="rounded-sm border border-zinc-200 dark:border-zinc-700/80 divide-y divide-zinc-200 dark:divide-zinc-700/80">
             <div class="px-4 py-3 flex items-center justify-between">
-              <span class="text-xs text-zinc-500 dark:text-zinc-400">Status</span>
-              <span class={"text-sm font-medium #{status_text_class(@status)}"}>
+              <span class="text-meta text-zinc-500 dark:text-zinc-400">Status</span>
+              <span class={"text-body font-medium #{status_text_class(@status)}"}>
                 {status_label(@status)}
               </span>
             </div>
             <div :if={@last_error} class="px-4 py-3">
-              <span class="text-xs text-zinc-500 dark:text-zinc-400 block mb-1">Last Error</span>
-              <span class="text-sm text-red-500 dark:text-red-400">{@last_error}</span>
+              <span class="text-meta text-zinc-500 dark:text-zinc-400 block mb-1">Last Error</span>
+              <span class="text-body text-red-500 dark:text-red-400">{@last_error}</span>
             </div>
             <div class="px-4 py-3 flex items-center justify-between">
-              <span class="text-xs text-zinc-500 dark:text-zinc-400">Workspace</span>
-              <span class="text-sm font-mono text-zinc-700 dark:text-zinc-300">{@workspace_id}</span>
+              <span class="text-meta text-zinc-500 dark:text-zinc-400">Workspace</span>
+              <span class="text-body font-mono text-zinc-700 dark:text-zinc-300">{@workspace_id}</span>
             </div>
             <div :if={@workspace[:path]} class="px-4 py-3 flex items-center justify-between">
-              <span class="text-xs text-zinc-500 dark:text-zinc-400">Worktree Path</span>
+              <span class="text-meta text-zinc-500 dark:text-zinc-400">Worktree Path</span>
               <span
-                class="text-sm font-mono text-zinc-700 dark:text-zinc-300 truncate max-w-[300px]"
+                class="text-body font-mono text-zinc-700 dark:text-zinc-300 truncate max-w-[300px]"
                 title={@workspace.path}
               >
                 {shorten_path(@workspace.path)}
@@ -61,20 +61,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.SyncDetail do
             class="rounded-sm border border-zinc-200 dark:border-zinc-700/80 divide-y divide-zinc-200 dark:divide-zinc-700/80"
           >
             <div :if={details[:status_text]} class="px-4 py-3 flex items-center justify-between">
-              <span class="text-xs text-zinc-500 dark:text-zinc-400">Mutagen</span>
-              <span class="text-sm font-mono text-zinc-700 dark:text-zinc-300">
+              <span class="text-meta text-zinc-500 dark:text-zinc-400">Mutagen</span>
+              <span class="text-body font-mono text-zinc-700 dark:text-zinc-300">
                 {details.status_text}
               </span>
             </div>
             <div :if={details[:alpha_files]} class="px-4 py-3 flex items-center justify-between">
-              <span class="text-xs text-zinc-500 dark:text-zinc-400">Host files</span>
-              <span class="text-sm font-mono text-zinc-700 dark:text-zinc-300">
+              <span class="text-meta text-zinc-500 dark:text-zinc-400">Host files</span>
+              <span class="text-body font-mono text-zinc-700 dark:text-zinc-300">
                 {details.alpha_files.files} ({details.alpha_files.size})
               </span>
             </div>
             <div :if={details[:beta_files]} class="px-4 py-3 flex items-center justify-between">
-              <span class="text-xs text-zinc-500 dark:text-zinc-400">Container files</span>
-              <span class="text-sm font-mono text-zinc-700 dark:text-zinc-300">
+              <span class="text-meta text-zinc-500 dark:text-zinc-400">Container files</span>
+              <span class="text-body font-mono text-zinc-700 dark:text-zinc-300">
                 {details.beta_files.files} ({details.beta_files.size})
               </span>
             </div>
@@ -82,23 +82,23 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.SyncDetail do
               :if={details[:conflicts] && details.conflicts > 0}
               class="px-4 py-3 flex items-center justify-between"
             >
-              <span class="text-xs text-zinc-500 dark:text-zinc-400">Conflicts</span>
-              <span class="text-sm font-medium text-amber-500">{details.conflicts}</span>
+              <span class="text-meta text-zinc-500 dark:text-zinc-400">Conflicts</span>
+              <span class="text-body font-medium text-amber-500">{details.conflicts}</span>
             </div>
             <div
               :if={details[:scan_problems] && details.scan_problems > 0}
               class="px-4 py-3 flex items-center justify-between"
             >
-              <span class="text-xs text-zinc-500 dark:text-zinc-400">Scan problems</span>
-              <span class="text-sm font-medium text-amber-500">{details.scan_problems}</span>
+              <span class="text-meta text-zinc-500 dark:text-zinc-400">Scan problems</span>
+              <span class="text-body font-medium text-amber-500">{details.scan_problems}</span>
             </div>
             <div class="px-4 py-3 flex items-center gap-3">
-              <span class="text-xs text-zinc-500 dark:text-zinc-400">Connections</span>
-              <span class="flex items-center gap-1.5 text-xs">
+              <span class="text-meta text-zinc-500 dark:text-zinc-400">Connections</span>
+              <span class="flex items-center gap-1.5 text-meta">
                 <span class={"w-1.5 h-1.5 rounded-full #{if details[:alpha_connected], do: "bg-green-500", else: "bg-red-500"}"}></span>
                 host
               </span>
-              <span class="flex items-center gap-1.5 text-xs">
+              <span class="flex items-center gap-1.5 text-meta">
                 <span class={"w-1.5 h-1.5 rounded-full #{if details[:beta_connected], do: "bg-green-500", else: "bg-red-500"}"}></span>
                 container
               </span>

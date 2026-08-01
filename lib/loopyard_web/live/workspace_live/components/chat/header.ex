@@ -164,9 +164,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
             target="_blank"
             rel="noopener"
             aria-label={"Open app on port #{@app_port.port}"}
-            class="focus-ring inline-flex items-center justify-center gap-0.5 h-11 px-2.5 rounded-sm font-mono text-sm text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 active:bg-emerald-500/20 transition-colors flex-none"
+            class="focus-ring inline-flex items-center justify-center gap-0.5 h-11 px-2.5 rounded-sm font-mono text-body text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 active:bg-emerald-500/20 transition-colors flex-none"
           >
-            :{@app_port.port} <span class="text-xs opacity-70">↗</span>
+            :{@app_port.port} <span class="text-meta opacity-70">↗</span>
           </.link>
           <LoopyardWeb.Components.Common.mode_nav id="mode-ws-mobile" active={:workspaces} />
         </:actions>
@@ -210,7 +210,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
             :if={group.key == :agents}
             patch={"#{@base_path}/new"}
             phx-click={JS.hide(to: "#item-switcher")}
-            class="flex items-center gap-2 px-3 min-h-[2.75rem] rounded-sm text-sm font-medium text-violet-600 dark:text-violet-400 active:bg-violet-50 dark:active:bg-violet-500/10"
+            class="flex items-center gap-2 px-3 min-h-[2.75rem] rounded-sm text-body font-medium text-violet-600 dark:text-violet-400 active:bg-violet-50 dark:active:bg-violet-500/10"
           >
             + New agent
           </.link>
@@ -272,13 +272,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
     "when" always live in the same two places. --%>
         <div class="flex items-center gap-3 min-w-0 flex-1">
           <.dot color={status_dot(@agent.status)} />
-          <span class="text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+          <span class="text-body font-semibold text-zinc-900 dark:text-zinc-100 truncate">
             {@agent.name}
           </span>
           <div class="flex-1"></div>
           <span
             :if={@agent[:last_activity_at]}
-            class="text-sm text-zinc-500 dark:text-zinc-400 flex-none"
+            class="text-body text-zinc-500 dark:text-zinc-400 flex-none"
           >
             {time_ago(@agent[:last_activity_at])}
           </span>
@@ -308,7 +308,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
             </.control_btn>
             <span
               :if={@agent.status == :destroying}
-              class="text-sm font-medium text-red-400 px-2 py-1"
+              class="text-body font-medium text-red-400 px-2 py-1"
             >
               Destroying...
             </span>

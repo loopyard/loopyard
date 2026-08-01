@@ -86,7 +86,7 @@ defmodule LoopyardWeb.OperatorLive.Rail do
     ~H"""
     <.link
       navigate={(@item.msg && "/review/#{@item.agent_id}/#{@item.msg.id}") || @fallback}
-      class="block rounded-sm px-2 py-2 lg:py-1.5 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+      class="block rounded-sm px-2 py-2 lg:py-1.5 text-body text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
     >
       <span class="line-clamp-2">{attention_summary(@item)}</span>
     </.link>
@@ -115,10 +115,10 @@ defmodule LoopyardWeb.OperatorLive.Rail do
     INLINE next to the name (not floated across the rail), so it reads as
     one line. The row taps through to the workspace agent (the weeds). --%>
       <section class="p-3 border-t border-zinc-200 dark:border-zinc-800">
-        <div class="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500 px-1 pb-1.5">
+        <div class="text-meta font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500 px-1 pb-1.5">
           In motion
         </div>
-        <p :if={@active == []} class="px-1 py-1 text-sm text-zinc-500 dark:text-zinc-400">
+        <p :if={@active == []} class="px-1 py-1 text-body text-zinc-500 dark:text-zinc-400">
           Nothing running right now.
         </p>
         <div :for={i <- @active}>
@@ -139,11 +139,11 @@ defmodule LoopyardWeb.OperatorLive.Rail do
             <span
               :if={i.delta > 0}
               title={"#{i.delta} new since you last looked"}
-              class="flex-none text-xs font-semibold text-violet-600 dark:text-violet-400 tabular-nums"
+              class="flex-none text-meta font-semibold text-violet-600 dark:text-violet-400 tabular-nums"
             >
               {i.delta} new
             </span>
-            <span class="ml-auto flex-none text-xs font-medium text-violet-600 dark:text-violet-400 opacity-0 group-hover:opacity-100 transition-opacity">
+            <span class="ml-auto flex-none text-meta font-medium text-violet-600 dark:text-violet-400 opacity-0 group-hover:opacity-100 transition-opacity">
               dive in →
             </span>
           </div>
@@ -159,7 +159,7 @@ defmodule LoopyardWeb.OperatorLive.Rail do
             <.link
               :if={length(Map.get(@attention_by_ws, i.id, [])) > 3}
               navigate={"/projects/#{i.project_id}/workspaces/#{i.id}/review"}
-              class="block px-2 py-1 text-sm text-orange-700 dark:text-orange-400 hover:underline"
+              class="block px-2 py-1 text-body text-orange-700 dark:text-orange-400 hover:underline"
             >
               +{length(Map.get(@attention_by_ws, i.id, [])) - 3} more →
             </.link>
@@ -186,10 +186,9 @@ defmodule LoopyardWeb.OperatorLive.Rail do
               project={i.project_name}
               workspace={i.workspace_name}
               state={:done}
-              size={:md}
               class="flex-1"
             />
-            <span class="ml-auto flex-none text-xs font-medium text-violet-500 opacity-0 group-hover:opacity-100 transition-opacity">
+            <span class="ml-auto flex-none text-meta font-medium text-violet-500 opacity-0 group-hover:opacity-100 transition-opacity">
               →
             </span>
           </div>
@@ -202,7 +201,7 @@ defmodule LoopyardWeb.OperatorLive.Rail do
           id="push-bell"
           phx-hook="PushBell"
           data-vapid={@vapid_key}
-          class="mt-4 flex items-center gap-2 -mx-1 px-1 py-2 chat-meta text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+          class="mt-4 flex items-center gap-2 -mx-1 px-1 py-2 text-meta text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
         >
           <span data-bell-label>Notify me about questions</span>
         </button>
@@ -210,7 +209,7 @@ defmodule LoopyardWeb.OperatorLive.Rail do
              mode (plans/ia-two-modes.md). A quiet footer destination. --%>
         <.link
           navigate="/workstations"
-          class="mt-4 flex items-center gap-2 -mx-1 px-1 py-2 chat-meta text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+          class="mt-4 flex items-center gap-2 -mx-1 px-1 py-2 text-meta text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
         >
           Workstations →
         </.link>
@@ -272,7 +271,7 @@ defmodule LoopyardWeb.OperatorLive.Rail do
               title="Change the track"
               class="focus-ring group -mx-1 inline-flex max-w-full items-center gap-1 rounded-sm px-1 py-0.5 hover:bg-zinc-200/60 dark:hover:bg-zinc-700/60 transition-colors"
             >
-              <span class="text-sm font-medium text-zinc-700 dark:text-zinc-200 truncate">
+              <span class="text-body font-medium text-zinc-700 dark:text-zinc-200 truncate">
                 {@track_name}
               </span>
               <svg

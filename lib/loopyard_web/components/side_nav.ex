@@ -59,9 +59,9 @@ defmodule LoopyardWeb.Components.SideNav do
           :if={@label}
           class={[
             @variant == :section &&
-              "text-sm md:text-xs tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold",
+              "text-meta tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold",
             @variant == :sub &&
-              "text-xs tracking-wide text-zinc-500 dark:text-zinc-400 font-medium",
+              "text-meta tracking-wide text-zinc-500 dark:text-zinc-400 font-medium",
             "uppercase"
           ]}
         >
@@ -169,17 +169,17 @@ defmodule LoopyardWeb.Components.SideNav do
     card shows/controls, with the status as a colored pill flush-right. --%>
         <div class="flex items-center gap-2">
           <span :if={@dot} class={"w-2.5 h-2.5 rounded-full flex-none #{@dot}"} aria-hidden="true"></span>
-          <h2 class="flex-1 min-w-0 text-lg font-semibold leading-tight text-zinc-900 dark:text-zinc-100 truncate">
+          <h2 class="flex-1 min-w-0 text-lead font-semibold leading-tight text-zinc-900 dark:text-zinc-100 truncate">
             {@name}
           </h2>
           <span
             :if={@status}
-            class={["flex-none text-xs font-semibold px-2 py-0.5 rounded-full", @status_class]}
+            class={["flex-none text-meta font-semibold px-2 py-0.5 rounded-full", @status_class]}
           >
             {@status}
           </span>
         </div>
-        <div :if={@facts != []} class="mt-1 text-sm text-zinc-500 dark:text-zinc-400 truncate">
+        <div :if={@facts != []} class="mt-1 text-body text-zinc-500 dark:text-zinc-400 truncate">
           {render_slot(@facts)}
         </div>
       </.dynamic_tag>
@@ -259,7 +259,7 @@ defmodule LoopyardWeb.Components.SideNav do
   def row(assigns) do
     assigns =
       assign(assigns, :base_class, [
-        "flex items-center gap-2 px-2 min-h-11 md:min-h-7 rounded-sm text-sm transition-colors",
+        "flex items-center gap-2 px-2 min-h-11 md:min-h-7 rounded-sm text-body transition-colors",
         if(assigns.selected,
           do: "bg-white dark:bg-zinc-800 shadow-sm",
           else: "hover:bg-white/60 dark:hover:bg-zinc-800/40"
@@ -344,7 +344,7 @@ defmodule LoopyardWeb.Components.SideNav do
 
   def info_row(assigns) do
     ~H"""
-    <div class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-5 text-sm md:text-[13px]">
+    <div class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-5 text-body md:text-[13px]">
       <span class="text-zinc-500 dark:text-zinc-400 flex-none">{@label}</span>
       <span class={[
         "truncate",
@@ -362,7 +362,7 @@ defmodule LoopyardWeb.Components.SideNav do
 
   def empty(assigns) do
     ~H"""
-    <p class="px-2 py-1 text-sm text-zinc-500 dark:text-zinc-400">{@text}</p>
+    <p class="px-2 py-1 text-body text-zinc-500 dark:text-zinc-400">{@text}</p>
     """
   end
 end

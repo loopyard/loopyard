@@ -97,9 +97,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
     ~H"""
     <div class={[gutter(), "flex items-start gap-2 py-1"]}>
       <div class="w-4 h-4 rounded-sm bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-none mt-0.5">
-        <span class="text-xs font-bold text-red-500">!</span>
+        <span class="text-meta font-bold text-red-500">!</span>
       </div>
-      <span class="text-sm font-mono text-red-600 dark:text-red-400 whitespace-pre-wrap min-w-0">{@display}</span>
+      <span class="text-body font-mono text-red-600 dark:text-red-400 whitespace-pre-wrap min-w-0">{@display}</span>
     </div>
     """
   end
@@ -111,7 +111,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
       open={if @lazy?, do: @expanded? != false, else: @detail_level == :trace || @is_error}
     >
       <summary
-        class="text-sm text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5"
+        class="text-body text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5"
         phx-click={@lazy? && "toggle_result"}
         phx-value-msgid={@lazy? && @msg[:id]}
         onclick={@lazy? && "event.preventDefault()"}
@@ -123,11 +123,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
       </summary>
       <pre
         :if={@expanded?}
-        class={"mt-1 p-3 rounded-sm text-sm md:text-[13px] font-mono leading-snug overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap
+        class={"mt-1 p-3 rounded-sm text-body md:text-[13px] font-mono leading-snug overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap
     #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300"}"}
       >{Ansi.to_html(@display)}</pre>
       <div :if={@expanded?} class="flex items-center gap-2 mt-1 h-5">
-        <p :if={@truncated} class="text-xs text-zinc-500 dark:text-zinc-400">
+        <p :if={@truncated} class="text-meta text-zinc-500 dark:text-zinc-400">
           ... {@line_count - @cap} more lines — {if @expanded? == :preview,
             do: "click the summary for more",
             else: "open raw to see all"}
@@ -297,17 +297,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
         onclick={@lazy? && "event.preventDefault()"}
       >
         <.icon name={:document} class="w-3.5 h-3.5 flex-none text-sky-500 dark:text-sky-400" />
-        <span class="min-w-0 flex-1 flex items-baseline gap-1.5 font-mono text-sm md:text-[13px]">
+        <span class="min-w-0 flex-1 flex items-baseline gap-1.5 font-mono text-body md:text-[13px]">
           <span class="flex-none text-zinc-700 dark:text-zinc-200 font-medium">{@basename}</span>
           <span :if={@dir} class="min-w-0 truncate text-zinc-400 dark:text-zinc-500">{@dir}</span>
         </span>
-        <span class="flex-none text-xs text-zinc-400 dark:text-zinc-500 transition-transform group-open/file:rotate-90">
+        <span class="flex-none text-meta text-zinc-400 dark:text-zinc-500 transition-transform group-open/file:rotate-90">
           ▸
         </span>
       </summary>
       <div
         :if={@expanded?}
-        class="highlight border-t border-zinc-200 dark:border-zinc-800 max-h-96 overflow-auto text-sm md:text-[13px] font-mono leading-relaxed"
+        class="highlight border-t border-zinc-200 dark:border-zinc-800 max-h-96 overflow-auto text-body md:text-[13px] font-mono leading-relaxed"
       >
         <div :for={{line, i} <- @lines} class="flex min-w-max">
           <span class="flex-none sticky left-0 w-12 pr-3 text-right select-none tabular-nums bg-brand-paper-shade dark:bg-brand-ink border-r border-zinc-100 dark:border-zinc-800 text-zinc-400 dark:text-zinc-600">
@@ -323,20 +323,23 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
       <div class="flex items-center gap-2 px-3 py-1 border-t border-zinc-200 dark:border-zinc-800 bg-brand-paper-shade dark:bg-brand-ink/60">
         <span
           :if={@language}
-          class="flex-none whitespace-nowrap text-xs px-1.5 py-px rounded-sm bg-sky-500/10 text-sky-600 dark:text-sky-400"
+          class="flex-none whitespace-nowrap text-meta px-1.5 py-px rounded-sm bg-sky-500/10 text-sky-600 dark:text-sky-400"
         >
           {@language}
         </span>
-        <span class="flex-none whitespace-nowrap text-xs tabular-nums text-zinc-400 dark:text-zinc-500">
+        <span class="flex-none whitespace-nowrap text-meta tabular-nums text-zinc-400 dark:text-zinc-500">
           {@line_count} {if @line_count == 1, do: "line", else: "lines"}
         </span>
-        <span :if={@expanded? && @truncated} class="text-xs text-zinc-500 dark:text-zinc-400 truncate">
+        <span
+          :if={@expanded? && @truncated}
+          class="text-meta text-zinc-500 dark:text-zinc-400 truncate"
+        >
           … {@line_count - @cap} more
         </span>
         <a
           :if={@file_link}
           href={@file_link}
-          class="ml-auto flex-none text-xs text-blue-600 dark:text-blue-400 hover:underline"
+          class="ml-auto flex-none text-meta text-blue-600 dark:text-blue-400 hover:underline"
         >
           Open in file viewer →
         </a>
@@ -388,7 +391,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
       open={if @lazy?, do: @expanded? != false, else: @detail_level == :trace}
     >
       <summary
-        class="text-sm text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5"
+        class="text-body text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5"
         phx-click={@lazy? && "toggle_result"}
         phx-value-msgid={@lazy? && @msg[:id]}
         onclick={@lazy? && "event.preventDefault()"}
@@ -405,7 +408,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
         :if={@expanded?}
         class="mt-1 rounded-sm overflow-hidden bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800"
       >
-        <div class="max-h-96 overflow-auto text-sm md:text-[13px] font-mono leading-snug py-1">
+        <div class="max-h-96 overflow-auto text-body md:text-[13px] font-mono leading-snug py-1">
           <div
             :for={row <- @rows}
             class="flex gap-2 px-3 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50"
@@ -422,7 +425,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
           </div>
         </div>
       </div>
-      <p :if={@expanded? && @truncated} class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+      <p :if={@expanded? && @truncated} class="text-meta text-zinc-500 dark:text-zinc-400 mt-1">
         ... {@total - @cap} more lines
       </p>
     </details>
@@ -585,7 +588,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
           href={@url}
           target="_blank"
           rel="noopener"
-          class="chat-sub block truncate text-violet-600 dark:text-violet-400 hover:underline mb-3"
+          class="text-body block truncate text-violet-600 dark:text-violet-400 hover:underline mb-3"
         >
           {@url}
         </a>
@@ -593,7 +596,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
           phx-click="open_port_from_chat"
           phx-value-service={@service}
           phx-value-container_port={@container_port}
-          class="focus-ring chat-sub inline-flex items-center gap-1.5 rounded-sm px-3.5 py-1.5 font-medium bg-violet-600 hover:bg-violet-700 text-white shadow-sm transition-colors flex-none"
+          class="focus-ring text-body inline-flex items-center gap-1.5 rounded-sm px-3.5 py-1.5 font-medium bg-violet-600 hover:bg-violet-700 text-white shadow-sm transition-colors flex-none"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"

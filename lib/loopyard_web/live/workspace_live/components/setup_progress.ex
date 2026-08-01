@@ -47,12 +47,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.SetupProgress do
     <div class="flex-1 flex items-center justify-center p-8 bg-brand-paper-shade dark:bg-brand-ink">
       <div class="max-w-xl w-full space-y-6">
         <div>
-          <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+          <h2 class="text-lead font-semibold text-zinc-900 dark:text-zinc-100">
             Setting up workspace
           </h2>
           <p
             :if={@workspace_name != ""}
-            class="text-sm text-zinc-500 dark:text-zinc-400 mt-1 font-mono"
+            class="text-body text-zinc-500 dark:text-zinc-400 mt-1 font-mono"
           >
             {@workspace_name}
           </p>
@@ -73,12 +73,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.SetupProgress do
           <% Map.get(@setup, :phase) == :failed and Map.get(@setup, :error) -> %>
             <.error_panel error={@setup.error} workspace_id={@workspace_id} />
           <% Map.get(@setup, :phase) in [:running, :worktree, :volume, :seeding] -> %>
-            <p class="text-xs text-zinc-500 dark:text-zinc-400">
+            <p class="text-meta text-zinc-500 dark:text-zinc-400">
               The workspace will become available as soon as setup finishes.
               You can leave this page; setup runs in the background.
             </p>
           <% true -> %>
-            <p class="text-xs text-zinc-500 dark:text-zinc-400">Preparing…</p>
+            <p class="text-meta text-zinc-500 dark:text-zinc-400">Preparing…</p>
         <% end %>
       </div>
     </div>
@@ -130,7 +130,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.SetupProgress do
       </span>
       <div class="flex-1 min-w-0">
         <span class={[
-          "text-sm",
+          "text-body",
           case @status do
             :pending -> "text-zinc-500 dark:text-zinc-400"
             :running -> "text-zinc-900 dark:text-zinc-100"
@@ -161,7 +161,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.SetupProgress do
         >
         </div>
       </div>
-      <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-zinc-500 dark:text-zinc-400 font-mono">
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-meta text-zinc-500 dark:text-zinc-400 font-mono">
         <span :if={files_label(@progress)}>{files_label(@progress)}</span>
         <span :if={Map.get(@progress, :bytes)}>{format_bytes(@progress.bytes)}</span>
         <span :if={Map.get(@progress, :rate_bps)}>{format_rate(@progress.rate_bps)}</span>
@@ -171,7 +171,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.SetupProgress do
       </div>
       <p
         :if={Map.get(@progress, :current_file)}
-        class="text-xs text-zinc-500 dark:text-zinc-400 font-mono truncate"
+        class="text-meta text-zinc-500 dark:text-zinc-400 font-mono truncate"
       >
         {@progress.current_file}
       </p>
@@ -186,21 +186,21 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.SetupProgress do
     ~H"""
     <div class="rounded-sm border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 p-4 space-y-3">
       <div>
-        <h3 class="text-sm font-semibold text-red-800 dark:text-red-300">
+        <h3 class="text-body font-semibold text-red-800 dark:text-red-300">
           {Map.get(@error, :why, "Setup failed")}
         </h3>
-        <p :if={Map.get(@error, :consequence)} class="text-xs text-red-700 dark:text-red-400 mt-1">
+        <p :if={Map.get(@error, :consequence)} class="text-meta text-red-700 dark:text-red-400 mt-1">
           {@error.consequence}
         </p>
       </div>
-      <p :if={Map.get(@error, :action)} class="text-xs text-zinc-700 dark:text-zinc-300">
+      <p :if={Map.get(@error, :action)} class="text-meta text-zinc-700 dark:text-zinc-300">
         {@error.action}
       </p>
       <div class="flex gap-2">
         <button
           phx-click="retry_setup"
           phx-value-workspace-id={@workspace_id}
-          class="text-xs px-3 py-1.5 rounded-sm bg-blue-600 hover:bg-blue-700 text-white font-medium"
+          class="text-meta px-3 py-1.5 rounded-sm bg-blue-600 hover:bg-blue-700 text-white font-medium"
         >
           Retry
         </button>
@@ -208,7 +208,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.SetupProgress do
           phx-click="remove_workspace_setup_failed"
           phx-value-workspace-id={@workspace_id}
           data-confirm="Remove this workspace? Volumes, worktree, and files will be deleted."
-          class="text-xs px-3 py-1.5 rounded-sm bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-200 font-medium"
+          class="text-meta px-3 py-1.5 rounded-sm bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-200 font-medium"
         >
           Remove workspace
         </button>

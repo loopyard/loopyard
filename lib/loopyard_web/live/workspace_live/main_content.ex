@@ -87,7 +87,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.MainContent do
       />
       <%= if @live_action in [:git_diff, :git_staged_diff] && @diff_content && @diff_content != :loading do %>
         <div class="flex flex-col h-full">
-          <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center gap-2 text-xs">
+          <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center gap-2 text-meta">
             <.link
               patch={"#{@base_path}/volumes/#{@selected_volume}/git"}
               class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
@@ -111,7 +111,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.MainContent do
       <% end %>
       <%= if @live_action == :git_commit && is_map(@commit_detail) do %>
         <div class="flex flex-col h-full">
-          <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 text-xs">
+          <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 text-meta">
             <.link
               patch={"#{@base_path}/volumes/#{@selected_volume}/history"}
               class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
@@ -128,7 +128,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.MainContent do
       <% end %>
       <%= if @live_action == :git_commit_file && @diff_content && @diff_content != :loading do %>
         <div class="flex flex-col h-full">
-          <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center gap-2 text-xs">
+          <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center gap-2 text-meta">
             <.link
               patch={"#{@base_path}/volumes/#{@selected_volume}/git/commits/#{@commit_sha}"}
               class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"

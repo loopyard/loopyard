@@ -46,12 +46,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Secret do
           </:label>
         </LoopyardWeb.Components.StreamCard.header>
 
-        <div class="chat-body font-medium leading-snug text-zinc-800 dark:text-zinc-200">
+        <div class="text-body font-medium leading-snug text-zinc-800 dark:text-zinc-200">
           <span class="font-mono">{@msg.name}</span>
         </div>
         <div
           :if={@msg[:why] not in [nil, ""]}
-          class="chat-sub mt-0.5 text-zinc-500 dark:text-zinc-400"
+          class="text-body mt-0.5 text-zinc-500 dark:text-zinc-400"
         >
           {@msg.why}
         </div>
@@ -70,11 +70,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Secret do
               spellcheck="false"
               placeholder={"Paste #{@msg.name}…"}
               aria-label={"Secret value for #{@msg.name}"}
-              class="flex-1 min-w-0 rounded-sm border border-orange-300 dark:border-orange-700/60 bg-brand-paper dark:bg-brand-ink px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+              class="flex-1 min-w-0 rounded-sm border border-orange-300 dark:border-orange-700/60 bg-brand-paper dark:bg-brand-ink px-3 py-2 text-body font-mono text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
             />
             <button
               type="submit"
-              class="focus-ring flex-none rounded-sm bg-orange-600 hover:bg-orange-700 px-3.5 py-2 text-sm font-medium text-white transition-colors"
+              class="focus-ring flex-none rounded-sm bg-orange-600 hover:bg-orange-700 px-3.5 py-2 text-body font-medium text-white transition-colors"
             >
               Submit
             </button>
@@ -85,7 +85,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Secret do
             type="button"
             phx-click="cancel_secret"
             phx-value-request_id={@msg.request_id}
-            class="focus-ring mt-2 text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+            class="focus-ring mt-2 text-body text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
           >
             I don't have it — skip
           </button>
@@ -93,14 +93,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Secret do
 
         <div
           :if={@msg.status == :declined}
-          class="mt-3 text-sm text-zinc-500 dark:text-zinc-400"
+          class="mt-3 text-body text-zinc-500 dark:text-zinc-400"
         >
           Declined — the agent will proceed without it.
         </div>
 
         <div
           :if={@msg.status == :submitted}
-          class="mt-3 inline-flex items-center gap-1.5 rounded-sm bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400"
+          class="mt-3 inline-flex items-center gap-1.5 rounded-sm bg-emerald-500/15 px-3 py-1.5 text-body font-medium text-emerald-600 dark:text-emerald-400"
         >
           <span>✓</span>
           {if @msg[:submitted_by] in [nil, ""],
@@ -108,7 +108,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Secret do
             else: "Submitted by #{@msg.submitted_by} — kept out of chat."}
         </div>
 
-        <div :if={@msg.status == :timeout} class="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
+        <div :if={@msg.status == :timeout} class="mt-3 text-body text-zinc-500 dark:text-zinc-400">
           No secret submitted — the agent moved on.
         </div>
       </LoopyardWeb.Components.StreamCard.band>

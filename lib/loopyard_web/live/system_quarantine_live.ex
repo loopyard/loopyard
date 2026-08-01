@@ -116,13 +116,13 @@ defmodule LoopyardWeb.SystemQuarantineLive do
       <div class="space-y-6">
         <section>
           <div class="flex items-baseline justify-between mb-3">
-            <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+            <h2 class="text-body font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
               Quarantined agents
               <span class="text-zinc-400 font-normal">({length(@quarantined)})</span>
             </h2>
           </div>
 
-          <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+          <p class="text-meta text-zinc-500 dark:text-zinc-400 mb-4">
             Agents here crashed too many times in a short window and the RestartController
             stopped respawning them. Releasing an agent clears the quarantine flag and
             allows the next start_agent call to succeed. Investigate the underlying
@@ -130,12 +130,12 @@ defmodule LoopyardWeb.SystemQuarantineLive do
           </p>
 
           <%= if @quarantined == [] do %>
-            <div class="text-sm text-zinc-500 dark:text-zinc-400 italic">
+            <div class="text-body text-zinc-500 dark:text-zinc-400 italic">
               No agents are currently quarantined.
             </div>
           <% else %>
             <div class="rounded-sm border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
-              <table class="w-full text-xs">
+              <table class="w-full text-meta">
                 <thead>
                   <tr class="bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-left">
                     <th class="px-3 py-2 font-medium">Agent</th>
@@ -152,7 +152,7 @@ defmodule LoopyardWeb.SystemQuarantineLive do
                   >
                     <td class="px-3 py-2 font-mono">
                       <div class="font-semibold">{q.name}</div>
-                      <div class="text-zinc-400 text-xs">{q.id}</div>
+                      <div class="text-zinc-400 text-meta">{q.id}</div>
                     </td>
                     <td class="px-3 py-2 font-mono text-zinc-500">{q.workspace_id || "—"}</td>
                     <td class="px-3 py-2 text-zinc-500">

@@ -35,7 +35,7 @@ defmodule LoopyardWeb.Components.Sidebar do
 
   def sidebar_item(assigns) do
     ~H"""
-    <div class={"flex items-center gap-2 px-2 py-1.5 rounded-sm text-sm transition-colors #{if @selected, do: "bg-white dark:bg-zinc-800 shadow-sm", else: "hover:bg-white/60 dark:hover:bg-zinc-800/40"}"}>
+    <div class={"flex items-center gap-2 px-2 py-1.5 rounded-sm text-body transition-colors #{if @selected, do: "bg-white dark:bg-zinc-800 shadow-sm", else: "hover:bg-white/60 dark:hover:bg-zinc-800/40"}"}>
       <%= if @navigate do %>
         <.link navigate={@navigate} class="flex items-center gap-2 min-w-0 flex-1">
           <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
@@ -96,25 +96,25 @@ defmodule LoopyardWeb.Components.Sidebar do
           rel="noopener"
           onclick="event.stopPropagation()"
           title={"Open the running app (http://localhost:#{@first_port})"}
-          class="ml-auto flex-none inline-flex items-center gap-1 rounded-sm px-2 py-0.5 text-xs font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+          class="ml-auto flex-none inline-flex items-center gap-1 rounded-sm px-2 py-0.5 text-meta font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
         >
           Open <span class="font-mono opacity-70">:{@first_port}</span>
           <svg viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3 flex-none">
             <path d="M11 3a1 1 0 1 0 0 2h2.586l-6.293 6.293a1 1 0 1 0 1.414 1.414L15 6.414V9a1 1 0 1 0 2 0V4a1 1 0 0 0-1-1h-5Z" /><path d="M5 5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-3a1 1 0 1 0-2 0v3H5V7h3a1 1 0 0 0 0-2H5Z" />
           </svg>
         </a>
-        <span :if={service_status_text(@svc)} class="text-xs text-blue-400 ml-auto flex-none">
+        <span :if={service_status_text(@svc)} class="text-meta text-blue-400 ml-auto flex-none">
           {service_status_text(@svc)}
         </span>
         <span
           :if={!service_status_text(@svc) && !@first_port && @svc.status == :running}
-          class="text-xs text-zinc-500 dark:text-zinc-400 ml-auto font-mono truncate max-w-[100px]"
+          class="text-meta text-zinc-500 dark:text-zinc-400 ml-auto font-mono truncate max-w-[100px]"
         >
           {service_detail(@svc)}
         </span>
         <span
           :if={@svc.status == :crashed && @svc.exit_info}
-          class="text-xs text-red-500 ml-auto truncate max-w-[140px]"
+          class="text-meta text-red-500 ml-auto truncate max-w-[140px]"
         >
           {exit_reason(@svc.exit_info)}
         </span>

@@ -185,11 +185,11 @@ defmodule LoopyardWeb.SystemWorkspacesLive do
       max_width={:lg}
       flash={@flash}
     >
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+      <h2 class="text-body font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
         Workspaces <span class="text-zinc-400 font-normal">({length(@workspaces)})</span>
       </h2>
 
-      <div :if={@workspaces == []} class="text-sm text-zinc-500 dark:text-zinc-400">
+      <div :if={@workspaces == []} class="text-body text-zinc-500 dark:text-zinc-400">
         No workspaces registered
       </div>
 
@@ -212,10 +212,10 @@ defmodule LoopyardWeb.SystemWorkspacesLive do
           </div>
           <div class="min-w-0">
             <div class="flex items-center gap-2">
-              <span class="text-sm font-medium">{@ws.project_name}</span>
-              <span class="text-xs text-zinc-400 font-mono">{@ws.workspace_id}</span>
+              <span class="text-body font-medium">{@ws.project_name}</span>
+              <span class="text-meta text-zinc-400 font-mono">{@ws.workspace_id}</span>
             </div>
-            <div class="text-xs text-zinc-500 truncate font-mono">{@ws.path}</div>
+            <div class="text-meta text-zinc-500 truncate font-mono">{@ws.path}</div>
           </div>
         </div>
         <div class="flex items-center gap-3 flex-none">
@@ -227,7 +227,7 @@ defmodule LoopyardWeb.SystemWorkspacesLive do
             phx-click="restart_workspace"
             phx-value-id={@ws.workspace_id}
             phx-value-path={@ws.path}
-            class="text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-sm px-2 py-1 transition-colors"
+            class="text-meta font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-sm px-2 py-1 transition-colors"
           >
             Restart
           </button>
@@ -243,7 +243,7 @@ defmodule LoopyardWeb.SystemWorkspacesLive do
   defp health_pill(assigns) do
     ~H"""
     <span class={[
-      "text-xs font-medium rounded-full px-2 py-0.5",
+      "text-meta font-medium rounded-full px-2 py-0.5",
       if(@alive,
         do: "text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30",
         else: "text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/30"
@@ -260,7 +260,7 @@ defmodule LoopyardWeb.SystemWorkspacesLive do
   defp container_pill(assigns) do
     ~H"""
     <% c = Map.get(@containers, @workspace_id, %{total: 0, running: 0}) %>
-    <span class="text-xs font-mono text-zinc-500" title={"#{c.running} running of #{c.total}"}>
+    <span class="text-meta font-mono text-zinc-500" title={"#{c.running} running of #{c.total}"}>
       {c.running}/{c.total} containers
     </span>
     """

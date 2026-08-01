@@ -187,8 +187,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       <div class={["flex items-center gap-2.5 rounded-sm px-2.5 py-2", @hs.bg]}>
         <span class={["w-2 h-2 rounded-full flex-none", @hs.dot, @hs.pulse]}></span>
         <div class="min-w-0">
-          <div class={["text-sm font-semibold leading-tight", @hs.text]}>{@hs.label}</div>
-          <div :if={@hs.detail || @hs[:countdown]} class="text-sm text-zinc-500 dark:text-zinc-400">
+          <div class={["text-body font-semibold leading-tight", @hs.text]}>{@hs.label}</div>
+          <div :if={@hs.detail || @hs[:countdown]} class="text-body text-zinc-500 dark:text-zinc-400">
             <span
               :if={@hs[:countdown]}
               id={"hs-cd-#{@agent[:id]}-#{@hs.countdown}"}
@@ -205,7 +205,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
           <.link
             :if={@hs[:action]}
             navigate={elem(@hs.action, 1)}
-            class="focus-ring mt-2 inline-flex items-center gap-1 rounded-sm text-sm font-medium text-violet-600 dark:text-violet-400 hover:underline"
+            class="focus-ring mt-2 inline-flex items-center gap-1 rounded-sm text-body font-medium text-violet-600 dark:text-violet-400 hover:underline"
           >
             {elem(@hs.action, 0)} <span aria-hidden="true">→</span>
           </.link>
@@ -419,14 +419,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     live session flips via ACP session/set_model (persisted for future
     restarts). Options are the CLI's stable aliases; the row shows the
     resolved human name as the current selection. --%>
-      <div class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-5 text-sm">
+      <div class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-5 text-body">
         <span class="text-zinc-500 dark:text-zinc-400 flex-none">Model</span>
         <form phx-change="set_agent_model" class="flex-none">
           <input type="hidden" name="agent-id" value={@agent.id} />
           <select
             name="model"
             aria-label="Agent model"
-            class="focus-ring rounded-sm border-0 bg-transparent py-0 pl-1 pr-6 text-sm text-right font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400"
+            class="focus-ring rounded-sm border-0 bg-transparent py-0 pl-1 pr-6 text-body text-right font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400"
           >
             <%!-- The container CLI's set_model passes FULL model ids through, so
     we offer the latest frontier models by id — not just the

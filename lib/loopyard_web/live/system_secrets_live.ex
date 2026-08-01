@@ -116,17 +116,17 @@ defmodule LoopyardWeb.SystemSecretsLive do
     >
       <div class="space-y-8">
         <section>
-          <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">
+          <h2 class="text-body font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">
             Secrets <span class="text-zinc-400 font-normal">({length(@secrets)})</span>
           </h2>
-          <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4 max-w-2xl">
+          <p class="text-meta text-zinc-500 dark:text-zinc-400 mb-4 max-w-2xl">
             Named credentials in <code class="font-mono">~/.loopyard/secrets.json</code>. Agents
             fetch these at runtime by name (never pre-injected as env vars). A secret with no
             scope is <strong>global</strong> — visible to every agent; a scoped secret is only
             visible to the workspace or project IDs listed.
           </p>
 
-          <div :if={@secrets == []} class="text-sm text-zinc-500 dark:text-zinc-400 italic">
+          <div :if={@secrets == []} class="text-body text-zinc-500 dark:text-zinc-400 italic">
             No secrets stored yet. Add one below, or an agent will prompt for one when it needs it.
           </div>
 
@@ -134,7 +134,7 @@ defmodule LoopyardWeb.SystemSecretsLive do
             :if={@secrets != []}
             class="rounded-sm border border-zinc-200 dark:border-zinc-700/80 overflow-hidden"
           >
-            <table class="w-full text-sm">
+            <table class="w-full text-body">
               <thead>
                 <tr class="text-left text-zinc-500 dark:text-zinc-400 bg-zinc-100/50 dark:bg-zinc-800/30">
                   <th class="px-3 py-2 font-medium">Key</th>
@@ -156,19 +156,19 @@ defmodule LoopyardWeb.SystemSecretsLive do
                   <td class="px-3 py-2">
                     <span
                       :if={s.scope == []}
-                      class="inline-flex items-center rounded-sm px-1.5 py-0.5 text-xs font-medium bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                      class="inline-flex items-center rounded-sm px-1.5 py-0.5 text-meta font-medium bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400"
                     >
                       global
                     </span>
                     <span
                       :if={s.scope != []}
-                      class="font-mono text-xs text-zinc-500 dark:text-zinc-400"
+                      class="font-mono text-meta text-zinc-500 dark:text-zinc-400"
                       title={Enum.join(s.scope, ", ")}
                     >
                       {Enum.join(s.scope, ", ")}
                     </span>
                   </td>
-                  <td class="px-3 py-2 font-mono text-xs">
+                  <td class="px-3 py-2 font-mono text-meta">
                     <span :if={@revealed[s.key]} class="text-zinc-800 dark:text-zinc-200 break-all">
                       {@revealed[s.key]}
                     </span>
@@ -181,7 +181,7 @@ defmodule LoopyardWeb.SystemSecretsLive do
                       :if={!@revealed[s.key]}
                       phx-click="reveal"
                       phx-value-key={s.key}
-                      class="text-xs font-medium text-zinc-500 hover:text-violet-600 dark:hover:text-violet-400"
+                      class="text-meta font-medium text-zinc-500 hover:text-violet-600 dark:hover:text-violet-400"
                     >
                       Reveal
                     </button>
@@ -189,7 +189,7 @@ defmodule LoopyardWeb.SystemSecretsLive do
                       :if={@revealed[s.key]}
                       phx-click="hide"
                       phx-value-key={s.key}
-                      class="text-xs font-medium text-zinc-500 hover:text-violet-600 dark:hover:text-violet-400"
+                      class="text-meta font-medium text-zinc-500 hover:text-violet-600 dark:hover:text-violet-400"
                     >
                       Hide
                     </button>
@@ -198,7 +198,7 @@ defmodule LoopyardWeb.SystemSecretsLive do
                       phx-click="delete"
                       phx-value-key={s.key}
                       data-confirm={"Delete secret \"#{s.key}\"? Agents relying on it will no longer be able to fetch it."}
-                      class="text-xs font-medium text-zinc-500 hover:text-red-600 dark:hover:text-red-400"
+                      class="text-meta font-medium text-zinc-500 hover:text-red-600 dark:hover:text-red-400"
                     >
                       Delete
                     </button>
@@ -210,26 +210,26 @@ defmodule LoopyardWeb.SystemSecretsLive do
         </section>
 
         <section>
-          <h3 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">
+          <h3 class="text-body font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">
             Add / rotate
           </h3>
-          <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+          <p class="text-meta text-zinc-500 dark:text-zinc-400 mb-3">
             Saving a key that already exists overwrites its value — that's how you rotate a token.
           </p>
           <form phx-submit="save" class="space-y-3 max-w-2xl">
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label class="block">
-                <span class="text-xs font-medium text-zinc-600 dark:text-zinc-400">Key</span>
+                <span class="text-meta font-medium text-zinc-600 dark:text-zinc-400">Key</span>
                 <input
                   name="secret[key]"
                   value={@form["key"]}
                   placeholder="GITHUB_TOKEN"
                   autocomplete="off"
-                  class="mt-1 w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+                  class="mt-1 w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-body font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
                 />
               </label>
               <label class="block">
-                <span class="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                <span class="text-meta font-medium text-zinc-600 dark:text-zinc-400">
                   Display name <span class="text-zinc-400 font-normal">(optional)</span>
                 </span>
                 <input
@@ -237,23 +237,23 @@ defmodule LoopyardWeb.SystemSecretsLive do
                   value={@form["name"]}
                   placeholder="GitHub personal access token"
                   autocomplete="off"
-                  class="mt-1 w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+                  class="mt-1 w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-body text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
                 />
               </label>
             </div>
             <label class="block">
-              <span class="text-xs font-medium text-zinc-600 dark:text-zinc-400">Value</span>
+              <span class="text-meta font-medium text-zinc-600 dark:text-zinc-400">Value</span>
               <input
                 name="secret[value]"
                 type="password"
                 value={@form["value"]}
                 placeholder="ghp_…"
                 autocomplete="off"
-                class="mt-1 w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+                class="mt-1 w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-body font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
               />
             </label>
             <label class="block">
-              <span class="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              <span class="text-meta font-medium text-zinc-600 dark:text-zinc-400">
                 Scope <span class="text-zinc-400 font-normal">(optional — blank = global)</span>
               </span>
               <input
@@ -261,16 +261,16 @@ defmodule LoopyardWeb.SystemSecretsLive do
                 value={@form["scope"]}
                 placeholder="workspace-id, project-id (comma-separated)"
                 autocomplete="off"
-                class="mt-1 w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+                class="mt-1 w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-body font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
               />
-              <span class="text-xs text-zinc-500 dark:text-zinc-400 mt-1 block">
+              <span class="text-meta text-zinc-500 dark:text-zinc-400 mt-1 block">
                 Restrict which workspaces / projects can read this secret. Leave blank so every
                 agent can use it.
               </span>
             </label>
             <button
               type="submit"
-              class="inline-flex items-center rounded-sm bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 text-sm font-medium transition-colors"
+              class="inline-flex items-center rounded-sm bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 text-body font-medium transition-colors"
             >
               Save secret
             </button>

@@ -23,14 +23,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
             </path>
           </svg>
         </div>
-        <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-1">Starting agent</h3>
-        <p class="text-xs text-zinc-500 dark:text-zinc-400 font-mono mb-3">{@agent_id}</p>
-        <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-4">{@status}</p>
+        <h3 class="text-body font-semibold text-zinc-900 dark:text-zinc-100 mb-1">Starting agent</h3>
+        <p class="text-meta text-zinc-500 dark:text-zinc-400 font-mono mb-3">{@agent_id}</p>
+        <p class="text-body text-zinc-500 dark:text-zinc-400 mb-4">{@status}</p>
         <details :if={@boot_log != []} class="text-left">
-          <summary class="text-xs text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-300">
+          <summary class="text-meta text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-300">
             Boot log
           </summary>
-          <div class="mt-2 bg-zinc-50 dark:bg-zinc-800 rounded-sm p-3 text-xs font-mono text-zinc-500 dark:text-zinc-400 space-y-0.5 max-h-48 overflow-y-auto">
+          <div class="mt-2 bg-zinc-50 dark:bg-zinc-800 rounded-sm p-3 text-meta font-mono text-zinc-500 dark:text-zinc-400 space-y-0.5 max-h-48 overflow-y-auto">
             <p :for={line <- @boot_log}>{line}</p>
           </div>
         </details>
@@ -67,14 +67,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
             />
           </svg>
         </div>
-        <h3 class="text-lg font-semibold mb-1">{@workspace.name}</h3>
-        <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-6">
+        <h3 class="text-lead font-semibold mb-1">{@workspace.name}</h3>
+        <p class="text-body text-zinc-500 dark:text-zinc-400 mb-6">
           Ready to work. Start an agent and it'll begin showing its work as it goes —
           no need to boot containers first.
         </p>
         <.link
           patch={"#{@base_path}/new"}
-          class="focus-ring inline-flex items-center gap-2 rounded-sm bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 text-sm font-medium transition-colors"
+          class="focus-ring inline-flex items-center gap-2 rounded-sm bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 text-body font-medium transition-colors"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -88,7 +88,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
           New agent
         </.link>
 
-        <div class="mt-6 text-xs text-zinc-500 dark:text-zinc-400">
+        <div class="mt-6 text-meta text-zinc-500 dark:text-zinc-400">
           <%= if @workspace_state == :starting do %>
             <span class="inline-flex items-center gap-2 animate-pulse">
               <svg
@@ -165,7 +165,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
       <div class="max-w-2xl mx-auto">
         <div class="flex items-start justify-between gap-4 pb-6 mb-6 border-b border-zinc-200 dark:border-zinc-700/80">
           <div class="min-w-0 flex-1">
-            <h1 class="text-2xl font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+            <h1 class="text-hero font-semibold text-zinc-900 dark:text-zinc-100 truncate">
               {@display_name}
             </h1>
             <div class="mt-2 flex items-center gap-2">
@@ -174,7 +174,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
                 aria-hidden="true"
               >
               </div>
-              <span class="text-sm text-zinc-600 dark:text-zinc-300">
+              <span class="text-body text-zinc-600 dark:text-zinc-300">
                 <span :if={@docker_connected?}>{@state_label}</span>
                 <span :if={!@docker_connected?} class="text-amber-600 dark:text-amber-400">
                   Docker disconnected
@@ -188,7 +188,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
               type="button"
               phx-click="shutdown_workspace"
               aria-label="Stop workspace"
-              class="focus-ring inline-flex items-center gap-2 rounded-sm px-4 min-h-10 text-sm font-medium border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+              class="focus-ring inline-flex items-center gap-2 rounded-sm px-4 min-h-10 text-body font-medium border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -206,7 +206,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
               type="button"
               phx-click="boot_workspace"
               aria-label="Start all services"
-              class="focus-ring inline-flex items-center gap-2 rounded-sm px-4 min-h-10 text-sm font-medium bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white transition-colors"
+              class="focus-ring inline-flex items-center gap-2 rounded-sm px-4 min-h-10 text-body font-medium bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white transition-colors"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -222,7 +222,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
           </div>
         </div>
 
-        <p class="text-sm text-zinc-500 dark:text-zinc-400">
+        <p class="text-body text-zinc-500 dark:text-zinc-400">
           Pick an agent or service from the sidebar, or <.link
             patch={"#{@base_path}/new"}
             class="text-violet-600 dark:text-violet-400 hover:underline"
@@ -253,7 +253,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
             />
           </svg>
         </div>
-        <p class="text-sm text-zinc-500 dark:text-zinc-400">
+        <p class="text-body text-zinc-500 dark:text-zinc-400">
           Create or select an agent to start chatting
         </p>
       </div>

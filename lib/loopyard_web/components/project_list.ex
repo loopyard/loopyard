@@ -52,7 +52,7 @@ defmodule LoopyardWeb.Components.ProjectList do
           data-sticky-header
           class="group sticky top-0 z-10 block pt-2.5 pb-2.5 md:pt-1 md:pb-1 bg-brand-paper dark:bg-brand-ink transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
         >
-          <h2 class="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
+          <h2 class="text-title font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
             {project.name}
           </h2>
         </.link>
@@ -83,13 +83,13 @@ defmodule LoopyardWeb.Components.ProjectList do
 
         <div
           :if={project.workspaces == []}
-          class="px-2 py-2 text-sm text-zinc-500 dark:text-zinc-400 italic"
+          class="px-2 py-2 text-body text-zinc-500 dark:text-zinc-400 italic"
         >
           no workspaces
         </div>
       </section>
 
-      <div :if={@projects == []} class="text-sm text-zinc-400 py-8 text-center">
+      <div :if={@projects == []} class="text-body text-zinc-400 py-8 text-center">
         No projects yet.
       </div>
     </div>
@@ -123,7 +123,7 @@ defmodule LoopyardWeb.Components.ProjectList do
         >
           <h2 class={[
             "font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors",
-            "text-base"
+            "text-body"
           ]}>
             {project.name}
           </h2>
@@ -148,7 +148,7 @@ defmodule LoopyardWeb.Components.ProjectList do
         </div>
       </section>
 
-      <div :if={@projects == []} class="text-sm text-zinc-400 py-8 text-center">
+      <div :if={@projects == []} class="text-body text-zinc-400 py-8 text-center">
         No projects yet.
       </div>
     </div>
@@ -192,14 +192,13 @@ defmodule LoopyardWeb.Components.ProjectList do
     this shows just the branch — status light on the left, branch name to
     its right — quietly (muted) so the project heading leads. --%>
       <%!-- :md at BOTH sizes so this rail reads at the same scale as the right
-    sidebar's nav rows (text-sm). It was :sm here, which maps to the tiny
-    chat-meta token — the left rail ended up noticeably smaller and harder
+    sidebar's nav rows (text-body). It was :sm here, which maps to the tiny
+    text-meta token — the left rail ended up noticeably smaller and harder
     to read than the identical list on the right. Not muted for the same
     reason: legible first, recessive second. --%>
       <LoopyardWeb.Components.Common.workspace_identity
         project={@ws.name}
         state={ws_state(@ws)}
-        size={:md}
         class="min-w-0 flex-1"
       />
       <%!-- The rail carries only the SIGNAL words (needs-you / broken / …), never
@@ -210,7 +209,7 @@ defmodule LoopyardWeb.Components.ProjectList do
         :if={
           @headline && @headline.kind != :changed && (@size == :sm || @headline.kind == :needs_you)
         }
-        class="relative flex-none text-xs truncate max-w-[9rem]"
+        class="relative flex-none text-meta truncate max-w-[9rem]"
       >
         <span class={@headline.class}>{@headline.text}</span>
       </span>
@@ -254,18 +253,17 @@ defmodule LoopyardWeb.Components.ProjectList do
           <LoopyardWeb.Components.Common.workspace_identity
             project={@ws.name}
             state={ws_state(@ws)}
-            size={:md}
             class="min-w-0 flex-1"
           />
           <span
             :if={ws_port(@ws)}
-            class="flex-none inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+            class="flex-none inline-flex items-center px-1.5 py-0.5 rounded-sm text-meta font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
           >
             :{ws_port(@ws)}
           </span>
         </div>
         <div class={[
-          "text-sm truncate",
+          "text-body truncate",
           (@headline && @headline.kind != :changed && @headline.class) ||
             "text-zinc-500 dark:text-zinc-400"
         ]}>
@@ -319,14 +317,13 @@ defmodule LoopyardWeb.Components.ProjectList do
         <LoopyardWeb.Components.Common.workspace_identity
           project={@ws.name}
           state={ws_state(@ws)}
-          size={:md}
           class="min-w-0"
         />
         <%!-- Named only when it departs from rest — the shared component owns
              that rule, so "Ready" can't creep back in beside a green dot. --%>
         <LoopyardWeb.Components.Common.status_label
           state={ws_state(@ws)}
-          class="hidden sm:inline text-xs md:text-sm"
+          class="hidden sm:inline text-meta text-body"
         />
         <div class="flex-1"></div>
         <span :if={ws_port_entry(@ws)} class="relative z-10 flex-none">
@@ -338,7 +335,7 @@ defmodule LoopyardWeb.Components.ProjectList do
     footer fact), so on the card it collapses to the quiet who's-here line;
     ±N shows once, in the footer. --%>
       <div class={[
-        "mt-2 text-sm md:text-base truncate",
+        "mt-2 text-body truncate",
         card_story_class(@headline) || "text-zinc-500 dark:text-zinc-400"
       ]}>
         {card_story_text(@headline, @ws)}
@@ -350,7 +347,7 @@ defmodule LoopyardWeb.Components.ProjectList do
       <div class="mt-auto"></div>
       <div
         :if={@ws[:last_activity_at] || @changes}
-        class="mt-1 text-xs md:text-sm text-zinc-400 dark:text-zinc-500"
+        class="mt-1 text-meta text-body text-zinc-400 dark:text-zinc-500"
       >
         <span :if={@ws[:last_activity_at]}>Active {time_ago(@ws.last_activity_at)}</span>
         <span :if={@ws[:last_activity_at] && @changes}> · </span>

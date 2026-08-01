@@ -207,7 +207,7 @@ defmodule LoopyardWeb.Components.Nav do
   """
   def seg_item_class(active?) do
     [
-      "focus-ring inline-flex items-center justify-center min-h-[2.5rem] px-3 rounded-sm text-sm font-medium leading-none transition-colors whitespace-nowrap",
+      "focus-ring inline-flex items-center justify-center min-h-[2.5rem] px-3 rounded-sm text-body font-medium leading-none transition-colors whitespace-nowrap",
       if(active?,
         do: "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm",
         else: "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
@@ -449,7 +449,7 @@ defmodule LoopyardWeb.Components.Nav do
           </div>
           <h2
             :if={@current == []}
-            class="min-w-0 text-lg font-semibold text-zinc-900 dark:text-zinc-100 truncate"
+            class="min-w-0 text-lead font-semibold text-zinc-900 dark:text-zinc-100 truncate"
           >
             {@title}
           </h2>
@@ -527,7 +527,7 @@ defmodule LoopyardWeb.Components.Nav do
   """
   def sheet_row_class(active?) do
     [
-      "focus-ring flex items-center gap-3 min-h-[3.25rem] px-3  text-base transition-colors",
+      "focus-ring flex items-center gap-3 min-h-[3.25rem] px-3  text-body transition-colors",
       if(active?,
         do: "bg-violet-100 dark:bg-violet-500/15 text-zinc-900 dark:text-zinc-100 font-semibold",
         else:

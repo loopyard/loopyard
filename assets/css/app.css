@@ -164,7 +164,7 @@
      and the 68ch measure — the document feel comes from size + rhythm + measure,
      not from a typeface change. (Tried a serif; it didn't sit right.) */
   max-width: 68ch;          /* the measure — the single biggest readability win */
-  @apply text-chat-body md:text-chat-body-md; /* size/leading from the chat-body tokens */
+  @apply text-body; /* the ONE reading size — see tailwind.config.js */
   letter-spacing: 0;
 }
 .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
@@ -175,9 +175,9 @@
   letter-spacing: -0.01em;
 }
 .markdown-body > :first-child { margin-top: 0; }
-.markdown-body h1 { font-size: 1.4em; }
-.markdown-body h2 { font-size: 1.2em; }
-.markdown-body h3 { font-size: 1.05em; }
+.markdown-body h1 { @apply text-title; }
+.markdown-body h2 { @apply text-lead; }
+.markdown-body h3 { @apply text-body; }
 .markdown-body p { margin: 1em 0; }        /* real air between paragraphs = skimmable */
 .markdown-body p:first-child { margin-top: 0; }
 .markdown-body p:last-child { margin-bottom: 0; }
@@ -188,7 +188,7 @@
 .markdown-body li::marker { color: rgba(139, 124, 255, 0.55); } /* accent bullets, quietly */
 .markdown-body li > ul, .markdown-body li > ol { margin: 0.35em 0; }
 .markdown-body code {
-  font-size: 0.95em;
+  font-size: 1em;
   padding: 0.15em 0.35em;
   border-radius: 0.125rem;
   background: rgba(0, 0, 0, 0.06);
@@ -212,12 +212,9 @@
   white-space: pre;
   padding: 0;
   background: transparent;
-  /* SAME mono size as the console boxes + diff view (text-sm md:text-[13px]) —
-     one fixed-width size everywhere, not prose-relative drift. */
-  font-size: 0.9375rem;
-}
-@media (min-width: 768px) {
-  .markdown-body pre code { font-size: 13px; }
+  /* One fixed-width size everywhere — it used to be 15px, dropping to 13px on
+     md+, so a code block changed size when you rotated the phone. */
+  @apply text-meta;
 }
 .markdown-body blockquote {
   margin: 0.5em 0;
@@ -282,11 +279,10 @@
    meta: labels & receipts (eyebrows, timestamps, footers, source lines)
    One scale = calm rhythm; per-surface ad-hoc sizes are what made the stream
    feel like a mix of slightly-different fonts. */
-/* Sizes come from the Tailwind fontSize tokens (tailwind.config.js →
-   chat-body / chat-sub / chat-sub-md / chat-meta) — tune them THERE. */
-.chat-body { @apply text-chat-body md:text-chat-body-md; }
-.chat-sub  { @apply text-chat-sub md:text-chat-sub-md; }
-.chat-meta { @apply text-chat-meta; }
+/* The chat's three tokens are GONE. They named sizes the rest of the app
+   didn't use (18/16/15/13 across two breakpoints), which is how the chat ended
+   up reading as a different app. Chat prose is `text-body` like every other
+   thing you read; eyebrows are `text-meta` like every other label. */
 
 /* SECTION LABEL — the small uppercase heading over a group of rows ("IN MOTION",
    "SUBSYSTEMS", "COMPONENT HEALTH"). It had drifted into text-[10px] and
@@ -294,7 +290,7 @@
    sizes on one screen; 10px was below legibility besides. One class, matching
    the SideNav exemplar. Never write an ad-hoc size for a label again. */
 .section-label {
-  @apply text-xs font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500;
+  @apply text-meta font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500;
 }
 
 /* The human prompt band reads at chat-body, same as the prose and the composer
@@ -303,7 +299,7 @@
 .markdown-body.human-prompt p,
 .markdown-body.human-prompt li {
   font-family: inherit;
-  @apply text-chat-body md:text-chat-body-md;
+  @apply text-body;
   line-height: 1.55;
 }
 

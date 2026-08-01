@@ -159,24 +159,24 @@ defmodule LoopyardWeb.DashboardLive do
     <section class="mt-8 md:mt-12 border border-violet-300 dark:border-violet-500/40 bg-violet-50 dark:bg-violet-500/[0.06] p-5 md:p-6">
       <div class="flex items-center gap-2.5">
         <span class="w-2 h-2 rounded-full bg-violet-500 flex-none" aria-hidden="true"></span>
-        <h2 class="text-base font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+        <h2 class="text-body font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
           Claude's connected — now add a project
         </h2>
       </div>
-      <p class="chat-sub text-zinc-700 dark:text-zinc-300 mt-2">
+      <p class="text-body text-zinc-700 dark:text-zinc-300 mt-2">
         Point Loopyard at some code and an agent takes it from there: it reads the
         stack, writes the Dockerfile and services, and boots the dev server.
       </p>
       <div class="mt-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
         <.link
           navigate="/projects/new"
-          class="focus-ring inline-flex items-center justify-center rounded-sm bg-violet-600 hover:bg-violet-500 text-white px-4 py-3 md:py-2.5 text-sm md:text-xs font-medium transition-colors"
+          class="focus-ring inline-flex items-center justify-center rounded-sm bg-violet-600 hover:bg-violet-500 text-white px-4 py-3 md:py-2.5 text-body font-medium transition-colors"
         >
           Add your first project
         </.link>
         <.link
           navigate={"/workstations/#{@workstation}"}
-          class="focus-ring text-sm py-2.5 md:py-1 text-zinc-600 dark:text-zinc-300 underline hover:text-zinc-900 dark:hover:text-zinc-100"
+          class="focus-ring text-body py-2.5 md:py-1 text-zinc-600 dark:text-zinc-300 underline hover:text-zinc-900 dark:hover:text-zinc-100"
         >
           Connect more tools first
         </.link>
@@ -190,11 +190,11 @@ defmodule LoopyardWeb.DashboardLive do
     <section class="mt-8 md:mt-12 border border-orange-300 dark:border-orange-500/40 bg-orange-50 dark:bg-orange-500/[0.06] p-5 md:p-6">
       <div class="flex items-center gap-2.5">
         <span class="w-2 h-2 rounded-full bg-orange-500 flex-none" aria-hidden="true"></span>
-        <h2 class="text-base font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+        <h2 class="text-body font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
           Start here — connect Claude
         </h2>
       </div>
-      <p class="chat-sub text-zinc-700 dark:text-zinc-300 mt-2">
+      <p class="text-body text-zinc-700 dark:text-zinc-300 mt-2">
         Agents build everything else in Loopyard — the Dockerfile, the services, the dev
         server. None of it can start until Claude can authenticate. Run this on your Mac;
         it opens a browser to authorize and pushes a 1-year token back here.
@@ -205,7 +205,7 @@ defmodule LoopyardWeb.DashboardLive do
           command={"curl -fsS \"__ORIGIN__/workstations/#{@workstation}/claude/setup.sh?token=#{Loopyard.PushToken.get()}\" | sh"}
         />
       </div>
-      <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-2.5">
+      <p class="text-body text-zinc-500 dark:text-zinc-400 mt-2.5">
         This band clears itself once the token lands — nothing else to do.
       </p>
       <%!-- Secondary routes as real targets, not inline text. On a phone these
@@ -215,13 +215,13 @@ defmodule LoopyardWeb.DashboardLive do
       <div class="mt-1 flex flex-col md:flex-row md:items-center md:gap-4">
         <.link
           navigate={"/workstations/#{@workstation}/claude"}
-          class="focus-ring text-sm py-2.5 md:py-1 text-zinc-600 dark:text-zinc-300 underline hover:text-zinc-900 dark:hover:text-zinc-100"
+          class="focus-ring text-body py-2.5 md:py-1 text-zinc-600 dark:text-zinc-300 underline hover:text-zinc-900 dark:hover:text-zinc-100"
         >
           Other ways to connect
         </.link>
         <.link
           navigate={"/workstations/#{@workstation}"}
-          class="focus-ring text-sm py-2.5 md:py-1 text-zinc-600 dark:text-zinc-300 underline hover:text-zinc-900 dark:hover:text-zinc-100"
+          class="focus-ring text-body py-2.5 md:py-1 text-zinc-600 dark:text-zinc-300 underline hover:text-zinc-900 dark:hover:text-zinc-100"
         >
           All your tools
         </.link>
@@ -264,7 +264,7 @@ defmodule LoopyardWeb.DashboardLive do
               >
                 <path d="M3 3.5A1.5 1.5 0 0 1 4.5 2h3A1.5 1.5 0 0 1 9 3.5v3A1.5 1.5 0 0 1 7.5 8h-3A1.5 1.5 0 0 1 3 6.5v-3ZM3 13.5A1.5 1.5 0 0 1 4.5 12h3A1.5 1.5 0 0 1 9 13.5v3A1.5 1.5 0 0 1 7.5 18h-3A1.5 1.5 0 0 1 3 16.5v-3ZM11 3.5A1.5 1.5 0 0 1 12.5 2h3A1.5 1.5 0 0 1 17 3.5v3A1.5 1.5 0 0 1 15.5 8h-3A1.5 1.5 0 0 1 11 6.5v-3ZM11 13.5a1.5 1.5 0 0 1 1.5-1.5h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3a1.5 1.5 0 0 1-1.5-1.5v-3Z" />
               </svg>
-              <h2 class="text-lg font-semibold tracking-tight">Workspaces</h2>
+              <h2 class="text-lead font-semibold tracking-tight">Workspaces</h2>
             </div>
             <.gauge navigate="/workspaces" tone={(@ws.working > 0 && :working) || :calm}>
               {(@ws.working > 0 && "#{@ws.working} #{plural(@ws.working, "workspace")} working") ||
@@ -286,7 +286,6 @@ defmodule LoopyardWeb.DashboardLive do
                   project={w.project}
                   workspace={w.workspace}
                   state={w.state}
-                  size={:md}
                   class="min-w-0 flex-1"
                 />
               </.link>
@@ -298,7 +297,7 @@ defmodule LoopyardWeb.DashboardLive do
             <.link navigate="/operator" class="absolute inset-0 focus-ring" aria-label="Operator"></.link>
             <div class="flex items-center gap-2.5 text-zinc-900 dark:text-zinc-50">
               <span class="text-violet-600 dark:text-violet-400"><Brand.mark class="w-5 h-5" /></span>
-              <h2 class="text-lg font-semibold tracking-tight">Operator</h2>
+              <h2 class="text-lead font-semibold tracking-tight">Operator</h2>
             </div>
             <%!-- The gauge NAMES what's waiting. "6 waiting on you" prompts the
                  only question that matters — six WHAT? — and answers none of
@@ -317,12 +316,12 @@ defmodule LoopyardWeb.DashboardLive do
                 navigate={(item.msg && "/review/#{item.agent_id}/#{item.msg.id}") || "/review"}
                 class="block -mx-2 px-2 py-3 md:py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
               >
-                <span class="text-sm text-zinc-700 dark:text-zinc-200 line-clamp-2">
+                <span class="text-body text-zinc-700 dark:text-zinc-200 line-clamp-2">
                   {item.label}
                 </span>
                 <span
                   :if={item.workspace_name}
-                  class="block text-xs text-zinc-500 dark:text-zinc-400 mt-0.5"
+                  class="block text-meta text-zinc-500 dark:text-zinc-400 mt-0.5"
                 >
                   {item.project_name} · {item.workspace_name}
                 </span>
@@ -330,7 +329,7 @@ defmodule LoopyardWeb.DashboardLive do
               <.link
                 :if={length(@attention) > 4}
                 navigate="/review"
-                class="block -mx-2 px-2 py-3 md:py-1.5 text-sm font-medium text-orange-700 dark:text-orange-400 hover:underline"
+                class="block -mx-2 px-2 py-3 md:py-1.5 text-body font-medium text-orange-700 dark:text-orange-400 hover:underline"
               >
                 +{length(@attention) - 4} more to decide →
               </.link>
@@ -338,7 +337,7 @@ defmodule LoopyardWeb.DashboardLive do
               <.link
                 :if={@attention == []}
                 navigate="/operator"
-                class="flex items-center gap-2 -mx-2 px-2 py-3 md:py-1.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+                class="flex items-center gap-2 -mx-2 px-2 py-3 md:py-1.5 text-body text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
               >
                 Chat with the operator
               </.link>
@@ -350,13 +349,13 @@ defmodule LoopyardWeb.DashboardLive do
                 :if={@digest != []}
                 class="hidden md:block pt-3 mt-2 border-t border-zinc-200/70 dark:border-zinc-800"
               >
-                <p class="text-sm text-zinc-400 dark:text-zinc-500 mb-1">Recently finished</p>
+                <p class="text-body text-zinc-400 dark:text-zinc-500 mb-1">Recently finished</p>
                 <.link
                   :for={e <- Enum.take(@digest, if(@attention == [], do: 5, else: 3))}
                   navigate={digest_path(e)}
                   class="block -mx-2 px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
                 >
-                  <span class="text-sm text-zinc-600 dark:text-zinc-400 line-clamp-2">
+                  <span class="text-body text-zinc-600 dark:text-zinc-400 line-clamp-2">
                     {e[:summary]}
                   </span>
                 </.link>
@@ -380,7 +379,7 @@ defmodule LoopyardWeb.DashboardLive do
                   clip-rule="evenodd"
                 />
               </svg>
-              <h2 class="text-lg font-semibold tracking-tight">System</h2>
+              <h2 class="text-lead font-semibold tracking-tight">System</h2>
             </div>
             <.gauge
               navigate="/system"
@@ -399,19 +398,19 @@ defmodule LoopyardWeb.DashboardLive do
             <div class="relative z-10 mt-4 space-y-1">
               <.link
                 navigate="/system"
-                class="flex items-center gap-2 -mx-2 px-2 py-3 md:py-1.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+                class="flex items-center gap-2 -mx-2 px-2 py-3 md:py-1.5 text-body text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
               >
                 Health
               </.link>
               <.link
                 navigate="/system/ports"
-                class="flex items-center gap-2 -mx-2 px-2 py-3 md:py-1.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+                class="flex items-center gap-2 -mx-2 px-2 py-3 md:py-1.5 text-body text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
               >
                 Ports
               </.link>
               <.link
                 navigate="/system/secrets"
-                class="flex items-center gap-2 -mx-2 px-2 py-3 md:py-1.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+                class="flex items-center gap-2 -mx-2 px-2 py-3 md:py-1.5 text-body text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
               >
                 Secrets
               </.link>
@@ -423,10 +422,10 @@ defmodule LoopyardWeb.DashboardLive do
                 :if={@health_map != %{}}
                 class="hidden md:block pt-3 mt-2 border-t border-zinc-200/70 dark:border-zinc-800"
               >
-                <p class="text-sm text-zinc-400 dark:text-zinc-500 mb-1">Subsystems</p>
+                <p class="text-body text-zinc-400 dark:text-zinc-500 mb-1">Subsystems</p>
                 <div
                   :for={{comp, status} <- Enum.sort_by(@health_map, &elem(&1, 0))}
-                  class="flex items-center gap-2 text-sm py-0.5"
+                  class="flex items-center gap-2 text-body py-0.5"
                 >
                   <span class={["w-1.5 h-1.5 rounded-full flex-none", health_dot(status)]}></span>
                   <span class="text-zinc-600 dark:text-zinc-400">
@@ -524,11 +523,11 @@ defmodule LoopyardWeb.DashboardLive do
       navigate={@navigate}
       class="group relative z-10 block -mx-2 mt-2 px-2 py-1.5 rounded-sm hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
     >
-      <span class={["block text-sm font-medium", gauge_tone(@tone)]}>
+      <span class={["block text-body font-medium", gauge_tone(@tone)]}>
         {render_slot(@inner_block)}
         <span class="opacity-0 group-hover:opacity-100 transition-opacity">&rarr;</span>
       </span>
-      <span :if={@detail != []} class="block text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+      <span :if={@detail != []} class="block text-meta text-zinc-500 dark:text-zinc-400 mt-0.5">
         {render_slot(@detail)}
       </span>
     </.link>

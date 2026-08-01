@@ -162,12 +162,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         :if={@show_user_label}
         class="flex items-center justify-between gap-3 mb-2"
       >
-        <span class="chat-meta inline-flex items-center gap-1.5 font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
+        <span class="text-meta inline-flex items-center gap-1.5 font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
           <.icon name={:user} class="w-3.5 h-3.5 flex-none self-center" /> {@user_label}
         </span>
         <span
           :if={@msg[:timestamp]}
-          class="chat-meta flex-none text-violet-500/80 dark:text-violet-300/60"
+          class="text-meta flex-none text-violet-500/80 dark:text-violet-300/60"
         >
           {Calendar.strftime(@msg.timestamp, "%b %-d, %-I:%M %p")}
         </span>
@@ -224,24 +224,24 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         </div>
         <div :if={@port_info && !@port_info.exposed} class="mt-1.5 flex items-center gap-2 py-1">
           <div class="w-1.5 h-1.5 rounded-full flex-none bg-amber-400"></div>
-          <span class="text-sm text-zinc-500 dark:text-zinc-400">{@port_info.service} port closed</span>
+          <span class="text-body text-zinc-500 dark:text-zinc-400">{@port_info.service} port closed</span>
           <button
             phx-click="open_port_from_chat"
             phx-value-service={@port_info.service}
             phx-value-container_port={@port_info.container_port}
-            class="inline-flex items-center px-1.5 rounded-sm text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+            class="inline-flex items-center px-1.5 rounded-sm text-meta font-medium text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
           >
             Open Port
           </button>
         </div>
         <div :if={@port_info && @port_info.exposed} class="mt-1.5 flex items-center gap-2 py-1">
           <div class="w-1.5 h-1.5 rounded-full flex-none bg-emerald-500"></div>
-          <span class="text-sm text-zinc-500 dark:text-zinc-400">{@port_info.service}</span>
+          <span class="text-body text-zinc-500 dark:text-zinc-400">{@port_info.service}</span>
           <a
             href={"http://#{assigns[:host] || "localhost"}:#{@port_info.host_port}"}
             target="_blank"
             rel="noopener noreferrer"
-            class="inline-flex items-center px-2 rounded-sm text-sm font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+            class="inline-flex items-center px-2 rounded-sm text-body font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
           >
             :{@port_info.host_port}
           </a>
@@ -285,13 +285,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   def chat_msg(%{msg: %{role: :thinking}} = assigns) do
     ~H"""
     <details class={[gutter(), "my-1 group"]} open={@detail_level == :trace}>
-      <summary class="text-sm text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none">
+      <summary class="text-body text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none">
         💭 Reasoning
       </summary>
       <%!-- Prose thinking, not machine output — matches the live streaming_thinking
-    pre (text-sm, no mono) so the block doesn't change typeface when the
+    pre (text-body, no mono) so the block doesn't change typeface when the
     turn finalizes. --%>
-      <pre class="mt-1 p-3 rounded-sm text-sm bg-brand-paper-shade dark:bg-brand-ink text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">{@msg.content}</pre>
+      <pre class="mt-1 p-3 rounded-sm text-body bg-brand-paper-shade dark:bg-brand-ink text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">{@msg.content}</pre>
     </details>
     """
   end
@@ -357,10 +357,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     ~H"""
     <div class={[gutter(), "flex items-start gap-2 py-1"]}>
       <div class="w-4 h-4 rounded-sm bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-none mt-0.5">
-        <span class="text-xs font-bold text-red-500">!</span>
+        <span class="text-meta font-bold text-red-500">!</span>
       </div>
-      <span class="chat-sub text-red-600 dark:text-red-400">{Ansi.to_html(@msg.content)}</span>
-      <span class="text-xs text-zinc-300 dark:text-zinc-600 flex-none">
+      <span class="text-body text-red-600 dark:text-red-400">{Ansi.to_html(@msg.content)}</span>
+      <span class="text-meta text-zinc-300 dark:text-zinc-600 flex-none">
         {Calendar.strftime(@msg.timestamp, "%H:%M:%S")}
       </span>
     </div>
@@ -427,7 +427,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       ~H"""
       <div class="py-1.5 text-center text-zinc-400/70 dark:text-zinc-600">
         <span
-          class="text-sm italic leading-relaxed"
+          class="text-body italic leading-relaxed"
           id={"system-msg-#{@msg[:id] || hash_content(@msg.content)}"}
         >
           {@msg.content}
@@ -490,11 +490,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         <a
           :if={@file_link}
           href={@file_link}
-          class="chat-sub text-blue-600 dark:text-blue-400 hover:underline"
+          class="text-body text-blue-600 dark:text-blue-400 hover:underline"
         >
           {@summary}
         </a>
-        <span :if={!@file_link} class="chat-sub text-zinc-600 dark:text-zinc-400">{@summary}</span>
+        <span :if={!@file_link} class="text-body text-zinc-600 dark:text-zinc-400">{@summary}</span>
       </div>
       <.diff
         :if={@is_edit && @old_str && @new_str}
@@ -546,12 +546,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       phx-hook="StreamAppend"
       data-stream-event="stream_thinking_delta"
     >
-      <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-1 font-medium uppercase tracking-wide">
+      <p class="text-body text-zinc-500 dark:text-zinc-400 mb-1 font-medium uppercase tracking-wide">
         Thinking
       </p>
       <pre
         data-stream-target
-        class="text-sm text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto"
+        class="text-body text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto"
       >{@initial}</pre>
     </div>
     """

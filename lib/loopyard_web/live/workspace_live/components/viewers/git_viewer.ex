@@ -68,7 +68,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
       <%!-- Clean state --%>
       <div
         :if={@show_changes && @staged == [] && @unstaged == [] && is_map(@git_status)}
-        class="px-4 py-3 text-sm text-zinc-500 dark:text-zinc-400"
+        class="px-4 py-3 text-body text-zinc-500 dark:text-zinc-400"
       >
         Working tree clean
       </div>
@@ -81,14 +81,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
         <.link
           :for={commit <- @git_log}
           patch={"#{@base_path}/volumes/#{@volume_name}/git/commits/#{commit.sha}"}
-          class="block w-full px-4 py-2 flex items-start gap-3 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+          class="block w-full px-4 py-2 flex items-start gap-3 text-body hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
         >
-          <span class="font-mono text-xs text-violet-500 dark:text-violet-400 shrink-0 pt-0.5">
+          <span class="font-mono text-meta text-violet-500 dark:text-violet-400 shrink-0 pt-0.5">
             {String.slice(commit.sha, 0..6)}
           </span>
           <div class="min-w-0 flex-1">
             <div class="text-zinc-700 dark:text-zinc-300 truncate">{commit.message}</div>
-            <div class="text-xs text-zinc-500 dark:text-zinc-400">
+            <div class="text-meta text-zinc-500 dark:text-zinc-400">
               {commit.author} · {format_date(commit.date)}
             </div>
           </div>
@@ -101,7 +101,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
           @show_history && is_list(@git_log) && @git_log == [] &&
             (@mode == :history || (is_map(@git_status) && @staged == [] && @unstaged == []))
         }
-        class="px-4 py-8 text-sm text-zinc-500 dark:text-zinc-400 text-center"
+        class="px-4 py-8 text-body text-zinc-500 dark:text-zinc-400 text-center"
       >
         No git history
       </div>
@@ -123,12 +123,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
       <%!-- Commit header --%>
       <div class="px-4 py-4">
         <div class="flex items-start gap-3">
-          <span class="font-mono text-xs text-violet-500 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 rounded-sm px-2 py-0.5 shrink-0">
+          <span class="font-mono text-meta text-violet-500 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 rounded-sm px-2 py-0.5 shrink-0">
             {String.slice(@commit.sha, 0..6)}
           </span>
           <div class="min-w-0">
-            <div class="text-sm font-medium text-zinc-800 dark:text-zinc-200">{@commit.message}</div>
-            <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+            <div class="text-body font-medium text-zinc-800 dark:text-zinc-200">
+              {@commit.message}
+            </div>
+            <div class="text-meta text-zinc-500 dark:text-zinc-400 mt-1">
               {@commit.author} · {format_date(@commit.date)}
             </div>
           </div>
@@ -143,12 +145,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
         <.link
           :for={file <- @commit.files}
           patch={"#{@base_path}/volumes/#{@volume_name}/git/commits/#{@commit.sha}/diff/#{file.path}"}
-          class="block w-full px-4 py-2 flex items-center gap-3 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group"
+          class="block w-full px-4 py-2 flex items-center gap-3 text-body hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group"
         >
-          <span class="font-mono text-xs text-zinc-600 dark:text-zinc-400 truncate flex-1">
+          <span class="font-mono text-meta text-zinc-600 dark:text-zinc-400 truncate flex-1">
             {file.path}
           </span>
-          <span class="text-xs shrink-0 flex gap-1.5">
+          <span class="text-meta shrink-0 flex gap-1.5">
             <span :if={file.insertions > 0} class="text-green-600 dark:text-green-400">
               +{file.insertions}
             </span>
@@ -186,13 +188,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
     <div class="flex flex-col overflow-hidden h-full">
       <div
         :if={@path}
-        class="flex-none px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400"
+        class="flex-none px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-between text-meta text-zinc-500 dark:text-zinc-400"
       >
         <span class="font-mono">{@path}</span>
         <span>{@line_count} lines</span>
       </div>
       <div class="flex-1 overflow-auto highlight">
-        <table class="text-xs font-mono leading-relaxed w-full border-collapse">
+        <table class="text-meta font-mono leading-relaxed w-full border-collapse">
           <tbody>
             <%!-- phx-no-format + hugged tags: pre-wrap cell renders template indentation
     as literal leading space + blank rows. Keep content flush to the tags. --%>
@@ -221,12 +223,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
     ~H"""
     <.link
       patch={@href}
-      class="block w-full px-4 py-2 flex items-center gap-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+      class="block w-full px-4 py-2 flex items-center gap-2 text-body hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
     >
-      <span class={"font-mono text-xs w-5 shrink-0 #{status_color(@change.status)}"}>
+      <span class={"font-mono text-meta w-5 shrink-0 #{status_color(@change.status)}"}>
         {@change.status}
       </span>
-      <span class="text-zinc-600 dark:text-zinc-400 font-mono text-xs truncate">{@change.path}</span>
+      <span class="text-zinc-600 dark:text-zinc-400 font-mono text-meta truncate">{@change.path}</span>
     </.link>
     """
   end

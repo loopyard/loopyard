@@ -138,7 +138,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
     <.section :if={@first_port || @container_port} label="Connection">
       <div
         :if={@first_port}
-        class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-6 text-sm"
+        class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-6 text-body"
       >
         <span class="text-zinc-500 dark:text-zinc-400 flex-none">URL</span>
         <a
@@ -342,9 +342,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
         label="Name"
         value={@volume_name}
         monospace
-        class="font-mono text-zinc-500 dark:text-zinc-400 text-xs"
+        class="font-mono text-zinc-500 dark:text-zinc-400 text-meta"
       />
-      <p :if={@code?} class="px-2 pt-1 text-xs text-zinc-500 dark:text-zinc-400">
+      <p :if={@code?} class="px-2 pt-1 text-meta text-zinc-500 dark:text-zinc-400">
         The main project source volume — the codebase agents and services share.
       </p>
     </.section>

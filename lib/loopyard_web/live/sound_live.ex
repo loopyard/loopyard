@@ -59,7 +59,7 @@ defmodule LoopyardWeb.SoundLive do
       <%!-- A global overlay (the audio engine lives in the root layout so it never
     cuts) — so it CLOSES with an ✕, it isn't a page you navigate back from. --%>
       <Nav.bar pad="px-4">
-        <h1 class="text-lg font-semibold">Sound</h1>
+        <h1 class="text-lead font-semibold">Sound</h1>
         <:actions>
           <Nav.close_button onclick="history.back()" />
         </:actions>
@@ -98,8 +98,8 @@ defmodule LoopyardWeb.SoundLive do
               </svg>
             </button>
             <div class="min-w-0">
-              <div data-sound-state class="text-lg font-semibold">Paused</div>
-              <div class="text-sm text-zinc-500 dark:text-zinc-400">
+              <div data-sound-state class="text-lead font-semibold">Paused</div>
+              <div class="text-body text-zinc-500 dark:text-zinc-400">
                 Ambient bed — plays across the whole app
               </div>
             </div>
@@ -108,7 +108,7 @@ defmodule LoopyardWeb.SoundLive do
           <div class="mt-6">
             <label
               for="sound-volume"
-              class="block text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 mb-2"
+              class="block text-meta font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 mb-2"
             >
               Volume
             </label>
@@ -127,7 +127,7 @@ defmodule LoopyardWeb.SoundLive do
         <%!-- Tracks: tapping crossfades the live stream (~3s), so switching
     never cuts the audio. --%>
         <div class="p-3">
-          <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 px-2 mb-1.5">
+          <h2 class="text-meta font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 px-2 mb-1.5">
             Tracks
           </h2>
           <div class="space-y-1">
@@ -151,7 +151,7 @@ defmodule LoopyardWeb.SoundLive do
               ]}></span>
               <span class="flex-1 min-w-0">
                 <span class="block font-medium text-zinc-900 dark:text-zinc-100">{name}</span>
-                <span class="block text-sm text-zinc-500 dark:text-zinc-400 truncate">{desc}</span>
+                <span class="block text-body text-zinc-500 dark:text-zinc-400 truncate">{desc}</span>
               </span>
               <svg
                 :if={@current_track == id}
