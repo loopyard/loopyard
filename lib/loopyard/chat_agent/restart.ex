@@ -146,12 +146,22 @@ defmodule Loopyard.ChatAgent.Restart do
               tool_calls_this_turn: 0,
               tool_runaway_warned: false,
               last_tool_call: nil,
-              context_warning_sent: false
-              # auth_error is deliberately NOT cleared here: a restart merely
-              # re-sources credentials — it doesn't prove them. Clearing it
-              # optimistically made the fleet-outage signal (and the operator's
-              # token mini-app) FLAP between self-heal cycles. Only a turn that
-              # actually completes clears it (complete_turn).
+              context_warning_sent: false,
+              # auth_error clears ONLY on a :credentials restart — the moment a
+              # human pushed a fresh token. Every other reason leaves it: a
+              # restart re-sources credentials, it doesn't prove them, and
+              # clearing optimistically made the fleet-outage signal (and the
+              # operator's token mini-app) FLAP between self-heal cycles. That
+              # flapping was about AUTOMATIC restarts; a credential reload is a
+              # deliberate human act, so treating it as evidence doesn't loop.
+              #
+              # Without this the agent sat at :idle with a valid token while the
+              # sidebar read "Sign-in expired" indefinitely — the auth card
+              # promises "everything resumes on its own once the token lands,
+              # this card turns green" and it never did, because only a
+              # completed turn cleared the flag. A bad token just re-sets it on
+              # the next turn, which is the correct cost.
+              auth_error: if(reason == :credentials, do: nil, else: state.auth_error)
           })
 
         :ets.insert(@ets_table, {state.id, Loopyard.ChatAgent.summary(state)})
