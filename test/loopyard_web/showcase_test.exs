@@ -33,7 +33,7 @@ defmodule LoopyardWeb.ShowcaseTest do
     "question-card" => [
       "Where should staging deploys go?",
       "Fly.io (Recommended)",
-      "Confirm answer",
+      "Answer",
       "Skip"
     ],
     # The whole cockpit: tree with ports, chat, agents/services/usage rail.

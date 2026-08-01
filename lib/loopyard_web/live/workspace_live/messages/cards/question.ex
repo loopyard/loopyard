@@ -98,6 +98,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
   attr :msg, :map, required: true
   attr :q, :map, required: true
 
+  attr :chat_path, :string,
+    default: nil,
+    doc: """
+    When set, the footer gains a "Chat" action beside Skip/Answer. The Reviewer
+    passes the slide's chat path; the in-transcript card doesn't, because you're
+    already in the chat. Owning it here keeps the three actions in ONE row
+    instead of two buttons plus a sentence with a link floating below the card.
+    """
+
   def question_block(assigns) do
     ~H"""
     <div class="mb-8 last:mb-0">
@@ -201,8 +210,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
         <%!-- The question's footer: Skip (quiet, left) — the ONE commit action
     (right). Single-select: Answer submits the form. Multi: Done
     confirms the toggled draft. --%>
+        <%!-- Three actions, ONE row. Answer is DOMINANT — it takes the
+    remaining width (flex-1) on a phone so it's unmistakably the primary
+    move, while Skip and Chat stay auto-width and quiet. From sm: up the
+    commit button shrinks to its content and sits right, with the quiet
+    pair left, which is the familiar desktop dialog arrangement. All
+    three clear 44px. --%>
         <div class={[
-          "mt-2 flex items-center",
+          "mt-3 flex items-center gap-2",
           (@q[:multi] && "justify-end") || "justify-between"
         ]}>
           <button
@@ -211,27 +226,46 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
             phx-click="skip_question"
             phx-value-question_id={@msg.question_id}
             phx-value-q={@q.id}
-            class="focus-ring tap-target chat-meta inline-flex rounded-sm text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300"
+            class="focus-ring chat-meta inline-flex items-center justify-center flex-none rounded-sm px-3 min-h-11 text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300"
           >
             Skip
           </button>
+          <.link
+            :if={!@q[:multi] && @chat_path}
+            navigate={@chat_path}
+            class="focus-ring chat-meta inline-flex items-center justify-center flex-none rounded-sm px-3 min-h-11 text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400"
+          >
+            Chat
+          </.link>
           <button
             :if={!@q[:multi]}
             type="submit"
-            class={[
-              "focus-ring chat-sub flex-none inline-flex items-center rounded-sm font-medium px-4 py-2 transition-all",
-              if(draft_count(@msg, @q) > 0,
-                do: "bg-orange-600 hover:bg-orange-700 text-white shadow-md shadow-orange-600/30",
-                else:
-                  "bg-zinc-200 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400 " <>
-                    "group-has-[[data-qother]:not(:placeholder-shown)]/qform:bg-orange-600 " <>
-                    "group-has-[[data-qother]:not(:placeholder-shown)]/qform:text-white " <>
-                    "group-has-[[data-qother]:not(:placeholder-shown)]/qform:shadow-md " <>
-                    "group-has-[[data-qother]:not(:placeholder-shown)]/qform:shadow-orange-600/30"
-              )
-            ]}
+            class={
+              [
+                "focus-ring chat-sub flex-1 sm:flex-none inline-flex items-center justify-center rounded-sm font-medium px-4 min-h-11 transition-all",
+                if(draft_count(@msg, @q) > 0,
+                  do: "bg-orange-600 hover:bg-orange-700 text-white shadow-md shadow-orange-600/30",
+                  # Lights up the INSTANT you pick, with no server round-trip.
+                  # draft_count is a server assign and a radio click is purely
+                  # client-side, so the commit button sat dead grey after
+                  # selecting an option — it only woke on submit, which is
+                  # backwards. `group-has-[:checked]` covers the options and the
+                  # existing data-qother rule covers free text.
+                  else:
+                    "bg-zinc-200 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400 " <>
+                      "group-has-[:checked]/qform:bg-orange-600 " <>
+                      "group-has-[:checked]/qform:text-white " <>
+                      "group-has-[:checked]/qform:shadow-md " <>
+                      "group-has-[:checked]/qform:shadow-orange-600/30 " <>
+                      "group-has-[[data-qother]:not(:placeholder-shown)]/qform:bg-orange-600 " <>
+                      "group-has-[[data-qother]:not(:placeholder-shown)]/qform:text-white " <>
+                      "group-has-[[data-qother]:not(:placeholder-shown)]/qform:shadow-md " <>
+                      "group-has-[[data-qother]:not(:placeholder-shown)]/qform:shadow-orange-600/30"
+                )
+              ]
+            }
           >
-            Confirm answer
+            Answer
           </button>
           <button
             :if={@q[:multi]}

@@ -59,7 +59,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.QuestionCardTest do
     # The footer (after the Other row) carries Skip + the commit submit.
     assert after_other =~ ~s(type="submit")
     assert after_other =~ "Skip"
-    assert after_other =~ "Confirm answer"
+    # Match the submit button's LABEL, not a bare substring: "Answer" also
+    # appears in "Answered" on the settled receipt, so a plain =~ would pass
+    # even if the commit button vanished.
+    assert after_other =~ ~r/type="submit".*?>\s*Answer\s*<\/button>/s
   end
 
   test "pending card offers Skip, Other free text, and the chat hint" do

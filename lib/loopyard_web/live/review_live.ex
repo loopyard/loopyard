@@ -424,17 +424,18 @@ defmodule LoopyardWeb.ReviewLive do
               {(@msg.status == :pending && "Needs your input") || "Answered"}
             </:label>
           </LoopyardWeb.Components.StreamCard.header>
-          <Cards.question_block msg={@msg} q={@q} />
+          <Cards.question_block msg={@msg} q={@q} chat_path={@slide.path} />
         </LoopyardWeb.Components.StreamCard.band>
 
+        <%!-- The "open the chat" escape is now a BUTTON in the card's action
+    row (question_block's chat_path), so the three moves — Skip, Chat,
+    Answer — sit together instead of two buttons plus a sentence
+    floating underneath. --%>
         <p
           :if={@slide.path && @msg.status == :pending}
           class="chat-meta text-zinc-400 dark:text-zinc-500 mt-4"
         >
-          Options and "Other…" answer just this question — for a longer conversation,
-          <.link navigate={@slide.path} class="text-violet-600 dark:text-violet-400 hover:underline">
-            open the chat
-          </.link>
+          Options and "Other…" answer just this question.
         </p>
       </div>
 

@@ -39,7 +39,10 @@ defmodule LoopyardWeb.Components.FocusedView do
            "REVIEW 1 of 3" and no breadcrumb at all, which left the most
            attention-hungry screens in the product as the only ones with no
            visible way home. --%>
-      <div class="flex-none grid grid-cols-[1fr_auto_1fr] items-center gap-3 h-14 px-4 md:px-6 border-b border-zinc-200 dark:border-zinc-800">
+      <%!-- Centred from sm: up only. At 390px there isn't room to centre a
+           title AND clear the nav + mode icons — "Operator REVIEW 1 of 3" sat
+           on top of them. Same rule as AppHeader. --%>
+      <div class="flex-none grid grid-cols-[auto_1fr_auto] sm:grid-cols-[1fr_auto_1fr] items-center gap-3 h-14 px-4 md:px-6 border-b border-zinc-200 dark:border-zinc-800">
         <%!-- Three zones (see Breadcrumbs.trail/1): brand + ancestors left, the
              CURRENT thing centred, nav right. Through with_root/1 so the trail
              always leads with the brand crumb — brand_root?/2 matches the exact
@@ -50,7 +53,7 @@ defmodule LoopyardWeb.Components.FocusedView do
           <LoopyardWeb.Components.Breadcrumbs.trail :if={@crumbs != []} crumbs={crumbs} />
         </div>
 
-        <div class="flex items-center gap-2 justify-center min-w-0">
+        <div class="flex items-center gap-2 justify-start sm:justify-center min-w-0">
           <LoopyardWeb.Components.Breadcrumbs.current :if={@crumbs != []} crumbs={crumbs} />
           <span class={["chat-meta font-semibold uppercase tracking-wide", @label_class]}>
             {@label}

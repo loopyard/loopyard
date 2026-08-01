@@ -431,22 +431,20 @@ defmodule LoopyardWeb.Components.Nav do
           type="button"
           phx-click={toggle_panel(@id)}
           aria-label={"Close #{@title}"}
-          class="flex-none grid grid-cols-[auto_1fr_auto] items-center gap-2 h-14 px-4 w-full border-b border-zinc-200 dark:border-zinc-700/80"
+          class="flex-none flex items-center justify-center gap-2 h-14 px-4 w-full border-b border-zinc-200 dark:border-zinc-700/80"
         >
-          <%!-- Mirrors the header bar it opens from: same h-14, same three
-    zones, the same thing CENTRED. The sheet used to left-align the
-    current selection while the bar centred it, so opening the switcher
-    visibly slid the title sideways — it read as a different screen
-    rather than the same title with options underneath. The empty left
-    cell is the counterweight that keeps the centre honest against the
-    chevron. --%>
-          <span class="w-5 flex-none" aria-hidden="true"></span>
-          <div :if={@current != []} class="min-w-0 flex items-center justify-center gap-2">
+          <%!-- Mirrors the trigger it opens from: same h-14, the same thing
+    centred, and the chevron IMMEDIATELY BESIDE the title — exactly where
+    the closed state puts it. Parking the chevron in a right-hand cell
+    made it fly from next to the title to the screen edge on open, which
+    is the shift. Title + chevron travel as one centred unit, so only the
+    arrow flips (v to ^). --%>
+          <div :if={@current != []} class="min-w-0 flex items-center gap-2">
             {render_slot(@current)}
           </div>
           <h2
             :if={@current == []}
-            class="min-w-0 text-lg font-semibold text-zinc-900 dark:text-zinc-100 truncate text-center"
+            class="min-w-0 text-lg font-semibold text-zinc-900 dark:text-zinc-100 truncate"
           >
             {@title}
           </h2>
