@@ -291,6 +291,18 @@ defmodule LoopyardWeb.SystemLive do
   defp health_dot_class({:degraded, _}), do: "bg-amber-500 animate-pulse"
   defp health_dot_class({:down, _}), do: "bg-red-500 animate-pulse"
 
+  # The disk bar used to alarm when the percentage STRING contained a "9", so
+  # 19% used — half the disk free — rendered in the colour reserved for "act
+  # now". Compare the number.
+  defp pct_over?(use_pct, threshold) when is_binary(use_pct) do
+    case Integer.parse(use_pct) do
+      {n, _} -> n >= threshold
+      :error -> false
+    end
+  end
+
+  defp pct_over?(_, _), do: false
+
   defp humanize_component(:docker), do: "Docker"
   defp humanize_component(:pubsub), do: "PubSub"
   defp humanize_component(:agent_reconciler), do: "Agent reconciler"
@@ -340,7 +352,7 @@ defmodule LoopyardWeb.SystemLive do
           </div>
           <div class="mt-2 h-2 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
             <div
-              class={"h-full rounded-full #{if String.contains?(disk.use_pct || "", "9"), do: "bg-red-500", else: "bg-violet-500"}"}
+              class={"h-full rounded-full #{(pct_over?(disk.use_pct, 90) && "bg-red-500") || "bg-violet-500"}"}
               style={"width: #{disk.use_pct}"}
             >
             </div>

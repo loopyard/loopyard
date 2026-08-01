@@ -188,7 +188,7 @@
 .markdown-body li::marker { color: rgba(139, 124, 255, 0.55); } /* accent bullets, quietly */
 .markdown-body li > ul, .markdown-body li > ol { margin: 0.35em 0; }
 .markdown-body code {
-  font-size: 0.85em;
+  font-size: 0.95em;
   padding: 0.15em 0.35em;
   border-radius: 0.125rem;
   background: rgba(0, 0, 0, 0.06);
