@@ -53,12 +53,22 @@ defmodule LoopyardWeb.Components.FocusedView do
           <LoopyardWeb.Components.Breadcrumbs.trail :if={@crumbs != []} crumbs={crumbs} />
         </div>
 
-        <div class="flex items-center gap-2 justify-start sm:justify-center min-w-0">
+        <%!-- nowrap + truncate: at 390px the nav is five items wide, so the
+             centre column gets squeezed and "1 of 3" wrapped AROUND the
+             history icon — a number broken across two lines reads as
+             corruption. It now shortens rather than wraps. --%>
+        <div class="flex items-center gap-2 justify-start sm:justify-center min-w-0 overflow-hidden">
           <LoopyardWeb.Components.Breadcrumbs.current :if={@crumbs != []} crumbs={crumbs} />
-          <span class={["chat-meta font-semibold uppercase tracking-wide", @label_class]}>
+          <span class={[
+            "chat-meta font-semibold uppercase tracking-wide whitespace-nowrap truncate",
+            @label_class
+          ]}>
             {@label}
           </span>
-          <span :if={@position} class="chat-meta tabular-nums text-zinc-500 dark:text-zinc-400">
+          <span
+            :if={@position}
+            class="chat-meta tabular-nums whitespace-nowrap flex-none text-zinc-500 dark:text-zinc-400"
+          >
             {@position}
           </span>
         </div>

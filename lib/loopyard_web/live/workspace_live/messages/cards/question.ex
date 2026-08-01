@@ -210,33 +210,38 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
         <%!-- The question's footer: Skip (quiet, left) — the ONE commit action
     (right). Single-select: Answer submits the form. Multi: Done
     confirms the toggled draft. --%>
-        <%!-- Three actions, ONE row. Answer is DOMINANT — it takes the
-    remaining width (flex-1) on a phone so it's unmistakably the primary
-    move, while Skip and Chat stay auto-width and quiet. From sm: up the
-    commit button shrinks to its content and sits right, with the quiet
-    pair left, which is the familiar desktop dialog arrangement. All
-    three clear 44px. --%>
+        <%!-- MOBILE: Answer on top, full width — the primary move reads first
+    and is the biggest target. The two ghosts stack in a column beneath
+    it, also full width, so the whole footer is one predictable column
+    rather than three things squeezed onto a 390px line.
+    DESKTOP (sm:+): the familiar dialog row — quiet pair left, Answer
+    right. Order flips via order-first/order-last so the DOM keeps its
+    logical order (skip, chat, commit) for keyboard and screen readers.
+    All targets clear 44px. --%>
         <div class={[
-          "mt-3 flex items-center gap-2",
-          (@q[:multi] && "justify-end") || "justify-between"
+          "mt-3 flex flex-col sm:flex-row sm:items-center gap-2",
+          (@q[:multi] && "sm:justify-end") || "sm:justify-between"
         ]}>
-          <button
-            :if={!@q[:multi]}
-            type="button"
-            phx-click="skip_question"
-            phx-value-question_id={@msg.question_id}
-            phx-value-q={@q.id}
-            class="focus-ring chat-meta inline-flex items-center justify-center flex-none rounded-sm px-3 min-h-11 text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300"
-          >
-            Skip
-          </button>
-          <.link
-            :if={!@q[:multi] && @chat_path}
-            navigate={@chat_path}
-            class="focus-ring chat-meta inline-flex items-center justify-center flex-none rounded-sm px-3 min-h-11 text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400"
-          >
-            Chat
-          </.link>
+          <div :if={!@q[:multi]} class="flex flex-col sm:flex-row gap-2 order-last sm:order-none">
+            <button
+              :if={!@q[:multi]}
+              type="button"
+              phx-click="skip_question"
+              phx-value-question_id={@msg.question_id}
+              phx-value-q={@q.id}
+              class="focus-ring chat-sub w-full sm:w-auto inline-flex items-center justify-center rounded-sm border border-zinc-300 dark:border-zinc-600 px-4 min-h-11 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            >
+              Skip
+            </button>
+            <.link
+              :if={!@q[:multi] && @chat_path}
+              navigate={@chat_path}
+              class="focus-ring chat-sub w-full sm:w-auto inline-flex items-center justify-center rounded-sm border border-zinc-300 dark:border-zinc-600 px-4 min-h-11 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            >
+              Chat
+            </.link>
+          </div>
+
           <button
             :if={!@q[:multi]}
             type="submit"
