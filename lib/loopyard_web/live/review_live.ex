@@ -340,6 +340,7 @@ defmodule LoopyardWeb.ReviewLive do
       label={(@history? && "Time machine") || "Review"}
       position={@count > 0 && "#{(@idx || 0) + 1} of #{@count}"}
       mode={:operator}
+      crumbs={[{"loopyard", "/"}, {"Operator", "/operator"}]}
     >
       <:nav>
         <%!-- Flip between the pending deck and the TIME MACHINE (all past

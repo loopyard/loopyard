@@ -20,6 +20,12 @@ defmodule LoopyardWeb.Components.FocusedView do
   attr :label_class, :string, default: "text-orange-700 dark:text-orange-400"
   attr :position, :string, default: nil, doc: "e.g. \"2 of 5\""
   attr :mode, :atom, default: nil
+
+  attr :crumbs, :list,
+    default: [],
+    doc:
+      "breadcrumb trail for the top-left anchor, e.g. [{\"loopyard\", \"/\"}, {\"Operator\", \"/operator\"}]"
+
   slot :nav, doc: "optional controls (prev/next) in the top bar"
   slot :subject, doc: "the prominent subject header (use subject/1)"
   slot :inner_block, required: true
@@ -27,16 +33,30 @@ defmodule LoopyardWeb.Components.FocusedView do
   def layout(assigns) do
     ~H"""
     <div class="min-h-screen flex flex-col bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x safe-area-top">
-      <div class="flex-none flex items-center gap-3 h-14 px-4 md:px-6 border-b border-zinc-200 dark:border-zinc-800">
-        <span class={["chat-meta font-semibold uppercase tracking-wide", @label_class]}>
-          {@label}
-        </span>
-        <span :if={@position} class="chat-meta tabular-nums text-zinc-500 dark:text-zinc-400">
-          {@position}
-        </span>
-        <div class="flex-1"></div>
-        {render_slot(@nav)}
-        <.mode_nav active={@mode} class="ml-2" />
+      <%!-- Three zones: an anchor UP on the left, where every other page in the
+           app puts it; the label + position CENTERED (it describes the deck,
+           not the app); nav + modes right. Focused views used to lead with
+           "REVIEW 1 of 3" and no breadcrumb at all, which left the most
+           attention-hungry screens in the product as the only ones with no
+           visible way home. --%>
+      <div class="flex-none grid grid-cols-[1fr_auto_1fr] items-center gap-3 h-14 px-4 md:px-6 border-b border-zinc-200 dark:border-zinc-800">
+        <div class="min-w-0">
+          <LoopyardWeb.Components.Breadcrumbs.breadcrumbs :if={@crumbs != []} crumbs={@crumbs} />
+        </div>
+
+        <div class="flex items-center gap-2 justify-center min-w-0">
+          <span class={["chat-meta font-semibold uppercase tracking-wide", @label_class]}>
+            {@label}
+          </span>
+          <span :if={@position} class="chat-meta tabular-nums text-zinc-500 dark:text-zinc-400">
+            {@position}
+          </span>
+        </div>
+
+        <div class="flex items-center justify-end min-w-0">
+          {render_slot(@nav)}
+          <.mode_nav active={@mode} class="ml-2" />
+        </div>
       </div>
 
       <div class="flex-1 overflow-y-auto">
