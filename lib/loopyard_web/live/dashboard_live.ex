@@ -13,7 +13,7 @@ defmodule LoopyardWeb.DashboardLive do
   use LoopyardWeb, :live_view
   use LoopyardWeb.IExAware
 
-  import LoopyardWeb.Components.Common, only: [flash_banner: 1]
+  import LoopyardWeb.Components.Common, only: [page_shell: 1]
 
   @refresh_ms 3_000
 
@@ -64,6 +64,8 @@ defmodule LoopyardWeb.DashboardLive do
     |> assign(:operator_count, safe(fn -> length(Loopyard.Workstation.list()) end, 1))
     |> assign(:waiting, safe(&Loopyard.Attention.count/0, 0))
     |> assign(:inference_ready?, safe(&inference_ready?/0, true))
+    |> assign(:digest, safe(fn -> Loopyard.Operator.Digest.recent(6) end, []))
+    |> assign(:health_map, safe(&Loopyard.Health.overall/0, %{}))
     |> then(&assign(&1, :first_run_step, first_run_step(&1.assigns)))
   end
 
@@ -103,6 +105,17 @@ defmodule LoopyardWeb.DashboardLive do
     do: "Subsystems up · agents blocked until Claude connects"
 
   defp system_line(health, _step), do: health_line(health)
+
+  # Health.component/1 returns :healthy | {:degraded, reason} | {:down, reason}.
+  defp health_dot(:healthy), do: "bg-emerald-500"
+  defp health_dot({:degraded, _}), do: "bg-amber-500"
+  defp health_dot({:down, _}), do: "bg-rose-500"
+  defp health_dot(_), do: "bg-zinc-400"
+
+  defp health_word(:healthy), do: "ok"
+  defp health_word({:degraded, _}), do: "degraded"
+  defp health_word({:down, _}), do: "down"
+  defp health_word(other), do: to_string(other)
 
   defp safe(fun, default) do
     fun.()
@@ -216,20 +229,22 @@ defmodule LoopyardWeb.DashboardLive do
     assigns = assign(assigns, :recent, recent_workspaces(assigns.tree))
 
     ~H"""
-    <%!-- The ENTRANCE: no app top bar — the page IS the nav. A quiet wordmark,
-         then the three modes (plans/ia-two-modes.md), each an icon-led panel
-         with live status + deep links into its second level. An app, not a
-         marketing hero: one screen, everything reachable. --%>
-    <div class="min-h-screen bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x safe-area-top">
-      <.flash_banner flash={@flash} kind={:error} />
-      <.flash_banner flash={@flash} kind={:info} />
-
-      <div class="mx-auto max-w-6xl px-4 md:px-8 pt-10 md:pt-16 pb-10">
-        <Brand.logo mark_class="w-6 h-6 flex-none" wordmark_class="text-lg tracking-tight" />
-
+    <%!-- The ENTRANCE uses the SAME page_shell as every other route. It used to
+         render a bespoke layout — no top bar, a large floating wordmark — so
+         navigating "/" -> "/workspaces" made the whole frame jump: the mark
+         shrank into a breadcrumb and a header with the mode icons appeared out
+         of nowhere. Chrome that moves when you navigate reads as instability.
+         Same shell, same gutters, same header; only the content changes. --%>
+    <.page_shell
+      breadcrumbs={[]}
+      iex_session={@iex_session}
+      max_width={:xl}
+      flash={@flash}
+    >
+      <div>
         <.start_here :if={@first_run_step} step={@first_run_step} workstation={@operator} />
 
-        <div class="mt-8 md:mt-12 grid gap-4 md:grid-cols-3">
+        <div class="mt-6 grid gap-4 md:grid-cols-3 md:auto-rows-fr lg:min-h-[26rem]">
           <%!-- ── WORKSPACES ─────────────────────────────────────────────── --%>
           <section class="relative border border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-white/[0.03] p-5 md:p-6">
             <.link navigate="/workspaces" class="absolute inset-0 focus-ring" aria-label="Workspaces"></.link>
@@ -310,6 +325,24 @@ defmodule LoopyardWeb.DashboardLive do
               >
                 Workstations · {@operator_count}
               </.link>
+
+              <%!-- Recent completions from the operator digest ring. This card
+                   was three links and a lot of white space on a large display;
+                   this is the "what happened while I was away" the operator
+                   already tracks. Hidden on phones — capped so a busy day can't
+                   push the card past its neighbours. --%>
+              <div
+                :if={@digest != []}
+                class="hidden md:block pt-3 mt-2 border-t border-zinc-200/70 dark:border-zinc-800"
+              >
+                <p class="chat-meta text-zinc-400 dark:text-zinc-500 mb-1">Recently finished</p>
+                <p
+                  :for={e <- Enum.take(@digest, 5)}
+                  class="chat-meta text-zinc-600 dark:text-zinc-400 truncate py-0.5"
+                >
+                  {e[:agent_name] || "agent"} — {e[:summary] || "finished a turn"}
+                </p>
+              </div>
             </div>
           </section>
 
@@ -375,11 +408,34 @@ defmodule LoopyardWeb.DashboardLive do
               <div class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 chat-meta text-zinc-500 dark:text-zinc-400">
                 Bound to <span class="font-mono">{@bind}</span>
               </div>
+
+              <%!-- Per-component health. "All 3 subsystems healthy" is a summary
+                   of exactly this; showing the components themselves is what
+                   makes the card worth looking at when one of them ISN'T
+                   healthy — you can see WHICH without navigating. --%>
+              <div
+                :if={@health_map != %{}}
+                class="hidden md:block pt-3 mt-2 border-t border-zinc-200/70 dark:border-zinc-800"
+              >
+                <p class="chat-meta text-zinc-400 dark:text-zinc-500 mb-1">Subsystems</p>
+                <div
+                  :for={{comp, status} <- Enum.sort_by(@health_map, &elem(&1, 0))}
+                  class="flex items-center gap-2 chat-meta py-0.5"
+                >
+                  <span class={["w-1.5 h-1.5 rounded-full flex-none", health_dot(status)]}></span>
+                  <span class="text-zinc-600 dark:text-zinc-400">
+                    {comp |> to_string() |> String.replace("_", " ")}
+                  </span>
+                  <span class="ml-auto text-zinc-400 dark:text-zinc-500 truncate">
+                    {health_word(status)}
+                  </span>
+                </div>
+              </div>
             </div>
           </section>
         </div>
       </div>
-    </div>
+    </.page_shell>
     """
   end
 
@@ -401,7 +457,7 @@ defmodule LoopyardWeb.DashboardLive do
       }
     end
     |> Enum.sort_by(& &1.at, {:desc, DateTime})
-    |> Enum.take(4)
+    |> Enum.take(8)
   end
 
   @working_statuses [:thinking, :compacting, :booting, :backoff, :rate_limited]
