@@ -49,12 +49,19 @@ defmodule LoopyardWeb.Components.AppHeader do
     """
   end
 
-  # Prepend the Loopyard→/ root crumb unless the trail already leads with it
-  # (label "Loopyard") or with a link to "/" — so it's safe to call on every page.
-  defp with_root([{"Loopyard", _} | _] = crumbs), do: crumbs
-  defp with_root([{_, "/"} | _] = crumbs), do: crumbs
-  defp with_root(crumbs) when is_list(crumbs), do: [{"Loopyard", "/"} | crumbs]
-  defp with_root(_), do: [{"Loopyard", "/"}]
+  @doc """
+  Prepend the Loopyard→/ root crumb unless the trail already leads with it
+  (label "Loopyard") or with a link to "/" — so it's safe to call on every page.
+
+  Public because FocusedView needs the same guarantee: the root crumb has to
+  carry the EXACT label `Breadcrumbs.brand_root?/2` matches on, or it renders as
+  plain text and the trefoil silently disappears. Callers should never hand-write
+  that crumb — route it through here.
+  """
+  def with_root([{"Loopyard", _} | _] = crumbs), do: crumbs
+  def with_root([{_, "/"} | _] = crumbs), do: crumbs
+  def with_root(crumbs) when is_list(crumbs), do: [{"Loopyard", "/"} | crumbs]
+  def with_root(_), do: [{"Loopyard", "/"}]
 
   def iex_indicator(assigns) do
     {dot_color, bg_color} =

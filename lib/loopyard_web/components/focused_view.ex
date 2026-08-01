@@ -41,7 +41,14 @@ defmodule LoopyardWeb.Components.FocusedView do
            visible way home. --%>
       <div class="flex-none grid grid-cols-[1fr_auto_1fr] items-center gap-3 h-14 px-4 md:px-6 border-b border-zinc-200 dark:border-zinc-800">
         <div class="min-w-0">
-          <LoopyardWeb.Components.Breadcrumbs.breadcrumbs :if={@crumbs != []} crumbs={@crumbs} />
+          <%!-- Through with_root/1 so the trail always leads with the BRAND
+               crumb — Breadcrumbs.brand_root?/2 matches the exact label
+               "Loopyard" to swap in the trefoil + wordmark, and a hand-written
+               crumb that misses it renders as bare text with no mark. --%>
+          <LoopyardWeb.Components.Breadcrumbs.breadcrumbs
+            :if={@crumbs != []}
+            crumbs={LoopyardWeb.Components.AppHeader.with_root(@crumbs)}
+          />
         </div>
 
         <div class="flex items-center gap-2 justify-center min-w-0">
