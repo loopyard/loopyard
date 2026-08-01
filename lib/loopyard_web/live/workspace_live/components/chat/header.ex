@@ -128,17 +128,30 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
     between them as a unit, so splitting them across zones would break the
     thing the control acts on. A deliberate exception to "ancestors left,
     current centred". --%>
-          <div class="pointer-events-auto max-w-[70%] min-w-0 flex items-center gap-1.5 text-lg">
-            <Nav.crumb
-              :if={@project}
-              id="nav-switcher"
-              label={@project.name}
-              switch?={@can_switch}
-              chevron={false}
-              href={"/projects/#{@project.id}"}
+          <button
+            :if={@can_switch}
+            type="button"
+            phx-click={Nav.toggle_panel("nav-switcher")}
+            aria-controls="nav-switcher"
+            aria-haspopup="dialog"
+            aria-label={"Switch workspace — currently #{@project && @project.name} #{@ws_name}"}
+            class="focus-ring pointer-events-auto max-w-[70%] min-w-0 inline-flex items-center gap-1 rounded-sm"
+          >
+            <LoopyardWeb.Components.Common.workspace_identity
+              project={(@project && @project.name) || @ws_name}
+              workspace={@project && @ws_name}
+              state={ws_identity_state(@global_tree, @workspace.id)}
+              class="min-w-0"
             />
-            <span :if={@project} class="text-zinc-300 dark:text-zinc-600 flex-none">/</span>
-            <Nav.crumb id="nav-switcher" label={@ws_name} current switch?={@can_switch} />
+            <Nav.chevron_down class="w-4 h-4 flex-none opacity-60 text-zinc-500 dark:text-zinc-400" />
+          </button>
+          <div :if={!@can_switch} class="pointer-events-auto max-w-[70%] min-w-0">
+            <LoopyardWeb.Components.Common.workspace_identity
+              project={(@project && @project.name) || @ws_name}
+              workspace={@project && @ws_name}
+              state={ws_identity_state(@global_tree, @workspace.id)}
+              class="min-w-0"
+            />
           </div>
         </nav>
         <:actions>

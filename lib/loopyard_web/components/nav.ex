@@ -568,9 +568,14 @@ defmodule LoopyardWeb.Components.Nav do
     """
   end
 
+  @doc """
+  The ONE "this opens a switcher" chevron. Public because any surface that
+  triggers a switcher must draw the same mark — a second hand-rolled chevron is
+  how the affordance stops reading as one affordance.
+  """
   attr :class, :string, default: "w-4 h-4"
 
-  defp chevron_down(assigns) do
+  def chevron_down(assigns) do
     ~H"""
     <svg viewBox="0 0 20 20" fill="currentColor" class={@class} aria-hidden="true">
       <path
