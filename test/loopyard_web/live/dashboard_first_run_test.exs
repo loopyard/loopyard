@@ -68,6 +68,14 @@ defmodule LoopyardWeb.DashboardFirstRunTest do
   } do
     Workstation.Env.put("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-test", ws)
 
+    # Assert the PRECONDITION, not just the symptom. The dashboard reads the
+    # credential off `Workstation.current()`; if that store isn't what this
+    # test just wrote to, the page is right and the setup is wrong — and the
+    # failure should say so instead of pointing at the banner.
+    assert "CLAUDE_CODE_OAUTH_TOKEN" in Workstation.Env.keys(Workstation.current()),
+           "setup did not land: current=#{Workstation.current()} wrote-to=#{ws} " <>
+             "keys=#{inspect(Workstation.Env.keys(Workstation.current()))}"
+
     {:ok, _lv, html} = live(conn, "/")
 
     # The blocked-on-a-human band is gone...

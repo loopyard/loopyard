@@ -549,22 +549,52 @@ defmodule Loopyard.AgentLog do
 
   # --- Private: ETS Population ---
 
+  # Is a ChatAgent GenServer currently running for this id? Registry lookup
+  # only — no call — so this can't block replay behind a busy agent.
+  defp live?(agent_id) do
+    case Registry.lookup(Loopyard.ChatAgentRegistry, agent_id) do
+      [{pid, _}] -> Process.alive?(pid)
+      _ -> false
+    end
+  rescue
+    _ -> false
+  end
+
   defp populate_ets(table, state) do
     {restorable, identity_less} = Enum.split_with(state, &agent_identity?/1)
 
     Enum.each(restorable, fn {agent_id, agent_data} ->
-      # Ensure :id is always present (it's the ETS key but code expects it in
-      # the map too). Mark alive?: false — these agents were restored from
-      # disk, no GenServer is running yet. The UI uses alive? to decide
-      # whether to show the agent as active or stopped. Without this,
-      # status: :idle + alive?: nil causes inconsistent indicators (green
-      # dot but grayed-out controls).
-      agent_data =
-        agent_data
-        |> Map.put_new(:id, agent_id)
-        |> Map.put(:alive?, false)
+      # NEVER stomp a LIVE agent. Replay restores agents that aren't running;
+      # a running agent's own process is the source of truth for its summary,
+      # and the log is by definition behind it. Any replay that happens while
+      # an agent is up — a workspace group restart, a reconnect — would
+      # otherwise roll its ETS row back to whatever was last flushed to disk.
+      #
+      # Reproduced as: an agent moved to :rate_limited, a group restart replayed
+      # the log, and the row read :idle again. In a test suite that restarts
+      # groups constantly this looked like flakiness; in production it's a
+      # running agent silently reverting to a stale status in the UI.
+      # Replay FILLS GAPS. It never overwrites a row that already exists —
+      # whatever put it there (a running agent, a restore that already ran)
+      # knows more than a log that is by definition behind. Replay's job is to
+      # restore what's MISSING; on a real server restart ETS is empty and it
+      # populates everything, which is the case it exists for.
+      if live?(agent_id) or :ets.member(table, agent_id) do
+        :ok
+      else
+        # Ensure :id is always present (it's the ETS key but code expects it in
+        # the map too). Mark alive?: false — these agents were restored from
+        # disk, no GenServer is running yet. The UI uses alive? to decide
+        # whether to show the agent as active or stopped. Without this,
+        # status: :idle + alive?: nil causes inconsistent indicators (green
+        # dot but grayed-out controls).
+        agent_data =
+          agent_data
+          |> Map.put_new(:id, agent_id)
+          |> Map.put(:alive?, false)
 
-      :ets.insert(table, {agent_id, agent_data})
+        :ets.insert(table, {agent_id, agent_data})
+      end
     end)
 
     report_identity_less(identity_less)

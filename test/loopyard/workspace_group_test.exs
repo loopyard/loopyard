@@ -8,9 +8,20 @@ defmodule Loopyard.WorkspaceGroupTest do
     :ok
   end
 
+  # A throwaway dir per test, so starting and stopping a workspace here can't
+  # disturb the shared one other tests are using.
+  defp own_workspace_path do
+    path =
+      Path.join(System.tmp_dir!(), "loopyard-group-test-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(path)
+    on_exit(fn -> File.rm_rf(path) end)
+    path
+  end
+
   describe "start/stop lifecycle" do
     test "start_workspace starts a workspace supervisor subtree" do
-      path = File.cwd!()
+      path = own_workspace_path()
       workspace_id = Loopyard.Workspace.workspace_id(path)
 
       assert {:ok, _} = WorkspaceSupervisor.start_workspace(workspace_id, path)
@@ -22,7 +33,7 @@ defmodule Loopyard.WorkspaceGroupTest do
     end
 
     test "stop_workspace stops the subtree" do
-      path = File.cwd!()
+      path = own_workspace_path()
       workspace_id = Loopyard.Workspace.workspace_id(path)
 
       {:ok, _} = WorkspaceSupervisor.start_workspace(workspace_id, path)
@@ -35,7 +46,7 @@ defmodule Loopyard.WorkspaceGroupTest do
     end
 
     test "starting an already-running workspace is idempotent" do
-      path = File.cwd!()
+      path = own_workspace_path()
       workspace_id = Loopyard.Workspace.workspace_id(path)
 
       {:ok, _} = WorkspaceSupervisor.start_workspace(workspace_id, path)
@@ -49,7 +60,7 @@ defmodule Loopyard.WorkspaceGroupTest do
     end
 
     test "agents can be started under a workspace" do
-      path = File.cwd!()
+      path = own_workspace_path()
       workspace_id = Loopyard.Workspace.workspace_id(path)
 
       {:ok, _} = WorkspaceSupervisor.start_workspace(workspace_id, path)

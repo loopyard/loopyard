@@ -33,8 +33,14 @@ defmodule Loopyard.Workstation.EnvSyncHomeTest do
     File.mkdir_p!(Path.dirname(path))
     File.write!(path, "{not json")
 
+    # REMOVE IT. Creating the directory makes this a real identity as far as
+    # Workstation.exists?/1 is concerned, so leaving it behind let bootstrap
+    # later adopt it as `current` — an identity whose env.json is deliberately
+    # corrupt, so Env.keys/1 came back empty and the dashboard correctly
+    # reported "no credential". That surfaced as two unrelated first-run tests
+    # failing in the full suite and passing alone.
+    on_exit(fn -> File.rm_rf(Loopyard.Workstation.dir(id)) end)
+
     assert {:error, {:store_unreadable, _}} = Env.sync_home(id)
-  after
-    :ok
   end
 end

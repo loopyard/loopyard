@@ -316,6 +316,19 @@ defmodule Loopyard.Docker do
 
   defp daemon_disabled?, do: not Application.get_env(:loopyard, :docker_enabled, true)
 
+  @doc """
+  May this environment spawn a docker process at all?
+
+  For the handful of call sites that own their own `Port.open` (interactive
+  exec, compose streaming, the terminal PTY) rather than going through
+  `docker/2` or `open_port/2`. They bypassed the gate, which is how the default
+  suite kept reaching the daemon — and `docker run -v <name>` AUTO-CREATES the
+  named volume, so thousands of test volumes accumulated even after the main
+  entry points were closed.
+  """
+  @spec daemon_available?() :: boolean()
+  def daemon_available?, do: not daemon_disabled?()
+
   defp run_docker(args, opts) do
     timeout = Keyword.get(opts, :timeout, 120_000)
     env = Keyword.get(opts, :env, [])
@@ -491,6 +504,21 @@ defmodule Loopyard.Docker do
   terminal writes keystrokes through stdin, which the watchdog would eat).
   """
   def open_port(args, opts \\ []) do
+    # Same boundary as docker/2. This is the OTHER way to reach the daemon
+    # (streaming commands, compose), and leaving it ungated meant the default
+    # suite still shelled out — `docker run -v <name>` even auto-CREATES the
+    # named volume, which is how thousands of test volumes accumulated after
+    # docker/2 alone was gated.
+    guard_real_resources!(args)
+
+    if daemon_disabled?() do
+      {:error, "docker disabled in this environment"}
+    else
+      do_open_port(args, opts)
+    end
+  end
+
+  defp do_open_port(args, opts) do
     case System.find_executable("docker") do
       nil ->
         {:error, "docker not found in PATH"}
