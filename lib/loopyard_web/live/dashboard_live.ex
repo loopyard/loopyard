@@ -62,7 +62,14 @@ defmodule LoopyardWeb.DashboardLive do
     |> assign(:bind, safe(&Loopyard.Bind.describe/0, "unknown"))
     |> assign(:operator, safe(&Loopyard.Workstation.current/0, "—"))
     |> assign(:operator_count, safe(fn -> length(Loopyard.Workstation.list()) end, 1))
-    |> assign(:waiting, safe(&Loopyard.Attention.count/0, 0))
+    |> then(fn socket ->
+      # The line itself, not just its length — the card shows the actual asks.
+      items = safe(fn -> Loopyard.Attention.line() end, [])
+
+      socket
+      |> assign(:attention, items)
+      |> assign(:waiting, length(items))
+    end)
     |> assign(:inference_ready?, safe(&inference_ready?/0, true))
     |> assign(:digest, safe(fn -> Loopyard.Operator.Digest.recent(6) end, []))
     |> assign(:health_map, safe(&Loopyard.Health.overall/0, %{}))
@@ -258,19 +265,17 @@ defmodule LoopyardWeb.DashboardLive do
                 <path d="M3 3.5A1.5 1.5 0 0 1 4.5 2h3A1.5 1.5 0 0 1 9 3.5v3A1.5 1.5 0 0 1 7.5 8h-3A1.5 1.5 0 0 1 3 6.5v-3ZM3 13.5A1.5 1.5 0 0 1 4.5 12h3A1.5 1.5 0 0 1 9 13.5v3A1.5 1.5 0 0 1 7.5 18h-3A1.5 1.5 0 0 1 3 16.5v-3ZM11 3.5A1.5 1.5 0 0 1 12.5 2h3A1.5 1.5 0 0 1 17 3.5v3A1.5 1.5 0 0 1 15.5 8h-3A1.5 1.5 0 0 1 11 6.5v-3ZM11 13.5a1.5 1.5 0 0 1 1.5-1.5h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3a1.5 1.5 0 0 1-1.5-1.5v-3Z" />
               </svg>
               <h2 class="text-lg font-semibold tracking-tight">Workspaces</h2>
-              <span
-                :if={@ws.working > 0}
-                class="ml-auto text-sm text-violet-600 dark:text-violet-400"
-              >
-                {@ws.working} working
-              </span>
             </div>
-            <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
-              {@ws.projects} {plural(@ws.projects, "project")} · {@ws.workspaces} {plural(
-                @ws.workspaces,
-                "workspace"
-              )} · {@ws.agents} {plural(@ws.agents, "agent")}
-            </p>
+            <.gauge navigate="/workspaces" tone={(@ws.working > 0 && :working) || :calm}>
+              {(@ws.working > 0 && "#{@ws.working} #{plural(@ws.working, "workspace")} working") ||
+                "Nothing running"}
+              <:detail>
+                {@ws.projects} {plural(@ws.projects, "project")} · {@ws.workspaces} {plural(
+                  @ws.workspaces,
+                  "workspace"
+                )} · {@ws.agents} {plural(@ws.agents, "agent")}
+              </:detail>
+            </.gauge>
             <div class="relative z-10 mt-4 space-y-1">
               <.link
                 :for={w <- @recent}
@@ -294,54 +299,67 @@ defmodule LoopyardWeb.DashboardLive do
             <div class="flex items-center gap-2.5 text-zinc-900 dark:text-zinc-50">
               <span class="text-violet-600 dark:text-violet-400"><Brand.mark class="w-5 h-5" /></span>
               <h2 class="text-lg font-semibold tracking-tight">Operator</h2>
-              <span
-                :if={@waiting > 0}
-                class="ml-auto text-sm font-semibold text-orange-700 dark:text-orange-400"
-              >
-                {@waiting} waiting on you
-              </span>
             </div>
-            <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
-              Running the shop as
-              <span class="font-medium text-zinc-700 dark:text-zinc-300">{@operator}</span>
-            </p>
+            <%!-- The gauge NAMES what's waiting. "6 waiting on you" prompts the
+                 only question that matters — six WHAT? — and answers none of
+                 them; the breakdown by kind does. --%>
+            <.gauge navigate="/review" tone={(@waiting > 0 && :needs_you) || :calm}>
+              {(@waiting > 0 && attention_headline(@attention)) || "Nothing waiting on you"}
+              <:detail>Running the shop as {@operator}</:detail>
+            </.gauge>
+
             <div class="relative z-10 mt-4 space-y-1">
+              <%!-- The items THEMSELVES, in their own words — a decision is one
+                   tap from here, which is the whole job of this card. A count
+                   makes you go look; the question makes you answer it. --%>
               <.link
+                :for={item <- Enum.take(@attention, 4)}
+                navigate={(item.msg && "/review/#{item.agent_id}/#{item.msg.id}") || "/review"}
+                class="block -mx-2 px-2 py-2 md:py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+              >
+                <span class="text-sm text-zinc-700 dark:text-zinc-200 line-clamp-2">
+                  {item.label}
+                </span>
+                <span
+                  :if={item.workspace_name}
+                  class="block text-xs text-zinc-500 dark:text-zinc-400 mt-0.5"
+                >
+                  {item.project_name} · {item.workspace_name}
+                </span>
+              </.link>
+              <.link
+                :if={length(@attention) > 4}
+                navigate="/review"
+                class="block -mx-2 px-2 py-2 md:py-1.5 text-sm font-medium text-orange-700 dark:text-orange-400 hover:underline"
+              >
+                +{length(@attention) - 4} more to decide →
+              </.link>
+
+              <.link
+                :if={@attention == []}
                 navigate="/operator"
                 class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
               >
                 Chat with the operator
               </.link>
-              <.link
-                navigate="/review"
-                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
-              >
-                For you
-                <span :if={@waiting > 0} class="text-orange-700 dark:text-orange-400 font-semibold">{@waiting}</span>
-              </.link>
-              <.link
-                navigate="/workstations"
-                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
-              >
-                Workstations · {@operator_count}
-              </.link>
 
-              <%!-- Recent completions from the operator digest ring. This card
-                   was three links and a lot of white space on a large display;
-                   this is the "what happened while I was away" the operator
-                   already tracks. Hidden on phones — capped so a busy day can't
-                   push the card past its neighbours. --%>
+              <%!-- What actually happened while you were away — the agent's own
+                   closing line, not "finished a turn" (true of every entry, so
+                   it tells you nothing). Hidden on phones. --%>
               <div
                 :if={@digest != []}
                 class="hidden md:block pt-3 mt-2 border-t border-zinc-200/70 dark:border-zinc-800"
               >
                 <p class="text-sm text-zinc-400 dark:text-zinc-500 mb-1">Recently finished</p>
-                <p
-                  :for={e <- Enum.take(@digest, 5)}
-                  class="text-sm text-zinc-600 dark:text-zinc-400 truncate py-0.5"
+                <.link
+                  :for={e <- Enum.take(@digest, if(@attention == [], do: 5, else: 3))}
+                  navigate={digest_path(e)}
+                  class="block -mx-2 px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
                 >
-                  {e[:agent_name] || "agent"} — {e[:summary] || "finished a turn"}
-                </p>
+                  <span class="text-sm text-zinc-600 dark:text-zinc-400 line-clamp-2">
+                    {e[:summary]}
+                  </span>
+                </.link>
               </div>
             </div>
           </section>
@@ -363,26 +381,21 @@ defmodule LoopyardWeb.DashboardLive do
                 />
               </svg>
               <h2 class="text-lg font-semibold tracking-tight">System</h2>
-              <%!-- A green "healthy" over "agents blocked until Claude connects"
-                   is the contradiction in miniature. While a blocking first-run
-                   step is open the badge reports READINESS, amber (transitional
-                   caution — the flame band above already owns the ask). --%>
-              <span class={[
-                "ml-auto text-sm font-semibold",
-                (@first_run_step == :inference && "text-amber-600 dark:text-amber-400") ||
-                  (@health == :healthy && "text-emerald-600 dark:text-emerald-400") ||
-                  (@health == :degraded && "text-orange-700 dark:text-orange-400") ||
-                  (@health == :down && "text-rose-600 dark:text-rose-400") ||
-                  "text-zinc-400"
-              ]}>
-                {(@first_run_step == :inference && "not ready") || @health}
-              </span>
             </div>
-            <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
-              {system_line(@health, @first_run_step)} · {(@remote_exposed &&
-                                                            "reachable on #{@host}") ||
-                "private to this machine"}
-            </p>
+            <.gauge
+              navigate="/system"
+              tone={
+                (@first_run_step == :inference && :caution) ||
+                  (@health == :healthy && :ok) ||
+                  (@health == :degraded && :needs_you) ||
+                  (@health == :down && :down) || :calm
+              }
+            >
+              {system_line(@health, @first_run_step)}
+              <:detail>
+                {(@remote_exposed && "Reachable on #{@host}") || "Private to this machine"} · bound to {@bind}
+              </:detail>
+            </.gauge>
             <div class="relative z-10 mt-4 space-y-1">
               <.link
                 navigate="/system"
@@ -402,13 +415,6 @@ defmodule LoopyardWeb.DashboardLive do
               >
                 Secrets
               </.link>
-              <%!-- Read-only. Binding is a boot flag (LOOPYARD_BIND), never a
-                   switch in here: a toggle reachable over the connection it
-                   controls can strand you the moment you tap it remotely. --%>
-              <div class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 text-sm text-zinc-500 dark:text-zinc-400">
-                Bound to <span class="font-mono">{@bind}</span>
-              </div>
-
               <%!-- Per-component health. "All 3 subsystems healthy" is a summary
                    of exactly this; showing the components themselves is what
                    makes the card worth looking at when one of them ISN'T
@@ -495,6 +501,70 @@ defmodule LoopyardWeb.DashboardLive do
   defp health_line(:degraded), do: "A subsystem is degraded — tap for detail"
   defp health_line(:down), do: "A subsystem is down — tap for detail"
   defp health_line(_), do: "Status unavailable"
+
+  @doc """
+  A card's status gauge: the one line that says how this system is doing, sitting
+  directly under the title where it's read as a sentence — not as a badge floated
+  into the top-right corner, where a lone word ("healthy", "6") has to carry
+  meaning it can't. Tappable, because a status you can't act on is decoration.
+
+  Tone is meaning, not decoration: `:needs_you` flame is the ONLY thing that
+  claims a human, `:ok` moss confirms, `:caution` amber is transitional,
+  `:down` rose alarms, `:working` iris is the system busy on its own, `:calm`
+  is the quiet default.
+  """
+  attr :navigate, :string, required: true
+  attr :tone, :atom, default: :calm, values: [:calm, :ok, :working, :caution, :needs_you, :down]
+  slot :inner_block, required: true
+  slot :detail
+
+  def gauge(assigns) do
+    ~H"""
+    <.link
+      navigate={@navigate}
+      class="group relative z-10 block -mx-2 mt-2 px-2 py-1.5 rounded-sm hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+    >
+      <span class={["block text-sm font-medium", gauge_tone(@tone)]}>
+        {render_slot(@inner_block)}
+        <span class="opacity-0 group-hover:opacity-100 transition-opacity">&rarr;</span>
+      </span>
+      <span :if={@detail != []} class="block text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+        {render_slot(@detail)}
+      </span>
+    </.link>
+    """
+  end
+
+  defp gauge_tone(:needs_you), do: "text-orange-700 dark:text-orange-400"
+  defp gauge_tone(:ok), do: "text-emerald-700 dark:text-emerald-400"
+  defp gauge_tone(:caution), do: "text-amber-600 dark:text-amber-400"
+  defp gauge_tone(:down), do: "text-rose-600 dark:text-rose-400"
+  defp gauge_tone(:working), do: "text-violet-600 dark:text-violet-400"
+  defp gauge_tone(_), do: "text-zinc-600 dark:text-zinc-300"
+
+  # "6 waiting on you" begs the question it should answer. Name the nouns:
+  # "4 questions · 2 approvals".
+  defp attention_headline(items) do
+    counts = Enum.frequencies_by(items, & &1.kind)
+
+    [question: "question", approval: "approval", secret: "secret"]
+    |> Enum.filter(fn {kind, _} -> counts[kind] end)
+    |> Enum.map_join(" · ", fn {kind, noun} ->
+      "#{counts[kind]} #{plural(counts[kind], noun)}"
+    end)
+    |> case do
+      "" -> "#{length(items)} waiting on you"
+      line -> line <> " waiting on you"
+    end
+  end
+
+  # A digest row goes where the work happened, so "what finished" is one tap
+  # from the thing itself.
+  defp digest_path(%{project_id: pid, workspace_id: ws, agent_id: aid})
+       when is_binary(pid) and is_binary(ws) and is_binary(aid),
+       do: "/projects/#{pid}/workspaces/#{ws}/agents/#{aid}"
+
+  defp digest_path(_), do: "/operator"
 
   defp plural(1, word), do: word
   defp plural(_, word), do: word <> "s"

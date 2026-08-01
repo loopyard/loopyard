@@ -28,8 +28,10 @@ defmodule LoopyardWeb.ProjectListLiveTest do
       # endpoint. That toggle is gone: it was reachable over the very connection
       # it controlled, so disabling it remotely stranded you. Binding is now a
       # boot flag (LOOPYARD_BIND) and the card only REPORTS it.
+      # The binding now reads as part of the System card's status line rather
+      # than its own row — same guarantee (report, never toggle), one less row.
       {:ok, _view, html} = live(conn, "/")
-      assert html =~ "Bound to"
+      assert html =~ "bound to"
       assert html =~ "System"
       refute html =~ "/remote/"
     end

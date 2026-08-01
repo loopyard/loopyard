@@ -46,18 +46,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
             (@msg.status == :pending && "text-orange-700 dark:text-orange-400") ||
               "text-zinc-500 dark:text-zinc-400"
           ]}>
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 16 16"
-              fill="currentColor"
-              class="w-3.5 h-3.5"
-            >
-              <path
-                fill-rule="evenodd"
-                d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14Zm.93-9.412c-.44-.305-1.054-.305-1.494 0-.146.101-.27.245-.354.435a.75.75 0 0 1-1.372-.606c.18-.405.45-.74.819-.995 1.041-.722 2.486-.722 3.527 0 .54.375.94.94.94 1.626 0 .609-.314 1.07-.658 1.39-.124.115-.26.222-.387.32l-.10.078c-.179.139-.31.255-.404.385-.087.12-.12.222-.12.334a.75.75 0 0 1-1.5 0c0-.49.218-.884.47-1.226.21-.286.482-.502.679-.654l.078-.06c.139-.108.224-.18.286-.237.087-.08.108-.13.108-.27a.484.484 0 0 0-.298-.473ZM8 12a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
-                clip-rule="evenodd"
-              />
-            </svg>
             {case @msg.status do
               :pending -> "Needs your input"
               :timeout -> "No answer"

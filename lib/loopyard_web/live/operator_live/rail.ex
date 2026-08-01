@@ -74,6 +74,25 @@ defmodule LoopyardWeb.OperatorLive.Rail do
   defp attention_summary(%{kind: :secret, msg: %{name: name}}), do: "Needs a secret: #{name}"
   defp attention_summary(item), do: item[:label] || "Needs your input"
 
+  # One waiting item in the rail. The question's OWN WORDS are the row — no
+  # icon, because "this is a question" is the one thing the reader already
+  # knows from the section label. Dropping it buys back the width the text
+  # was being truncated into; two lines of the actual ask beats one line of
+  # ellipsis next to a badge.
+  attr :item, :map, required: true
+  attr :fallback, :string, required: true
+
+  defp attention_row(assigns) do
+    ~H"""
+    <.link
+      navigate={(@item.msg && "/review/#{@item.agent_id}/#{@item.msg.id}") || @fallback}
+      class="block rounded-sm px-2 py-2 lg:py-1.5 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+    >
+      <span class="line-clamp-2">{attention_summary(@item)}</span>
+    </.link>
+    """
+  end
+
   def for_you_rail(assigns) do
     ~H"""
     <div class="flex flex-col">
@@ -84,25 +103,11 @@ defmodule LoopyardWeb.OperatorLive.Rail do
           Operator · needs you
         </div>
         <div class="space-y-0.5">
-          <.link
+          <.attention_row
             :for={item <- @operator_attention}
-            navigate={(item.msg && "/review/#{item.agent_id}/#{item.msg.id}") || "/review"}
-            class="flex items-center gap-2.5 rounded-sm px-2 py-2 lg:py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
-          >
-            <svg
-              viewBox="0 0 16 16"
-              fill="currentColor"
-              class="w-3.5 h-3.5 flex-none text-orange-600 dark:text-orange-400"
-              aria-hidden="true"
-            ><path
-              fill-rule="evenodd"
-              d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14Zm.93-9.412c-.44-.305-1.054-.305-1.494 0-.146.101-.27.245-.354.435a.75.75 0 0 1-1.372-.606c.18-.405.45-.74.819-.995 1.041-.722 2.486-.722 3.527 0 .54.375.94.94.94 1.626 0 .609-.314 1.07-.658 1.39-.124.115-.26.222-.387.32l-.10.078c-.179.139-.31.255-.404.385-.087.12-.12.222-.12.334a.75.75 0 0 1-1.5 0c0-.49.218-.884.47-1.226.21-.286.482-.502.679-.654l.078-.06c.139-.108.224-.18.286-.237.087-.08.108-.13.108-.27a.484.484 0 0 0-.298-.473ZM8 12a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
-              clip-rule="evenodd"
-            /></svg>
-            <span class="flex-1 min-w-0 truncate chat-meta text-zinc-700 dark:text-zinc-200">
-              {attention_summary(item)}
-            </span>
-          </.link>
+            item={item}
+            fallback="/review"
+          />
         </div>
       </section>
 
@@ -146,32 +151,15 @@ defmodule LoopyardWeb.OperatorLive.Rail do
              flame mini-language (the question's own words). Tap → the Reviewer
              at that item. Capped at 3; the rest are one tap away. --%>
           <div :if={Map.get(@attention_by_ws, i.id, []) != []} class="pl-4 pb-1 space-y-0.5">
-            <.link
+            <.attention_row
               :for={item <- Enum.take(Map.get(@attention_by_ws, i.id, []), 3)}
-              navigate={
-                (item.msg && "/review/#{item.agent_id}/#{item.msg.id}") ||
-                  "/projects/#{i.project_id}/workspaces/#{i.id}/review"
-              }
-              class="flex items-center gap-2.5 rounded-sm px-2 py-2 lg:py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
-            >
-              <svg
-                viewBox="0 0 16 16"
-                fill="currentColor"
-                class="w-3.5 h-3.5 flex-none text-orange-600 dark:text-orange-400"
-                aria-hidden="true"
-              ><path
-                fill-rule="evenodd"
-                d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14Zm.93-9.412c-.44-.305-1.054-.305-1.494 0-.146.101-.27.245-.354.435a.75.75 0 0 1-1.372-.606c.18-.405.45-.74.819-.995 1.041-.722 2.486-.722 3.527 0 .54.375.94.94.94 1.626 0 .609-.314 1.07-.658 1.39-.124.115-.26.222-.387.32l-.10.078c-.179.139-.31.255-.404.385-.087.12-.12.222-.12.334a.75.75 0 0 1-1.5 0c0-.49.218-.884.47-1.226.21-.286.482-.502.679-.654l.078-.06c.139-.108.224-.18.286-.237.087-.08.108-.13.108-.27a.484.484 0 0 0-.298-.473ZM8 12a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
-                clip-rule="evenodd"
-              /></svg>
-              <span class="flex-1 min-w-0 truncate chat-meta text-zinc-700 dark:text-zinc-200">
-                {attention_summary(item)}
-              </span>
-            </.link>
+              item={item}
+              fallback={"/projects/#{i.project_id}/workspaces/#{i.id}/review"}
+            />
             <.link
               :if={length(Map.get(@attention_by_ws, i.id, [])) > 3}
               navigate={"/projects/#{i.project_id}/workspaces/#{i.id}/review"}
-              class="block pl-2.5 chat-meta text-orange-700 dark:text-orange-400 hover:underline"
+              class="block px-2 py-1 text-sm text-orange-700 dark:text-orange-400 hover:underline"
             >
               +{length(Map.get(@attention_by_ws, i.id, [])) - 3} more →
             </.link>
