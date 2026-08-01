@@ -11,31 +11,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatNav do
   import LoopyardWeb.Components.Sidebar,
     only: [status_dot: 1, agent_display_status: 1]
 
-  # Title for the full-screen item switcher, by active category.
-  def section_title(:services), do: "Switch service"
-  def section_title(:volumes), do: "Files"
-  def section_title(_), do: "Switch agent"
-
-  # The section tabs for Row 2 — Agents is always present, Services / Repo only
-  # when the workspace actually has them. Empty on the "new agent" route (nothing
-  # to switch between yet). `Nav.segmented` hides itself when the list is empty.
-  def section_tabs(%{live_action: :new}), do: []
-
-  def section_tabs(a) do
-    [%{label: "Agents", active?: a.active == :agents, patch: a.agents_href}] ++
-      if(a.service_statuses != [],
-        do: [%{label: "Services", active?: a.active == :services, patch: a.services_href}],
-        else: []
-      ) ++
-      if(a.volumes != [],
-        # "Files" (not "Repo" — too narrow): this surface is heading toward the
-        # code's current state + changes + the files in the container, not just a
-        # git repo. See the Files-unification follow-up.
-        do: [%{label: "Files", active?: a.active == :volumes, patch: a.volumes_href}],
-        else: []
-      )
-  end
-
   # The workspace's first reachable (network-exposed) app port from the global
   # tree — `%{port, url}` or nil. Used for the phone header's open-app button.
   def current_ws_port(nil, _ws_id), do: nil
@@ -103,6 +78,25 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatNav do
 
   # Items of the active category for the switcher, each with a label, route,
   # status dot, one-word detail, and whether it's the one currently open.
+  @doc """
+  EVERY section's rows at once — `[%{title, key, items}]`, empty sections
+  dropped.
+
+  The phone used to split this across a tab strip (Agents/Services/Files) and a
+  separate dropdown of only the ACTIVE tab's siblings, so switching from an
+  agent to a service took two taps through two different controls, and each
+  dropdown looked nearly empty. One sheet showing the whole grouped sidebar is
+  the same information in one gesture — and it's what the desktop right rail
+  already shows.
+  """
+  def nav_groups(assigns) do
+    for {key, title} <- [{:agents, "Agents"}, {:services, "Services"}, {:volumes, "Files"}],
+        items = category_items(Map.put(assigns, :active, key)),
+        items != [] do
+      %{key: key, title: title, items: items}
+    end
+  end
+
   def category_items(%{active: :agents, agents: agents, base_path: bp, nav_agent_id: cur}) do
     Enum.map(agents, fn a ->
       %{

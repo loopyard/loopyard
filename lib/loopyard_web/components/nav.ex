@@ -225,19 +225,23 @@ defmodule LoopyardWeb.Components.Nav do
 
   * `current` — `%{label, dot, detail, tone, badge}` or `nil` (row hides the
   trigger when nothing is selected in this section).
-  * `items`  — sibling rows: `%{label, href, active?, dot, detail}`. The
-  Switch pill only appears when there's more than one to switch to.
-  * `:extra`  — optional trailing action(s) in the panel (e.g. "+ New agent").
+  * `groups` — every section at once: `[%{key, title, items}]`, each item
+  `%{label, href, active?, dot, detail}`.
+  * `:extra`  — optional trailing action per group; receives the group, so a
+  caller can add "+ New agent" under Agents only.
 
-  <.section_switcher id="item-switcher" current={@current} items={@items}>
-  <:tabs><.segmented items={@section_tabs} label="Workspace section" /></:tabs>
-  <:extra><.link patch={@base_path <> "/new"}>+ New agent</.link></:extra>
+  <.section_switcher id="item-switcher" current={@current} groups={@nav_groups}>
+  <:extra :let={g}><.link :if={g.key == :agents} patch={@base_path <> "/new"}>+ New agent</.link></:extra>
   </.section_switcher>
   """
   attr :id, :string, default: "item-switcher"
   attr :title, :string, default: "Switch"
   attr :current, :map, default: nil
-  attr :items, :list, default: []
+  # EVERY section at once — `[%{title, key, items}]`. The phone used to carry a
+  # tab strip plus a dropdown of only the active tab's siblings: two controls,
+  # two taps to cross sections, and each dropdown looked half-empty. One sheet
+  # of the whole grouped sidebar is the same information in one gesture.
+  attr :groups, :list, default: []
   # When true, a consistent "details" TOGGLE trails the switcher — the ONE
   # affordance for "more about this thing", identical across agents / services /
   # files. It fires `toggle_mobile_detail` (a SERVER assign) which swaps the
@@ -246,13 +250,11 @@ defmodule LoopyardWeb.Components.Nav do
   # back. `details_open` lights the button while open.
   attr :has_details, :boolean, default: false
   attr :details_open, :boolean, default: false
-  slot :tabs
   slot :extra
 
   def section_switcher(assigns) do
     ~H"""
     <div class="flex items-center gap-2 px-2 h-16 border-t border-zinc-200/70 dark:border-zinc-700/50">
-      {render_slot(@tabs)}
       <%!-- The current item, minimalist: a status dot (colour IS the state, no
     "Running" text), the name, and a chevron as the sole "tap to switch"
     affordance. No purple Switch pill — the chevron carries it. --%>
@@ -262,7 +264,7 @@ defmodule LoopyardWeb.Components.Nav do
         phx-click={toggle_panel(@id)}
         aria-controls={@id}
         aria-haspopup="dialog"
-        aria-label={"Switch #{@title} — currently #{@current.label}"}
+        aria-label={"#{@title} — currently #{@current.label}"}
         class="focus-ring flex-1 min-w-0 flex items-center gap-2 min-h-[2.75rem] px-3 rounded-sm text-left hover:bg-zinc-100 dark:hover:bg-zinc-800/60 active:bg-zinc-200 dark:active:bg-zinc-700/60 transition-colors"
       >
         <span class={["w-2 h-2 rounded-full flex-none", @current.dot]}></span>
@@ -305,25 +307,28 @@ defmodule LoopyardWeb.Components.Nav do
           {@current.detail}
         </span>
       </:current>
-      <.link
-        :for={item <- @items}
-        patch={item.href}
-        phx-click={JS.hide(to: "##{@id}")}
-        class={sheet_row_class(item[:active?])}
-      >
-        <span class={["w-2.5 h-2.5 rounded-full flex-none", item.dot]}></span>
-        <span class="flex-1 min-w-0 truncate">{item.label}</span>
-        <%!-- Check BEFORE the status so the status stays flush-right on every
-    row — a trailing check shifted the active row's status left and
-    broke alignment with the others. --%>
-        <.check :if={item[:active?]} />
-        <%!-- Status same size as the name, muted + right-aligned (matches the
-    switcher trigger above). --%>
-        <span :if={item[:detail]} class="flex-none truncate text-zinc-500 dark:text-zinc-400">
-          {item.detail}
-        </span>
-      </.link>
-      {render_slot(@extra)}
+      <div :for={group <- @groups} class="pt-4 first:pt-0">
+        <div class="section-label px-3 pb-1">{group.title}</div>
+        <.link
+          :for={item <- group.items}
+          patch={item.href}
+          phx-click={JS.hide(to: "##{@id}")}
+          class={sheet_row_class(item[:active?])}
+        >
+          <span class={["w-2.5 h-2.5 rounded-full flex-none", item.dot]}></span>
+          <span class="flex-1 min-w-0 truncate">{item.label}</span>
+          <%!-- Check BEFORE the status so the status stays flush-right on every
+      row — a trailing check shifted the active row's status left and
+      broke alignment with the others. --%>
+          <.check :if={item[:active?]} />
+          <%!-- Status same size as the name, muted + right-aligned (matches the
+      switcher trigger above). --%>
+          <span :if={item[:detail]} class="flex-none truncate text-zinc-500 dark:text-zinc-400">
+            {item.detail}
+          </span>
+        </.link>
+        {render_slot(@extra, group)}
+      </div>
     </.switcher_sheet>
     """
   end

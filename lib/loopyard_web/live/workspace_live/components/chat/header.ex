@@ -19,9 +19,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
   # module-size invariant. Chat renders; ChatNav decides what to render.
   import LoopyardWeb.Live.WorkspaceLive.Components.ChatNav,
     only: [
-      section_title: 1,
-      section_tabs: 1,
       active_category: 1,
+      nav_groups: 1,
       category_href: 2,
       category_items: 1,
       current_item: 1,
@@ -80,7 +79,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
 
     assigns =
       assigns
-      |> assign(:section_tabs, section_tabs(assigns))
+      |> assign(:nav_groups, nav_groups(assigns))
       |> assign(:project_items, project_items(assigns))
       |> assign(:workspace_items, workspace_items(assigns))
 
@@ -193,22 +192,22 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
         />
       </Nav.switcher_sheet>
 
-      <%!-- Row 2: WHAT you're looking at — section tabs + the current item, which
-    taps open a full-screen switcher of siblings. --%>
+      <%!-- Row 2: WHAT you're looking at. ONE trigger naming the current thing;
+    tapping it opens the whole grouped sidebar (Agents / Services / Files)
+    in a single sheet. It used to be a tab strip PLUS a dropdown of only
+    the active tab's siblings — two controls to cross a section, and each
+    dropdown looked half-empty next to three tabs eating the row. --%>
       <Nav.section_switcher
         id="item-switcher"
-        title={section_title(@active)}
+        title="Go to"
         current={@current}
-        items={@items}
+        groups={@nav_groups}
         has_details={@details_sheet != nil}
         details_open={@mobile_detail_open}
       >
-        <:tabs>
-          <Nav.segmented items={@section_tabs} label="Workspace section" />
-        </:tabs>
-        <:extra>
+        <:extra :let={group}>
           <.link
-            :if={@active == :agents}
+            :if={group.key == :agents}
             patch={"#{@base_path}/new"}
             phx-click={JS.hide(to: "#item-switcher")}
             class="flex items-center gap-2 px-3 min-h-[2.75rem] rounded-sm text-sm font-medium text-violet-600 dark:text-violet-400 active:bg-violet-50 dark:active:bg-violet-500/10"

@@ -81,11 +81,6 @@ elements still sit under 44px on mobile and it composes its own `PAST HOUR` /
 question taller than the viewport doesn't fight the user). It's a state
 restructure: ReviewLive renders one slide with subscriptions keyed to it.
 
-**H. Mobile section row truncates the agent name to "Cl…".** Pre-existing (96px
-before and after the header fix). The row carries three tabs + the agent chip +
-the details toggle at 390px; the chip is `flex-1 min-w-0` and loses. Either the
-tabs shrink or the row sheds something.
-
 **Deliberate exception:** the question card's Skip/Chat stay at 40px, under the
 44px floor. They're sized down relative to Answer so discarding a question
 isn't a plausible mis-tap; expanding their hit area would undo that.
