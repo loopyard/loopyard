@@ -31,7 +31,7 @@ defmodule Loopyard.Source.Local.Mutagen do
   )
 
   @doc "Session name for a workspace."
-  def session_name(workspace_id), do: "loopyard-#{workspace_id}"
+  def session_name(workspace_id), do: "#{Loopyard.Docker.prefix()}#{workspace_id}"
 
   @doc "Is mutagen installed and on PATH?"
   def installed? do

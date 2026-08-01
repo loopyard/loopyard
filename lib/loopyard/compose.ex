@@ -596,7 +596,7 @@ defmodule Loopyard.Compose do
     do: Path.join([project_dir, ".loopyard", "workspace", "docker-compose.yml"])
 
   @doc "Project name for compose (used for container naming)."
-  def project_name(workspace_id), do: "loopyard-#{workspace_id}"
+  def project_name(workspace_id), do: "#{Loopyard.Docker.prefix()}#{workspace_id}"
 
   @doc "Run a docker compose command. Uses `docker compose` (v2 plugin) if available, otherwise `docker-compose` (standalone)."
   def compose(project_dir, workspace_id, args, opts \\ []) do

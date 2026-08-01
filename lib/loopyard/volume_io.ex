@@ -266,7 +266,7 @@ defmodule Loopyard.VolumeIO do
     # Volume names are like loopyard-{workspace_id}-code
     case Regex.run(~r/^loopyard-([a-f0-9]+)-code$/, volume_name) do
       [_, workspace_id] ->
-        container = "loopyard-#{workspace_id}-workspace-1"
+        container = "#{Loopyard.Docker.prefix()}#{workspace_id}-workspace-1"
 
         if Loopyard.Docker.container_running?(container) do
           {:ok, container}

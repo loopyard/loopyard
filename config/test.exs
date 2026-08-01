@@ -84,3 +84,7 @@ config :loopyard, harness_memory_monitor_enabled?: false
 # prefix the suite addresses — and overwrites — the developer's live identity
 # container and home volume. See Loopyard.Workstation.resource_prefix/0.
 config :loopyard, resource_prefix: "loopyard-test-"
+
+# The backstop behind the prefix: naming a REAL Docker resource from a test
+# raises at the call. See Loopyard.Docker.prefix/0.
+config :loopyard, forbid_real_docker_resources: true

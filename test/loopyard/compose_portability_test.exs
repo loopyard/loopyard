@@ -33,19 +33,24 @@ defmodule Loopyard.ComposePortabilityTest do
     test "the placeholder resolves to THIS workspace's volume when processed" do
       {:ok, json} = Compose.process_agent_compose(@portable, "ws-abc")
 
-      assert json =~ "loopyard-ws-abc-code"
+      assert json =~ "#{Loopyard.Docker.prefix()}ws-abc-code"
       refute json =~ "${CODE_VOLUME}"
     end
 
     test "a compose naming ANOTHER workspace's volume is corrected, not mounted" do
-      foreign = String.replace(@portable, "${CODE_VOLUME}", "loopyard-someone-else-code")
+      foreign =
+        String.replace(
+          @portable,
+          "${CODE_VOLUME}",
+          "#{Loopyard.Docker.prefix()}someone-else-code"
+        )
 
       {:ok, json} = Compose.process_agent_compose(foreign, "ws-abc")
 
       # Fork safety: mounting the source's code from a fork is silent
       # cross-workspace corruption.
-      refute json =~ "loopyard-someone-else-code"
-      assert json =~ "loopyard-ws-abc-code"
+      refute json =~ "#{Loopyard.Docker.prefix()}someone-else-code"
+      assert json =~ "#{Loopyard.Docker.prefix()}ws-abc-code"
     end
 
     test "${WORKSPACE_ID} still resolves — it moved to this seam, it didn't vanish" do

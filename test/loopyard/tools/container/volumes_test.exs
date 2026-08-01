@@ -16,7 +16,7 @@ defmodule Loopyard.Tools.Container.VolumesTest do
 
   describe "workspace boundary" do
     test "rejects `ls` on a foreign volume" do
-      other = "loopyard-some-other-workspace-code"
+      other = "#{Loopyard.Docker.prefix()}some-other-workspace-code"
 
       assert {:error, msg} =
                Volumes.execute(
@@ -50,7 +50,7 @@ defmodule Loopyard.Tools.Container.VolumesTest do
       # Use a name that passes the prefix check; volume_info will return
       # nil because the volume doesn't actually exist, which is fine —
       # we're only asserting the authorization layer doesn't block.
-      own = "loopyard-#{@workspace_id}-code"
+      own = "#{Loopyard.Docker.prefix()}#{@workspace_id}-code"
 
       case Volumes.execute(%{agent_id: @agent_id, action: "info #{own}"}, %{}) do
         {:ok, _} ->

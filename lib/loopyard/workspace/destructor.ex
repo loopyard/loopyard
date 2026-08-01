@@ -160,7 +160,7 @@ defmodule Loopyard.Workspace.Destructor do
   defp remove_named_volumes(workspace_id, _workspace) do
     step(workspace_id, "remove volumes", fn ->
       volumes = VolumeManager.list_all_volumes()
-      prefix = "loopyard-#{workspace_id}"
+      prefix = "#{Loopyard.Docker.prefix()}#{workspace_id}"
 
       for %{name: name} <- volumes, String.starts_with?(name, prefix) do
         try_silently("delete volume #{name}", fn -> VolumeManager.delete_volume(name) end)

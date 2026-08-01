@@ -216,7 +216,7 @@ defmodule Loopyard.Workstation do
   it cannot corrupt them — the isolation holds by construction instead of by
   everyone remembering.
   """
-  def resource_prefix, do: Application.get_env(:loopyard, :resource_prefix, "loopyard-")
+  defdelegate resource_prefix(), to: Loopyard.Docker, as: :prefix
 
   @doc """
   The id to bootstrap a fresh install with — your name, not a generic "default".

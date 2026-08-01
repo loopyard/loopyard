@@ -44,7 +44,7 @@ defmodule Loopyard.Tools.Container.Volumes do
   # name starts with "loopyard-<workspace_id>". This is the same prefix used
   # by VolumeManager.list_workspace_volumes/1.
   defp authorize_volume(workspace_id, volume_name) when is_binary(volume_name) do
-    if String.starts_with?(volume_name, "loopyard-#{workspace_id}") do
+    if String.starts_with?(volume_name, "#{Loopyard.Docker.prefix()}#{workspace_id}") do
       :ok
     else
       {:error,

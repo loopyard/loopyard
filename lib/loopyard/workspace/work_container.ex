@@ -56,7 +56,8 @@ defmodule Loopyard.Workspace.WorkContainer do
 
   @doc "Container name for a workspace's cheap work container."
   @spec container_name(String.t()) :: String.t()
-  def container_name(workspace_id), do: "loopyard-#{workspace_id}-work"
+  def container_name(workspace_id),
+    do: "#{Loopyard.Docker.prefix()}#{workspace_id}-work"
 
   @doc "The stock base image tag the work container runs."
   @spec image() :: String.t()

@@ -292,7 +292,7 @@ defmodule Loopyard.Workspace do
       %{volume: vol} when is_binary(vol) -> vol
       # Always use the canonical naming. The old fallback "code-#{workspace_id}"
       # created ghost volumes that never got cleaned up because cleanup uses
-      # VolumeManager.code_volume_name/1 which returns "loopyard-#{ws_id}-code".
+      # VolumeManager.code_volume_name/1, which is prefix-scoped per environment.
       _ -> Loopyard.VolumeManager.code_volume_name(workspace_id)
     end
   end

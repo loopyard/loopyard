@@ -13,7 +13,7 @@ defmodule Loopyard.Tools.Container.ServiceContainers do
   def execute(%{agent_id: agent_id}, _assigns) do
     case Loopyard.ChatAgent.get_state(agent_id) do
       %{workspace_id: workspace_id} when is_binary(workspace_id) ->
-        prefix = "loopyard-#{workspace_id}"
+        prefix = "#{Loopyard.Docker.prefix()}#{workspace_id}"
 
         case Docker.docker([
                "ps",

@@ -6,7 +6,7 @@ defmodule Loopyard.Workspace.ServiceManagerTest do
   describe "naming" do
     test "service_container_name" do
       assert ServiceManager.service_container_name("abcd", "postgres") ==
-               "loopyard-abcd-postgres-1"
+               "#{Loopyard.Docker.prefix()}abcd-postgres-1"
     end
 
     test "service_volume_name" do

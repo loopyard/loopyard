@@ -568,7 +568,7 @@ defmodule Loopyard.Source.Local.SyncMonitor do
   end
 
   defp default_container_name(workspace_id) do
-    "loopyard-#{workspace_id}-workspace-1"
+    "#{Loopyard.Docker.prefix()}#{workspace_id}-workspace-1"
   end
 
   defp to_string_reason(reason) when is_binary(reason), do: reason

@@ -188,7 +188,7 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
         name: "main",
         branch: "main",
         git_url: "https://github.com/test/repo.git",
-        volume: "loopyard-#{workspace_id}-code",
+        volume: Loopyard.VolumeManager.code_volume_name(workspace_id),
         volume_based: true,
         status: :stopped,
         added_at: DateTime.utc_now()

@@ -306,7 +306,7 @@ defmodule Loopyard.SystemStats do
 
   @doc "Service container resource stats. Accepts pre-fetched docker stats."
   def service_stats(container_stats \\ %{}) do
-    Loopyard.Docker.list_containers(prefix: "loopyard-")
+    Loopyard.Docker.list_containers(prefix: Loopyard.Docker.prefix())
     |> Enum.map(fn container ->
       %{
         name: container.name,

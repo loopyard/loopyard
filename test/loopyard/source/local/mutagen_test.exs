@@ -17,7 +17,7 @@ defmodule Loopyard.Source.Local.MutagenTest do
 
   describe "session_name/1" do
     test "builds loopyard-<workspace_id>" do
-      assert Mutagen.session_name("abcd") == "loopyard-abcd"
+      assert Mutagen.session_name("abcd") == "#{Loopyard.Docker.prefix()}abcd"
     end
   end
 
@@ -29,30 +29,34 @@ defmodule Loopyard.Source.Local.MutagenTest do
       end)
 
       assert :ok =
-               Mutagen.start_sync("deadbeef", "/tmp/worktree", "loopyard-deadbeef-workspace-1")
+               Mutagen.start_sync(
+                 "deadbeef",
+                 "/tmp/worktree",
+                 "#{Loopyard.Docker.prefix()}deadbeef-workspace-1"
+               )
 
       assert_received {:args, args}
 
       assert "sync" in args
       assert "create" in args
-      assert "--name=loopyard-deadbeef" in args
+      assert "--name=#{Loopyard.Docker.prefix()}deadbeef" in args
       assert "--sync-mode=two-way-safe" in args
       assert "--ignore=.git" in args
       assert "--ignore=.loopyard" in args
       assert "/tmp/worktree" in args
-      assert "docker://loopyard-deadbeef-workspace-1/workspace" in args
+      assert "docker://#{Loopyard.Docker.prefix()}deadbeef-workspace-1/workspace" in args
     end
 
     test "treats 'already exists' output as :ok (idempotent)" do
       stub_runner(fn _args -> {"session with name loopyard-x already exists", 1} end)
-      assert :ok = Mutagen.start_sync("x", "/tmp/wt", "loopyard-x-workspace-1")
+      assert :ok = Mutagen.start_sync("x", "/tmp/wt", "#{Loopyard.Docker.prefix()}x-workspace-1")
     end
 
     test "returns {:error, reason} on other failures" do
       stub_runner(fn _args -> {"daemon not running", 1} end)
 
       assert {:error, "daemon not running"} =
-               Mutagen.start_sync("x", "/tmp/wt", "loopyard-x-workspace-1")
+               Mutagen.start_sync("x", "/tmp/wt", "#{Loopyard.Docker.prefix()}x-workspace-1")
     end
   end
 

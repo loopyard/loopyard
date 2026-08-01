@@ -18,7 +18,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.FileBrowserTest do
       # Smoke test: probe a volume that doesn't exist — VolumeIO will
       # error, VolumeManager.tree will error, we should get the
       # not_found shape without crashing.
-      result = FileBrowser.probe_path("loopyard-does-not-exist-probe", "some/file")
+      result =
+        FileBrowser.probe_path("#{Loopyard.Docker.prefix()}does-not-exist-probe", "some/file")
 
       assert %{path: "some/file", not_found: true, content: nil} = result
     end

@@ -13,7 +13,7 @@ defmodule Loopyard.ComposeTest do
 
   describe "project_name/1" do
     test "uses loopyard- prefix" do
-      assert Compose.project_name("abcd") == "loopyard-abcd"
+      assert Compose.project_name("abcd") == "#{Loopyard.Docker.prefix()}abcd"
     end
   end
 
@@ -42,8 +42,13 @@ defmodule Loopyard.ComposeTest do
       config = Jason.decode!(result)
 
       web_volumes = config["services"]["web"]["volumes"]
-      assert Enum.any?(web_volumes, &String.starts_with?(&1, "loopyard-abcd-code:"))
-      assert config["volumes"]["loopyard-abcd-code"]["external"] == true
+
+      assert Enum.any?(
+               web_volumes,
+               &String.starts_with?(&1, "#{Loopyard.Docker.prefix()}abcd-code:")
+             )
+
+      assert config["volumes"]["#{Loopyard.Docker.prefix()}abcd-code"]["external"] == true
     end
 
     test "rejects pinned host ports with a clear error" do
@@ -115,7 +120,10 @@ defmodule Loopyard.ComposeTest do
       config = Jason.decode!(result)
 
       assert config["services"]["web"]["build"] == "."
-      assert "loopyard-abcd-code:/workspace" in config["services"]["web"]["volumes"]
+
+      assert "#{Loopyard.Docker.prefix()}abcd-code:/workspace" in config["services"]["web"][
+               "volumes"
+             ]
     end
   end
 
@@ -145,11 +153,15 @@ defmodule Loopyard.ComposeTest do
       assert Map.has_key?(config, "volumes")
 
       # Code volume declared as external with canonical name
-      assert config["volumes"]["loopyard-test1-code"]["external"] == true
+      assert config["volumes"]["#{Loopyard.Docker.prefix()}test1-code"]["external"] == true
 
       # Service volumes reference the code volume correctly
       ws_volumes = config["services"]["workspace"]["volumes"]
-      assert Enum.any?(ws_volumes, &String.starts_with?(&1, "loopyard-test1-code:"))
+
+      assert Enum.any?(
+               ws_volumes,
+               &String.starts_with?(&1, "#{Loopyard.Docker.prefix()}test1-code:")
+             )
 
       # Ports become loopback-ephemeral for Docker; proxy owns user-facing port
       assert config["services"]["workspace"]["ports"] == ["127.0.0.1::3000"]
@@ -174,7 +186,7 @@ defmodule Loopyard.ComposeTest do
       config = Jason.decode!(result)
 
       # The canonical code volume MUST be declared
-      assert config["volumes"]["loopyard-xyz1-code"]["external"] == true
+      assert config["volumes"]["#{Loopyard.Docker.prefix()}xyz1-code"]["external"] == true
     end
 
     test "preserves non-code service volumes" do

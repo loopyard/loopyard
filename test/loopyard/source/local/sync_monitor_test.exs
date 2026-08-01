@@ -42,7 +42,9 @@ defmodule Loopyard.Source.Local.SyncMonitorTest do
   end
 
   defp with_worktree(fun) do
-    wt = Path.join(System.tmp_dir!(), "loopyard-sm-wt-#{:rand.uniform(1_000_000)}")
+    wt =
+      Path.join(System.tmp_dir!(), "#{Loopyard.Docker.prefix()}sm-wt-#{:rand.uniform(1_000_000)}")
+
     File.mkdir_p!(wt)
 
     try do
@@ -58,7 +60,7 @@ defmodule Loopyard.Source.Local.SyncMonitorTest do
        [
          workspace_id: workspace_id,
          worktree_path: worktree_path,
-         container_name: "loopyard-#{workspace_id}-workspace-1"
+         container_name: "#{Loopyard.Docker.prefix()}#{workspace_id}-workspace-1"
        ]}
     )
   end
@@ -103,7 +105,7 @@ defmodule Loopyard.Source.Local.SyncMonitorTest do
            [
              workspace_id: ws_id,
              worktree_path: "/does/not/exist/#{ws_id}",
-             container_name: "loopyard-#{ws_id}-workspace-1"
+             container_name: "#{Loopyard.Docker.prefix()}#{ws_id}-workspace-1"
            ]}
         )
 
@@ -132,7 +134,7 @@ defmodule Loopyard.Source.Local.SyncMonitorTest do
 
   # Sanity — ensure we're not accidentally hitting the real mutagen binary.
   test "Mutagen.session_name is stable" do
-    assert Mutagen.session_name("x") == "loopyard-x"
+    assert Mutagen.session_name("x") == "#{Loopyard.Docker.prefix()}x"
   end
 
   describe "container readiness" do

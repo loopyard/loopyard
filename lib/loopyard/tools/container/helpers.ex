@@ -133,7 +133,8 @@ defmodule Loopyard.Tools.Container.Helpers do
   end
 
   # Workstation identity from its container name (`loopyard-ws-<id>` → `<id>`).
-  defp container_identity(container), do: String.replace_prefix(container, "loopyard-ws-", "")
+  defp container_identity(container),
+    do: String.replace_prefix(container, "#{Loopyard.Docker.prefix()}ws-", "")
 
   def normalize_search_path("."), do: "."
   def normalize_search_path(""), do: "."

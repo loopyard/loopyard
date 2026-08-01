@@ -69,7 +69,7 @@ defmodule Loopyard.VolumeManager do
           |> String.trim()
           |> String.split("\n", trim: true)
           |> Enum.filter(fn name ->
-            String.starts_with?(name, "loopyard-#{workspace_id}")
+            String.starts_with?(name, "#{Loopyard.Docker.prefix()}#{workspace_id}")
           end)
           |> Enum.map(fn name -> volume_info(name) end)
           |> Enum.reject(&is_nil/1)
@@ -344,7 +344,7 @@ defmodule Loopyard.VolumeManager do
   defp find_container_for_volume(volume_name) do
     case Regex.run(~r/^loopyard-([a-f0-9]+)-code$/, volume_name) do
       [_, workspace_id] ->
-        container = "loopyard-#{workspace_id}-workspace-1"
+        container = "#{Loopyard.Docker.prefix()}#{workspace_id}-workspace-1"
 
         if Docker.container_running?(container) do
           {:ok, container}
@@ -395,13 +395,13 @@ defmodule Loopyard.VolumeManager do
   Generate volume name for workspace code.
   """
   def code_volume_name(workspace_id) do
-    "loopyard-#{workspace_id}-code"
+    "#{Loopyard.Docker.prefix()}#{workspace_id}-code"
   end
 
   @doc """
   Generate volume name for workspace cache.
   """
   def cache_volume_name(workspace_id) do
-    "loopyard-#{workspace_id}-cache"
+    "#{Loopyard.Docker.prefix()}#{workspace_id}-cache"
   end
 end

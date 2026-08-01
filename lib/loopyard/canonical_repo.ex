@@ -31,7 +31,7 @@ defmodule Loopyard.CanonicalRepo do
 
   @doc "Canonical bare-repo volume name for a project."
   @spec volume_name(String.t()) :: String.t()
-  def volume_name(project_id), do: "loopyard-#{project_id}-canonical"
+  def volume_name(project_id), do: "#{Loopyard.Docker.prefix()}#{project_id}-canonical"
 
   @doc """
   Create an EMPTY canonical repo (new/blank project) with a `main` branch that

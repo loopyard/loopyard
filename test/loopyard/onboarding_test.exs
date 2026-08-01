@@ -104,7 +104,7 @@ defmodule Loopyard.OnboardingTest do
 
     # Start working — cheap, no preview cluster, no agent-written compose needed.
     assert {:ok, container} = Onboarding.start_working(ws.id)
-    assert container == "loopyard-#{ws.id}-work"
+    assert container == "#{Loopyard.Docker.prefix()}#{ws.id}-work"
     # eventually: `working?` is a raw `docker inspect`, and on a loaded CI
     # daemon (right after the base-image build) a single read can lag the
     # just-started container. Same convention as the compose asserts above.
@@ -190,7 +190,7 @@ defmodule Loopyard.OnboardingTest do
                "{{.Names}} {{.Status}}"
              ])
 
-    assert out =~ "loopyard-#{ws.id}-web-1"
+    assert out =~ "#{Loopyard.Docker.prefix()}#{ws.id}-web-1"
     assert out =~ "Up"
   end
 
@@ -221,7 +221,7 @@ defmodule Loopyard.OnboardingTest do
 
   test "github sync wiring: attach a remote (persisted) + sync pushes canonical main to it" do
     {:ok, project, _main} = Onboarding.create_project("sync-#{uid()}")
-    remote_vol = "loopyard-tmpremote-#{uid()}-canonical"
+    remote_vol = "#{Loopyard.Docker.prefix()}tmpremote-#{uid()}-canonical"
 
     on_exit(fn ->
       cleanup(project)

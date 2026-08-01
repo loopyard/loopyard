@@ -131,7 +131,7 @@ defmodule Loopyard.Docker do
   List all Loopyard containers.
   """
   def list_containers(opts \\ []) do
-    filter_prefix = Keyword.get(opts, :prefix, "loopyard-")
+    filter_prefix = Keyword.get(opts, :prefix, prefix())
 
     case docker([
            "ps",
@@ -204,6 +204,90 @@ defmodule Loopyard.Docker do
     |> Enum.sum()
   end
 
+  # The BACKSTOP behind the prefix. Prefixing the name constructors keeps a test
+  # run away from real resources; this catches the ones that slip past — a
+  # hardcoded string, a name from a fixture, a path we haven't routed yet.
+  # Enabled in test only (`:forbid_real_docker_resources`), where naming a real
+  # resource is always a bug and should fail at the call with a stack trace
+  # rather than quietly mutate state someone is using.
+  @production_prefix "loopyard-"
+
+  # Reads can't corrupt anything: `ps`, `inspect`, `logs`, `ls`, `stats` observe
+  # the daemon and change nothing, and some tests legitimately assert that the
+  # listing API works against whatever is actually running. Only MUTATIONS are
+  # the boundary, so only mutations are guarded.
+  @mutating ~w(run create start stop kill restart rm exec cp update pause unpause
+               commit build push tag load import)
+
+  defp mutating?(["volume" | rest]), do: match?([sub | _] when sub in ~w(create rm prune), rest)
+
+  defp mutating?(["network" | rest]),
+    do: match?([sub | _] when sub in ~w(create rm prune connect disconnect), rest)
+
+  defp mutating?(["image" | rest]), do: match?([sub | _] when sub in ~w(rm prune), rest)
+  defp mutating?(["system" | rest]), do: match?([sub | _] when sub in ~w(prune), rest)
+
+  defp mutating?(["compose" | rest]),
+    do: Enum.any?(rest, &(&1 in ~w(up down rm restart stop start kill exec)))
+
+  defp mutating?([sub | _]), do: sub in @mutating
+  defp mutating?(_), do: false
+
+  defp guard_real_resources!(args) do
+    if Application.get_env(:loopyard, :forbid_real_docker_resources, false) and mutating?(args) do
+      Enum.each(args, fn arg ->
+        if is_binary(arg) and names_real_resource?(arg) do
+          raise """
+          Refusing `docker #{Enum.join(args, " ")}`.
+
+          It names #{inspect(arg)} — a REAL Docker resource. Docker names are
+          global; LOOPYARD_HOME scopes files, not the daemon, so this would
+          mutate resources the developer is actively using. (This is how the
+          suite once wiped a live CLAUDE_CODE_OAUTH_TOKEN on every run.)
+
+          Build the name from Loopyard.Docker.prefix/0 instead of a literal.
+          """
+        end
+      end)
+    end
+
+    :ok
+  end
+
+  # Shared BUILD ARTIFACTS, not per-workspace state. The base image is built
+  # once and read by everything; a test referencing it is correct, and pinning
+  # it per-environment would mean rebuilding a multi-hundred-MB image per run.
+  # Only resources that hold STATE — containers, volumes, sync sessions — are
+  # the isolation boundary.
+  @shared_artifacts ["loopyard-workspace-base"]
+
+  defp names_real_resource?(arg) do
+    # Split on the separators Docker args use ("vol:/mount", "name=x", lists).
+    arg
+    |> String.split([":", "=", ",", " ", "/"])
+    |> Enum.any?(fn part ->
+      String.starts_with?(part, @production_prefix) and
+        not String.starts_with?(part, prefix()) and
+        not Enum.any?(@shared_artifacts, &String.starts_with?(part, &1))
+    end)
+  end
+
+  @doc """
+  The prefix every Docker resource this app owns is named with.
+
+  Docker names are GLOBAL — `LOOPYARD_HOME` scopes files on disk and nothing
+  else — so a process pointed at a scratch home still addresses the REAL
+  containers and volumes. The test suite is exactly that process: it once
+  materialized its own env store into the developer's live home volume and
+  logged every agent out of Claude, on every `mix test`.
+
+  Giving test runs their own prefix means they cannot NAME a real resource, so
+  they cannot corrupt one. The isolation holds by construction rather than by
+  everyone remembering.
+  """
+  @spec prefix() :: String.t()
+  def prefix, do: Application.get_env(:loopyard, :resource_prefix, "loopyard-")
+
   @doc """
   Execute a raw docker CLI command. Returns {:ok, output} or {:error, output}.
 
@@ -212,6 +296,7 @@ defmodule Loopyard.Docker do
     * `:env` — list of `{name, value}` tuples passed to the child process
   """
   def docker(args, opts \\ []) do
+    guard_real_resources!(args)
     timeout = Keyword.get(opts, :timeout, 120_000)
     env = Keyword.get(opts, :env, [])
     retry = Keyword.get(opts, :retry, true)

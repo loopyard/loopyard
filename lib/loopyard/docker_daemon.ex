@@ -234,7 +234,7 @@ defmodule Loopyard.DockerDaemon do
         "ps",
         "-a",
         "--filter",
-        "name=loopyard-#{ws.id}",
+        "name=#{Loopyard.Docker.prefix()}#{ws.id}",
         "--format",
         "{{.Names}}|{{.Status}}"
       ])

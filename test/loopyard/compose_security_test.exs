@@ -279,7 +279,7 @@ defmodule Loopyard.ComposeSecurityTest do
         },
         "volumes" => %{
           # Top-level external volume pinned to ANOTHER workspace's code volume.
-          "code" => %{"external" => true, "name" => "loopyard-OTHER-code"}
+          "code" => %{"external" => true, "name" => "#{Loopyard.Docker.prefix()}OTHER-code"}
         }
       }
 
@@ -287,7 +287,7 @@ defmodule Loopyard.ComposeSecurityTest do
       config = Jason.decode!(result)
 
       # The foreign name must be rewritten to THIS workspace's code volume.
-      assert config["volumes"]["code"]["name"] == "loopyard-mine-code"
+      assert config["volumes"]["code"]["name"] == "#{Loopyard.Docker.prefix()}mine-code"
     end
 
     test "leaves an unrelated named volume (postgres-data) alone" do
@@ -310,13 +310,15 @@ defmodule Loopyard.ComposeSecurityTest do
     test "leaves THIS workspace's own code-volume name alone (no needless rewrite)" do
       compose = %{
         "services" => %{"web" => %{"volumes" => ["code:/workspace"]}},
-        "volumes" => %{"code" => %{"external" => true, "name" => "loopyard-mine-code"}}
+        "volumes" => %{
+          "code" => %{"external" => true, "name" => "#{Loopyard.Docker.prefix()}mine-code"}
+        }
       }
 
       {:ok, result} = Compose.process_agent_compose(Jason.encode!(compose), "mine")
       config = Jason.decode!(result)
 
-      assert config["volumes"]["code"]["name"] == "loopyard-mine-code"
+      assert config["volumes"]["code"]["name"] == "#{Loopyard.Docker.prefix()}mine-code"
     end
   end
 

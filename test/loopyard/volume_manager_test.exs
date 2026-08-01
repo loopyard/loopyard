@@ -5,13 +5,18 @@ defmodule Loopyard.VolumeManagerTest do
 
   describe "volume naming" do
     test "code_volume_name/1 generates correct name" do
-      assert VolumeManager.code_volume_name("abc123") == "loopyard-abc123-code"
-      assert VolumeManager.code_volume_name("workspace-1") == "loopyard-workspace-1-code"
+      assert VolumeManager.code_volume_name("abc123") == "#{Loopyard.Docker.prefix()}abc123-code"
+
+      assert VolumeManager.code_volume_name("workspace-1") ==
+               "#{Loopyard.Docker.prefix()}workspace-1-code"
     end
 
     test "cache_volume_name/1 generates correct name" do
-      assert VolumeManager.cache_volume_name("abc123") == "loopyard-abc123-cache"
-      assert VolumeManager.cache_volume_name("workspace-1") == "loopyard-workspace-1-cache"
+      assert VolumeManager.cache_volume_name("abc123") ==
+               "#{Loopyard.Docker.prefix()}abc123-cache"
+
+      assert VolumeManager.cache_volume_name("workspace-1") ==
+               "#{Loopyard.Docker.prefix()}workspace-1-cache"
     end
   end
 
@@ -50,7 +55,8 @@ defmodule Loopyard.VolumeManagerTest do
     end
 
     test "returns ok for non-existent volume" do
-      assert :ok = VolumeManager.delete_volume("loopyard-nonexistent-volume-xyz")
+      assert :ok =
+               VolumeManager.delete_volume("#{Loopyard.Docker.prefix()}nonexistent-volume-xyz")
     end
   end
 
@@ -69,7 +75,8 @@ defmodule Loopyard.VolumeManagerTest do
     end
 
     test "returns false for non-existent volume" do
-      assert VolumeManager.volume_exists?("loopyard-nonexistent-volume-xyz") == false
+      assert VolumeManager.volume_exists?("#{Loopyard.Docker.prefix()}nonexistent-volume-xyz") ==
+               false
     end
   end
 
@@ -244,11 +251,11 @@ defmodule Loopyard.VolumeManagerTest do
     end
 
     test "returns nil for non-existent volume" do
-      assert VolumeManager.volume_info("loopyard-nonexistent-xyz") == nil
+      assert VolumeManager.volume_info("#{Loopyard.Docker.prefix()}nonexistent-xyz") == nil
     end
 
     test "identifies code volume purpose" do
-      volume_name = "loopyard-abc123-code"
+      volume_name = "#{Loopyard.Docker.prefix()}abc123-code"
 
       on_exit(fn ->
         System.cmd("docker", ["volume", "rm", "-f", volume_name], stderr_to_stdout: true)
@@ -307,7 +314,7 @@ defmodule Loopyard.VolumeManagerTest do
 
     test "root tree returns workspace-relative paths" do
       # Use a live workspace if available (garryslist 0a6a)
-      vol = "loopyard-0a6a-code"
+      vol = "#{Loopyard.Docker.prefix()}0a6a-code"
 
       case VolumeManager.tree(vol, ".") do
         {:ok, entries} ->
@@ -326,7 +333,7 @@ defmodule Loopyard.VolumeManagerTest do
     end
 
     test "subdirectory tree returns full workspace-relative paths" do
-      vol = "loopyard-0a6a-code"
+      vol = "#{Loopyard.Docker.prefix()}0a6a-code"
 
       case VolumeManager.tree(vol, "app") do
         {:ok, entries} ->
@@ -341,7 +348,7 @@ defmodule Loopyard.VolumeManagerTest do
     end
 
     test "deeply nested tree returns full paths" do
-      vol = "loopyard-0a6a-code"
+      vol = "#{Loopyard.Docker.prefix()}0a6a-code"
 
       case VolumeManager.tree(vol, "app/models") do
         {:ok, entries} when entries != [] ->
