@@ -40,7 +40,7 @@ defmodule LoopyardWeb.Components.Nav do
   <.bar>
   <.back_button navigate="/" />
   <h1 class="truncate font-semibold">Sound</h1>
-  <:actions><.operator_link /></:actions>
+  <:actions><.mode_nav id="mode-x" active={:workspaces} /></:actions>
   </.bar>
   """
   attr :height, :string, default: "h-14", doc: "row height, e.g. h-12 (compact) / h-14"

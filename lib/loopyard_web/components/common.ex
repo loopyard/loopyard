@@ -532,12 +532,24 @@ defmodule LoopyardWeb.Components.Common do
   end
 
   @doc """
-  The MODE NAV — the app's two modes + the System click-off, per
-  plans/ia-two-modes.md. Three fixed icons, used identically everywhere:
-  Workspaces (2×2 grid) ⇄ Operator (the trefoil — the operator is loopyard's
-  mind, the brand mark is its face), and System (gear, quiet).
+  The MODE NAV — ONE control, per plans/ia-two-modes.md.
+
+  The Operator sits ABOVE the workspaces, so this is a move in altitude, not a
+  choice between peers: it always points AWAY from where you are — up to the
+  Operator (the trefoil; the operator is loopyard's mind, the brand mark is its
+  face) from anywhere else, down to the workspaces (2×2 grid) from the Operator.
+  There is no "current" state to style, because it never represents where you
+  already are.
+
+  System is deliberately absent: it's a destination you visit on purpose, not a
+  mode you toggle, and it lives on the home dashboard.
+
+  Pass a UNIQUE `id` per placement to get the ambient-state indicator (the
+  operator link tints while its bed is playing). Two placements on one page
+  (the desktop bar and the phone header) need two ids.
   """
   attr :active, :atom, default: nil, values: [nil, :workspaces, :operator, :system]
+  attr :id, :string, default: nil
   attr :class, :string, default: nil
 
   def mode_nav(assigns) do
@@ -554,14 +566,25 @@ defmodule LoopyardWeb.Components.Common do
     every screen invites the poking-around that a settings page shouldn't
     get. It lives on the home dashboard, which the brand crumb always
     reaches. --%>
+      <%!-- The operator is also the AMBIENT presence, so this link doubles as
+    the "is the bed playing" indicator (SoundIcon mirrors engine state onto
+    the two data-sound-icon elements). That used to be a separate
+    `operator_link/1` with its own icon — which drifted to the command GRID,
+    so on a phone the control that goes UP to the operator wore the mark of
+    the thing you were already looking at. One control, one mark. --%>
       <.link
         :if={@active != :operator}
         navigate="/operator"
+        id={@id}
+        phx-hook={@id && "SoundIcon"}
         aria-label="Up to the Operator"
         title="Operator — above the workspaces; run and watch everything"
         class={mode_btn(false)}
       >
-        <Brand.mark class="w-5 h-5" />
+        <span data-sound-icon="off"><Brand.mark class="w-5 h-5" /></span>
+        <span data-sound-icon="on" class="hidden text-violet-500 dark:text-violet-400">
+          <Brand.mark class="w-5 h-5" />
+        </span>
       </.link>
       <.link
         :if={@active == :operator}
@@ -581,61 +604,6 @@ defmodule LoopyardWeb.Components.Common do
   defp mode_btn(_),
     do:
       "flex-none inline-flex items-center justify-center w-11 h-11 md:w-9 md:h-9 rounded-sm text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
-
-  attr :id, :string, default: "operator-link"
-  attr :class, :string, default: nil
-
-  @doc """
-  The Operator affordance — a command-grid icon that links to `/operator` (live
-  nav, so the ambient bed never cuts). The operator is now the one place you run
-  everything from AND the ambient presence, so this REPLACES the old speaker
-  icon everywhere it appeared. The `SoundIcon` JS hook stays: it mirrors the
-  ambient engine state onto `data-sound-icon`, so the icon carries a subtle
-  violet tint while the operator's bed is playing — the operator "is live" cue.
-  Give each placement a unique `id`.
-  """
-  def operator_link(assigns) do
-    ~H"""
-    <.link
-      navigate="/operator"
-      id={@id}
-      phx-hook="SoundIcon"
-      aria-label="Operator"
-      title="Operator — run and watch everything from here"
-      class={[
-        "flex-none inline-flex items-center justify-center w-11 h-11 rounded-sm text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-violet-600 dark:hover:text-violet-400 transition-colors",
-        @class
-      ]}
-    >
-      <svg
-        data-sound-icon="off"
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 20 20"
-        fill="currentColor"
-        class="w-5 h-5"
-      >
-        <path
-          fill-rule="evenodd"
-          d="M4.25 2A2.25 2.25 0 0 0 2 4.25v2.5A2.25 2.25 0 0 0 4.25 9h2.5A2.25 2.25 0 0 0 9 6.75v-2.5A2.25 2.25 0 0 0 6.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 2 13.25v2.5A2.25 2.25 0 0 0 4.25 18h2.5A2.25 2.25 0 0 0 9 15.75v-2.5A2.25 2.25 0 0 0 6.75 11h-2.5Zm9-9A2.25 2.25 0 0 0 11 4.25v2.5A2.25 2.25 0 0 0 13.25 9h2.5A2.25 2.25 0 0 0 18 6.75v-2.5A2.25 2.25 0 0 0 15.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 11 13.25v2.5A2.25 2.25 0 0 0 13.25 18h2.5A2.25 2.25 0 0 0 18 15.75v-2.5A2.25 2.25 0 0 0 15.75 11h-2.5Z"
-          clip-rule="evenodd"
-        />
-      </svg>
-      <svg
-        data-sound-icon="on"
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 20 20"
-        fill="currentColor"
-        class="w-5 h-5 hidden text-violet-500 dark:text-violet-400"
-      >
-        <path
-          fill-rule="evenodd"
-          d="M4.25 2A2.25 2.25 0 0 0 2 4.25v2.5A2.25 2.25 0 0 0 4.25 9h2.5A2.25 2.25 0 0 0 9 6.75v-2.5A2.25 2.25 0 0 0 6.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 2 13.25v2.5A2.25 2.25 0 0 0 4.25 18h2.5A2.25 2.25 0 0 0 9 15.75v-2.5A2.25 2.25 0 0 0 6.75 11h-2.5Zm9-9A2.25 2.25 0 0 0 11 4.25v2.5A2.25 2.25 0 0 0 13.25 9h2.5A2.25 2.25 0 0 0 18 6.75v-2.5A2.25 2.25 0 0 0 15.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 11 13.25v2.5A2.25 2.25 0 0 0 13.25 18h2.5A2.25 2.25 0 0 0 18 15.75v-2.5A2.25 2.25 0 0 0 15.75 11h-2.5Z"
-          clip-rule="evenodd"
-        />
-      </svg>
-    </.link>
-    """
-  end
 
   @doc """
   The ambient-sound PILL — a compact media-control for the operator surface. A

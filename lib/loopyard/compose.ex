@@ -22,6 +22,12 @@ defmodule Loopyard.Compose do
   def process_agent_compose(compose_content, workspace_id, _opts \\ []) do
     code_volume = Workspace.volume_name_for(workspace_id)
 
+    # Placeholders resolve HERE, at run time, so the file on disk stays portable
+    # across branches. (They used to resolve at write time, which baked one
+    # workspace's id into a file git carries to every branch — see
+    # Tools.Container.WriteFile.)
+    compose_content = String.replace(compose_content, "${WORKSPACE_ID}", workspace_id)
+
     case parse_compose(compose_content) do
       {:ok, compose} ->
         with :ok <- validate_no_host_mounts(compose) do
@@ -468,18 +474,33 @@ defmodule Loopyard.Compose do
   # FORK mount and mutate the SOURCE's code — silent cross-workspace corruption.
   # We only touch names that match the loopyard code-volume shape, so unrelated
   # named volumes (postgres-data, etc.) are left alone.
-  @code_volume_name ~r/^loopyard-.+-code$/
+  # ANY loopyard code-volume name that isn't ours becomes ours. Used on both
+  # top-level `name:` and SERVICE MOUNTS — the mount was the gap: normalizing
+  # only the declaration left `- loopyard-<source>-code:/workspace` in a
+  # service, so a fork mounted and mutated the SOURCE's code. That is the exact
+  # silent cross-workspace corruption this is here to prevent.
+  @code_volume_ref ~r/loopyard-[A-Za-z0-9_-]+-code/
+
+  defp resolve_foreign_code_volume(value, code_volume) do
+    String.replace(value, @code_volume_ref, code_volume)
+  end
+
   defp normalize_code_volume_names(compose, code_volume) do
     case Map.get(compose, "volumes") do
       volumes when is_map(volumes) ->
         fixed =
           Map.new(volumes, fn
             {k, %{"name" => name} = spec} when is_binary(name) ->
-              if Regex.match?(@code_volume_name, name) and name != code_volume do
-                {k, Map.put(spec, "name", code_volume)}
-              else
-                {k, spec}
-              end
+              # The setup guide's own example writes `name: ${CODE_VOLUME}`, and
+              # nothing resolved it here — only service mounts were substituted,
+              # so a compose following the documented form reached Docker with a
+              # literal "${CODE_VOLUME}" and failed to start.
+              resolved =
+                name
+                |> String.replace("${CODE_VOLUME}", code_volume)
+                |> resolve_foreign_code_volume(code_volume)
+
+              {k, Map.put(spec, "name", resolved)}
 
             {k, v} ->
               {k, v}
@@ -498,7 +519,9 @@ defmodule Loopyard.Compose do
         updated =
           Enum.map(volumes, fn
             vol when is_binary(vol) ->
-              String.replace(vol, "${CODE_VOLUME}", code_volume)
+              vol
+              |> String.replace("${CODE_VOLUME}", code_volume)
+              |> resolve_foreign_code_volume(code_volume)
 
             vol ->
               vol

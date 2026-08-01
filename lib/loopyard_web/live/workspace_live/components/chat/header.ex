@@ -11,7 +11,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
   alias Phoenix.LiveView.JS
   alias LoopyardWeb.Components.Nav
 
-  import LoopyardWeb.Components.Common, only: [dot: 1, control_btn: 1, operator_link: 1]
+  import LoopyardWeb.Components.Common, only: [dot: 1, control_btn: 1]
   import LoopyardWeb.Components.Sidebar, only: [status_dot: 1, agent_display_status: 1]
   import LoopyardWeb.Live.WorkspaceLive.Components.Formatters, only: [time_ago: 1]
 
@@ -168,7 +168,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
           >
             :{@app_port.port} <span class="text-xs opacity-70">↗</span>
           </.link>
-          <.operator_link id="operator-workspace" />
+          <LoopyardWeb.Components.Common.mode_nav id="mode-ws-mobile" active={:workspaces} />
         </:actions>
       </Nav.bar>
 

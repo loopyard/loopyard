@@ -491,7 +491,7 @@ Two ways in:
 - **WorkspaceGroup** = per-workspace Supervisor (ServiceManager + AgentSupervisor + ContainerMonitor).
 - **Tool** = an MCP tool module under `Tools.Container.*`. One file per tool. Uses `Loopyard.Tool` macro.
 - **Toolkit** = `Tools.Container` — lists all tool modules in `__tool_server__/0`.
-- Infrastructure files (`Dockerfile`, `docker-compose.yml`) live in `.loopyard/workspace/` (gitignored). Metadata (`workspace.json` with project name, system prompt) lives in `.loopyard/repo/` (can be tracked in git).
+- Infrastructure files (`Dockerfile`, `docker-compose.yml`) live in `.loopyard/workspace/` and are **tracked in git** — that's how a new branch or fork inherits a working dev environment instead of re-scaffolding one. Which means they must be **workspace-agnostic**: never a literal `loopyard-<id>-code`, always `${CODE_VOLUME}` / `${WORKSPACE_ID}`, resolved at run time by `Compose.process_agent_compose/3`. `Tools.Container.WriteFile` rewrites a hardcoded name back to the placeholder on write (it used to do the opposite, baking one workspace's id into a file git carries to every branch). Metadata (`workspace.json` with project name, system prompt) lives in `.loopyard/repo/`.
 - User-level data in `~/.loopyard/` (overridable with `LOOPYARD_HOME` env var).
 - URLs: `/projects/:project_id/workspaces/:workspace_id/agents/:id`, `/messages/:agent_id/:msg_id`
 

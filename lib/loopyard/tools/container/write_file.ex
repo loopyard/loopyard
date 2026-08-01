@@ -21,6 +21,25 @@ defmodule Loopyard.Tools.Container.WriteFile do
   # fails. The same validator runs again in `Compose.process_agent_compose/3`
   # — defense in depth: even if someone writes the file out-of-band, it
   # can't boot a host-mounted container.
+  defp portability_note(same, same), do: ""
+
+  defp portability_note(_original, _rewritten),
+    do:
+      " — rewrote a hardcoded code-volume name to ${CODE_VOLUME} so this compose" <>
+        " stays valid on every branch (it resolves when the cluster starts)."
+
+  # Any literal loopyard code-volume name becomes ${CODE_VOLUME} again. Matches
+  # ANY workspace's name, not just this one: a compose copied from a sibling
+  # branch carries THAT branch's id, and leaving it is how a fork ends up
+  # mounting the source's code.
+  @code_volume_literal ~r/loopyard-[A-Za-z0-9_-]+-code/
+
+  defp deliteralize_code_volume(content, volume_name) do
+    content
+    |> String.replace(@code_volume_literal, "${CODE_VOLUME}")
+    |> String.replace(volume_name, "${CODE_VOLUME}")
+  end
+
   defp validate_compose_if_needed(path, content) do
     if String.ends_with?(path, "docker-compose.yml") do
       case parse_and_validate_compose(content) do
@@ -61,19 +80,34 @@ defmodule Loopyard.Tools.Container.WriteFile do
         %{workspace_id: workspace_id} when is_binary(workspace_id) ->
           volume_name = Loopyard.Workspace.volume_name_for(workspace_id)
 
-          # Substitute variables in compose files
+          # KEEP COMPOSE PORTABLE. We used to resolve ${CODE_VOLUME} and
+          # ${WORKSPACE_ID} here, baking this workspace's id into the bytes on
+          # disk — so `.loopyard/workspace/docker-compose.yml`, which git
+          # carries to every branch, ended up naming ONE workspace's volume
+          # (`name: loopyard-261219b7-code`). On another branch that file reads
+          # as foreign, stale infrastructure, and an agent rewrites it instead
+          # of reusing it. The cluster still ran, because
+          # `Compose.normalize_code_volume_names/2` silently corrects a foreign
+          # name at process time — which is exactly why it stayed invisible:
+          # the system worked while the file lied.
+          #
+          # Resolution belongs at RUN time (`Compose.process_agent_compose/3`
+          # already does it) so the file stays true on every branch. Going the
+          # other way, a literal an agent hardcoded is rewritten back to the
+          # placeholder.
+          original = content
+
           content =
             if String.ends_with?(path, "docker-compose.yml") do
-              content
-              |> String.replace("${CODE_VOLUME}", volume_name)
-              |> String.replace("${WORKSPACE_ID}", workspace_id)
+              deliteralize_code_volume(content, volume_name)
             else
               content
             end
 
           with :ok <- validate_compose_if_needed(path, content),
                :ok <- Loopyard.VolumeManager.write_file(volume_name, path, content) do
-            {:ok, "Wrote #{byte_size(content)} bytes to #{path}"}
+            {:ok,
+             "Wrote #{byte_size(content)} bytes to #{path}#{portability_note(original, content)}"}
           else
             {:error, reason} when is_binary(reason) ->
               {:error, reason}

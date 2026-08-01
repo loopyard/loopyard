@@ -10,7 +10,15 @@ The cluster has these container types:
 - **dev processes** — run dev server commands. Built from the same Dockerfile as workspace.
 - **stock services** — postgres, redis, minio, etc. Official images, no custom build.
 
-All containers share a code volume mounted at `/workspace`. Use `${CODE_VOLUME}:/workspace` in your compose file — it gets replaced with the actual volume name.
+All containers share a code volume mounted at `/workspace`. Use `${CODE_VOLUME}:/workspace` in your compose file — it resolves to the real volume when the cluster starts.
+
+**Keep it literal-free.** `.loopyard/workspace/` is tracked in git, so this file
+travels to every branch and fork. Never write a concrete `loopyard-<id>-code`
+name: on another branch that names a DIFFERENT workspace's code, and a compose
+that mounts someone else's volume corrupts their working tree. If you find a
+hardcoded name in an existing file, leave `${CODE_VOLUME}` in its place — that
+is what makes the config reusable rather than something the next branch has to
+rewrite.
 
 ## Your tools
 
