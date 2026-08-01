@@ -34,20 +34,28 @@ gets ticked on the strength of "I edited a file".
 | 24 | Service actions on one row | `grid-cols-3` |
 | 25 | Duplicate Stop removed from the turn header | 1 Stop on screen |
 
+## Done + verified (second pass)
+
+| # | Ask | Verified by |
+|---|-----|-------------|
+| 26 | Dashboard card titles a bump bigger | 16 → 18px, all three |
+| 27 | Rail questions bigger, orange `?` icons gone | rows 13 → 15px, 0 icons, text runs 70+ chars instead of truncating at 35 |
+| 28 | Operator summary says something | gauge names nouns ("4 questions · 2 approvals"); the asks themselves are listed and tappable |
+| 29 | "Claude — finished a turn" ×5 killed | digest stores the agent's closing sentence; test forbids the placeholder string |
+| 30 | Status out of the top-right corner | all three cards: clickable gauge line under the title |
+| 31 | Option tap is instant | real `<input>`; 0.9ms in-frame, survives unrelated re-renders |
+| 32 | Answer half-width LEFT, ghosts right | Answer x=410 w=311; Skip 903, Chat 969 |
+| 33 | Type scale unified | 72 ad-hoc `text-[10/11/13px]` → one `.section-label` + the 14px floor; nothing renders below the scale |
+| 34 | Duplicate page titles gone | /workspaces H1 dropped; /review anchors subject left, centres "Review 1 of 6" |
+| 35 | "Ready" beside a green dot gone | `notable_state?/1` — only a state that departs from rest gets words |
+| 36 | Disk at 19% stops alarming | was `String.contains?(pct, "9")`; now a number ≥ 90 |
+| 37 | Mobile 44px targets | `/` and `/workspaces` clean; Back, list rows, project header fixed |
+| 38 | Dead `/remote/` link removed | route was deleted with the binding flag; link 404'd |
+| 39 | `workspace_live.ex` back under its size cap | 1906 → 1888; tree patch moved to `WorkspaceTree` |
+
+Full suite green: 1818 passed, 121 excluded.
+
 ## NOT DONE — still outstanding
-
-**A. Option tap has latency (the big one).** Tapping an answer flickers and
-does nothing for seconds. Selection is a SERVER round-trip
-(`draft_question_option` → broker → broadcast → re-render), so while an agent
-streams, the re-render lands seconds later and unchecks the click. Fix: real
-`<input type="radio">` so the BROWSER owns selection (instant), with the push
-only for durability/multiplayer. Note: the options are `<button type="button">`
-today, which is why the `group-has-[:checked]` rule I added is dead CSS — it
-can never match. That wants removing with the same change.
-
-**B. Desktop question layout.** Asked for: Answer half-width on the LEFT
-directly under the options, ghosts off to the right. Currently the reverse
-(ghosts left, Answer right).
 
 **C. Changes / History show the Files status.** All three route to
 `detail_kind == :volume`, so the same volume panel renders for each. Should
@@ -59,17 +67,20 @@ up; "Other ways" as links to sub-pages; drop the stray Reference/docs block at
 the bottom. Establish one pattern all integrations follow.
 
 **E. Stuck agent after re-auth.** An agent wedged mid-turn ("Brewing… 23m")
-doesn't reset when a new credential lands. Suspected deadlock:
-`reload_agents` → `restart_session(:credentials)` vs. the
-never-kill-a-busy-harness rule — but "busy" is a lie when the turn died on
-auth. Needs: detect a turn that can't progress and let a credential push
-force the reset.
+doesn't reset when a new credential lands. Suspected: `reload_agents` →
+`restart_session(:credentials)` vs. the never-kill-a-busy-harness rule — but
+"busy" is a lie when the turn died on auth. Needs a way to tell a turn that
+can't progress from one that's working.
 
-**F. Operator rail** — flagged as "a typographical nightmare with bad mobile
-touch targets and an inconsistent sidebar look". Untouched. Should compose
-`ProjectList.project_groups` rather than its own `PAST HOUR` / `TODAY` rows.
+**F. Operator rail** — rows now read at the sidebar scale with no icons, but 14
+elements still sit under 44px on mobile and it composes its own `PAST HOUR` /
+`TODAY` rows instead of `ProjectList.project_groups`.
 
 **G. Reviewer scroll/snap.** Replace prev/next arrows with a scroll-snap deck
 (`scroll-snap-type: y proximity`, `scroll-snap-align: start` — proximity so a
 question taller than the viewport doesn't fight the user). It's a state
 restructure: ReviewLive renders one slide with subscriptions keyed to it.
+
+**Deliberate exception:** the question card's Skip/Chat stay at 40px, under the
+44px floor. They're sized down relative to Answer so discarding a question
+isn't a plausible mis-tap; expanding their hit area would undo that.
