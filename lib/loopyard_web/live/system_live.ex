@@ -372,7 +372,7 @@ defmodule LoopyardWeb.SystemLive do
   defp host_card(assigns) do
     ~H"""
     <div class="rounded-sm border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 p-4 min-h-[6rem]">
-      <div class="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
+      <div class="section-label mb-2">
         {@label}
       </div>
       <%= case @async do %>
@@ -411,7 +411,7 @@ defmodule LoopyardWeb.SystemLive do
   defp stat_card(assigns) do
     ~H"""
     <div class="rounded-sm border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 px-3 py-2">
-      <div class="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+      <div class="section-label">
         {@label}
       </div>
       <div class="text-sm font-semibold font-mono mt-0.5">{@value}</div>

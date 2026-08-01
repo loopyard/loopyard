@@ -156,12 +156,12 @@ defmodule LoopyardWeb.SystemOrphansLive do
           <div class="text-xs font-mono">{inspect(@group.owner)}</div>
           <div
             :if={not @group.owner_alive?}
-            class="text-[10px] uppercase font-semibold text-red-600 dark:text-red-400 tracking-wider"
+            class="section-label text-red-600 dark:text-red-400"
           >
             stale — owner DOWN
           </div>
         </div>
-        <div class="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+        <div class="section-label">
           {length(@group.resources)} {if length(@group.resources) == 1,
             do: "resource",
             else: "resources"}

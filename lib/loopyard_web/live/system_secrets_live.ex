@@ -156,7 +156,7 @@ defmodule LoopyardWeb.SystemSecretsLive do
                   <td class="px-3 py-2">
                     <span
                       :if={s.scope == []}
-                      class="inline-flex items-center rounded-sm px-1.5 py-0.5 text-[11px] font-medium bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                      class="inline-flex items-center rounded-sm px-1.5 py-0.5 text-xs font-medium bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400"
                     >
                       global
                     </span>
@@ -263,7 +263,7 @@ defmodule LoopyardWeb.SystemSecretsLive do
                 autocomplete="off"
                 class="mt-1 w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
               />
-              <span class="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 block">
+              <span class="text-xs text-zinc-500 dark:text-zinc-400 mt-1 block">
                 Restrict which workspaces / projects can read this secret. Leave blank so every
                 agent can use it.
               </span>

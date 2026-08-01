@@ -322,15 +322,12 @@ defmodule LoopyardWeb.Components.ProjectList do
           size={:md}
           class="min-w-0"
         />
-        <%!-- The dot alone doesn't SAY anything — "green" isn't a status a new
-             user can read. Name it. Hidden below sm where the row is already
-             tight; the dot keeps carrying it there. --%>
-        <span class={[
-          "hidden sm:inline flex-none text-xs md:text-sm font-medium",
-          LoopyardWeb.Components.Common.status_class(ws_state(@ws))
-        ]}>
-          {LoopyardWeb.Components.Common.status_word(ws_state(@ws))}
-        </span>
+        <%!-- Named only when it departs from rest — the shared component owns
+             that rule, so "Ready" can't creep back in beside a green dot. --%>
+        <LoopyardWeb.Components.Common.status_label
+          state={ws_state(@ws)}
+          class="hidden sm:inline text-xs md:text-sm"
+        />
         <div class="flex-1"></div>
         <span :if={ws_port_entry(@ws)} class="relative z-10 flex-none">
           <Birdseye.port_chip port={ws_port_entry(@ws).port} url={ws_port_entry(@ws).url} />

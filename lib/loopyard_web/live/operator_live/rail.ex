@@ -99,7 +99,7 @@ defmodule LoopyardWeb.OperatorLive.Rail do
       <%!-- The OPERATOR's own questions — no workspace row to nest under, so
            they lead the rail. Same flame mini-language; tap → the Reviewer. --%>
       <section :if={@operator_attention != []} class="p-3 pb-0">
-        <div class="text-[11px] font-medium uppercase tracking-wide text-orange-700/80 dark:text-orange-400/80 px-1 pb-1">
+        <div class="section-label text-orange-700/80 dark:text-orange-400/80 px-1 pb-1">
           Operator · needs you
         </div>
         <div class="space-y-0.5">
@@ -170,7 +170,7 @@ defmodule LoopyardWeb.OperatorLive.Rail do
     / Earlier). Full size + full opacity at every age — recency reads
     from the section label, not from dimming rows away. --%>
         <div :for={{label, items} <- @done_buckets} class="mt-3">
-          <div class="text-[11px] font-medium uppercase tracking-wide text-zinc-400/80 dark:text-zinc-600 px-1 pb-1">
+          <div class="section-label px-1 pb-1">
             {label}
           </div>
           <div
@@ -189,7 +189,7 @@ defmodule LoopyardWeb.OperatorLive.Rail do
               size={:md}
               class="flex-1"
             />
-            <span class="ml-auto flex-none text-[11px] font-medium text-violet-500 opacity-0 group-hover:opacity-100 transition-opacity">
+            <span class="ml-auto flex-none text-xs font-medium text-violet-500 opacity-0 group-hover:opacity-100 transition-opacity">
               →
             </span>
           </div>

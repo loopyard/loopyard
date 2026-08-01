@@ -649,6 +649,29 @@ Hooks.QuestionOptions = {
     this.pending = null
     if (event) this.pushEvent(event, values)
   },
+
+  // The selection belongs to the person who made it. A patch triggered by
+  // ANYTHING else on the page (a streaming reply, another viewer, a status
+  // tick) re-renders these inputs from server state, and if the server's
+  // draft hasn't landed yet that state says "nothing checked" — which is
+  // precisely the tap-then-uncheck flicker. Snapshot before, restore after,
+  // so no unrelated update can ever take your choice away.
+  beforeUpdate() {
+    this.checked = [...this.el.querySelectorAll("input[type=radio],input[type=checkbox]")]
+      .filter((i) => i.checked)
+      .map((i) => i.value)
+    this.hadFocus = document.activeElement && this.el.contains(document.activeElement)
+      ? document.activeElement.value
+      : null
+  },
+
+  updated() {
+    if (!this.checked) return
+    this.el.querySelectorAll("input[type=radio],input[type=checkbox]").forEach((i) => {
+      i.checked = this.checked.includes(i.value)
+    })
+    this.checked = null
+  },
 }
 
 Hooks.Clip = {

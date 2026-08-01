@@ -174,7 +174,7 @@ defmodule LoopyardWeb.WorkstationToolLive do
           hint="On the machine where you're already logged in — it pipes the credential into this workstation."
         >
           <.command_box id="clip-mac" command={@mac_cmd} />
-          <div class="flex items-center gap-4 text-[11px] text-zinc-500 dark:text-zinc-400">
+          <div class="flex items-center gap-4 text-xs text-zinc-500 dark:text-zinc-400">
             <button
               phx-click="recheck"
               class="focus-ring hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
@@ -196,7 +196,7 @@ defmodule LoopyardWeb.WorkstationToolLive do
           <form :if={@ig.env} phx-submit="save_env" class="space-y-2">
             <div>
               <h3 class="text-xs font-medium text-zinc-700 dark:text-zinc-200">Set a token</h3>
-              <p class="text-[11px] text-zinc-500 dark:text-zinc-400">
+              <p class="text-xs text-zinc-500 dark:text-zinc-400">
                 <%!-- Credential keys hot-apply: Env.put -> maybe_reload_agents ->
                      Workstation.reload_agents, so agents pick up a new token on
                      their own. Telling the user to restart contradicted the
@@ -226,7 +226,7 @@ defmodule LoopyardWeb.WorkstationToolLive do
                 type="button"
                 phx-click="run_in_console"
                 phx-value-cmd={@ig.console}
-                class="focus-ring rounded-sm border border-zinc-200 dark:border-zinc-700 px-2.5 py-1 text-[11px] font-mono text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                class="focus-ring rounded-sm border border-zinc-200 dark:border-zinc-700 px-2.5 py-1 text-xs font-mono text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
               >
                 ▶ {@ig[:console_label] || @ig.console}
               </button>

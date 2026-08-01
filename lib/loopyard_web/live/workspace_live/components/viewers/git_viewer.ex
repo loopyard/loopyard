@@ -43,7 +43,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
 
       <%!-- Staged changes --%>
       <div :if={@show_changes && @staged != []}>
-        <div class="text-[10px] font-semibold uppercase tracking-wider text-green-600 dark:text-green-400 px-4 py-2 bg-green-50 dark:bg-green-900/10">
+        <div class="section-label text-green-600 dark:text-green-400 px-4 py-2 bg-green-50 dark:bg-green-900/10">
           Staged — ready to commit ({length(@staged)} file{if length(@staged) != 1, do: "s"})
         </div>
         <.file_change
@@ -55,7 +55,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
 
       <%!-- Unstaged changes --%>
       <div :if={@show_changes && @unstaged != []}>
-        <div class="text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400 px-4 py-2 bg-amber-50 dark:bg-amber-900/10">
+        <div class="section-label text-amber-600 dark:text-amber-400 px-4 py-2 bg-amber-50 dark:bg-amber-900/10">
           Unstaged changes ({length(@unstaged)} file{if length(@unstaged) != 1, do: "s"})
         </div>
         <.file_change
@@ -75,7 +75,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
 
       <%!-- Commit history --%>
       <div :if={@show_history && is_list(@git_log) && @git_log != []}>
-        <div class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50">
+        <div class="section-label px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50">
           {if @mode == :history, do: "Commits", else: "Recent commits"}
         </div>
         <.link
@@ -137,7 +137,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
 
       <%!-- Files changed --%>
       <div>
-        <div class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50">
+        <div class="section-label px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50">
           {length(@commit.files)} file{if length(@commit.files) != 1, do: "s"} changed
         </div>
         <.link

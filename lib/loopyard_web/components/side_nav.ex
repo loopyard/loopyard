@@ -144,7 +144,7 @@ defmodule LoopyardWeb.Components.SideNav do
         ]}
       >
         <div class="flex items-center gap-2 mb-1 md:mb-0.5">
-          <div class="flex-1 min-w-0 text-[11px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+          <div class="section-label flex-1 min-w-0">
             {@eyebrow}
           </div>
           <svg

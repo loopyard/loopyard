@@ -195,7 +195,7 @@ defmodule LoopyardWeb.SystemPortsLive do
       <td class="py-2 px-2 text-right font-mono text-xs text-zinc-500">
         {bytes(@r.live, :bytes_in)} / {bytes(@r.live, :bytes_out)}
       </td>
-      <td class="py-2 px-2 font-mono text-[10px] text-zinc-500 truncate max-w-[200px]">
+      <td class="py-2 px-2 font-mono text-xs text-zinc-500 truncate max-w-[200px]">
         {if @r.live, do: Enum.join(@r.live.peers, ", "), else: ""}
       </td>
       <td class="py-2 px-2 text-right">

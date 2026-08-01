@@ -99,7 +99,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
           <%!-- Run boundary: a thin sticky rule, not a chunky boxed header. --%>
           <div
             id={"run-#{group.run}"}
-            class="sticky top-0 z-10 flex items-center gap-2 px-3 h-7 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-100/95 dark:bg-zinc-950/95 backdrop-blur text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+            class="section-label sticky top-0 z-10 flex items-center gap-2 px-3 h-7 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-100/95 dark:bg-zinc-950/95 backdrop-blur"
           >
             <span class={[
               "w-1.5 h-1.5 rounded-full flex-none",

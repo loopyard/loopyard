@@ -320,13 +320,29 @@ defmodule LoopyardWeb.Components.Common do
   def status_class(:broken), do: "text-red-600 dark:text-red-400"
   def status_class(_), do: "text-zinc-400 dark:text-zinc-500"
 
-  @doc "The status word as a styled span. Renders nothing without a state."
+  @doc """
+  Is this state worth SAYING, or does the dot already say it?
+
+  `:done` and `:asleep` are the resting states — the non-event. Printing
+  "Ready" beside a green dot spends a word to tell you nothing changed, and
+  repeated down a list it's the loudest thing on a calm screen. A state that
+  DEPARTS from rest (working, needs you, broken) earns its word.
+  """
+  def notable_state?(s), do: s not in [nil, :done, :asleep]
+
+  @doc """
+  The status word as a styled span. Renders nothing without a state, and
+  nothing for a resting one (see `notable_state?/1`) — the dot has it covered.
+  """
   attr :state, :atom, default: nil
   attr :class, :string, default: "text-sm"
 
   def status_label(assigns) do
     ~H"""
-    <span :if={@state} class={["flex-none font-medium", status_class(@state), @class]}>
+    <span
+      :if={notable_state?(@state)}
+      class={["flex-none font-medium", status_class(@state), @class]}
+    >
       {status_word(@state)}
     </span>
     """

@@ -98,7 +98,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.MainContent do
             <span class="font-mono text-zinc-600 dark:text-zinc-400">{@diff_path}</span>
             <span
               :if={@live_action == :git_staged_diff}
-              class="text-green-600 dark:text-green-400 text-[10px] font-semibold uppercase"
+              class="section-label text-green-600 dark:text-green-400"
             >
               staged
             </span>

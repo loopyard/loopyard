@@ -152,7 +152,7 @@ defmodule LoopyardWeb.SystemQuarantineLive do
                   >
                     <td class="px-3 py-2 font-mono">
                       <div class="font-semibold">{q.name}</div>
-                      <div class="text-zinc-400 text-[11px]">{q.id}</div>
+                      <div class="text-zinc-400 text-xs">{q.id}</div>
                     </td>
                     <td class="px-3 py-2 font-mono text-zinc-500">{q.workspace_id || "—"}</td>
                     <td class="px-3 py-2 text-zinc-500">

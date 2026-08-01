@@ -92,7 +92,7 @@ defmodule LoopyardWeb.SystemEventsLive do
           <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
             Ring buffer of every Loopyard-global PubSub broadcast with timestamp + topic
             + event tag + payload preview. Filter by topic below. Per-agent and per-workspace
-            topics (<code class="font-mono text-[11px]">chat_agent:{"{id}"}</code>, <code class="font-mono text-[11px]">source_sync:{"{id}"}</code>) are not
+            topics (<code class="font-mono text-xs">chat_agent:{"{id}"}</code>, <code class="font-mono text-xs">source_sync:{"{id}"}</code>) are not
             captured here — they multiply with workload and belong on each agent's own page.
           </p>
 
@@ -120,7 +120,7 @@ defmodule LoopyardWeb.SystemEventsLive do
           class={topic_pill_class(@current == topic)}
         >
           {topic}
-          <span class="font-mono text-[10px] opacity-70 ml-1">{count}</span>
+          <span class="font-mono text-xs opacity-70 ml-1">{count}</span>
         </.link>
       <% end %>
     </div>
@@ -168,7 +168,7 @@ defmodule LoopyardWeb.SystemEventsLive do
                 {inspect(e.tag)}
               </td>
               <td
-                class="px-3 py-2 font-mono text-zinc-500 text-[11px] truncate max-w-[600px]"
+                class="px-3 py-2 font-mono text-zinc-500 text-xs truncate max-w-[600px]"
                 title={e.payload}
               >
                 {e.payload}

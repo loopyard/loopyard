@@ -63,12 +63,33 @@ defmodule LoopyardWeb.Live.ConsentUI do
 
   # Single-select tap = DRAFT (highlight, broadcast) — commits only via the
   # Answer button. Tap-to-commit dropped typed Other text; never again.
+  #
+  # This arrives as the option form's phx-change, so it reports the CURRENT
+  # state of the inputs rather than a click. The browser has already drawn the
+  # selection by the time this lands — the draft exists for the other viewers
+  # and for durability, and nothing on this screen waits for the reply.
   defp handle_consent(
          "draft_question_option",
          %{"question_id" => qid, "q" => q_id, "option" => option},
          socket
        ),
        do: settle(socket, Questions.draft_option(qid, q_id, option))
+
+  defp handle_consent(
+         "draft_question_option",
+         %{"question_id" => qid, "q" => q_id, "options" => options},
+         socket
+       )
+       when is_list(options),
+       do: settle(socket, Questions.set_draft(qid, q_id, options))
+
+  # Every box cleared — a change event with no option key at all.
+  defp handle_consent(
+         "draft_question_option",
+         %{"question_id" => qid, "q" => q_id},
+         socket
+       ),
+       do: settle(socket, Questions.set_draft(qid, q_id, []))
 
   # Focusing the "Other" box IS selecting it: clear any drafted option so the
   # rows deselect (broadcast — every viewer sees the switch).

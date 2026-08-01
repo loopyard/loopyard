@@ -470,9 +470,13 @@ defmodule LoopyardWeb.ReviewLive do
     """
   end
 
-  defp subject_context(%{agent_name: name, asked_at: %DateTime{} = at}, _msg)
+  defp subject_context(%{agent_name: name, asked_at: %DateTime{} = at} = slide, _msg)
        when is_binary(name) do
-    "#{name} asked #{ago(at)}"
+    if slide[:project_name] in [nil, name] do
+      "Asked #{ago(at)}"
+    else
+      "#{name} asked #{ago(at)}"
+    end
   end
 
   defp subject_context(_, _), do: nil

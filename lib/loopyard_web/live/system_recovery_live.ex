@@ -165,7 +165,7 @@ defmodule LoopyardWeb.SystemRecoveryLive do
 
   defp status_badge(%{result: nil} = assigns) do
     ~H"""
-    <span class="rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5">
+    <span class="section-label rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 px-2 py-0.5">
       never
     </span>
     """
@@ -173,7 +173,7 @@ defmodule LoopyardWeb.SystemRecoveryLive do
 
   defp status_badge(%{result: {:ok, _}} = assigns) do
     ~H"""
-    <span class="rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5">
+    <span class="section-label rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-2 py-0.5">
       ok
     </span>
     """
@@ -185,7 +185,7 @@ defmodule LoopyardWeb.SystemRecoveryLive do
     ~H"""
     <span
       title={@reason}
-      class="rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5"
+      class="section-label rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 px-2 py-0.5"
     >
       failed
     </span>

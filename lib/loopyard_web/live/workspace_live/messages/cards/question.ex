@@ -122,47 +122,43 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
         :if={@msg.status == :pending && !locked?(@msg, @q)}
         id={"qopts-#{@msg[:id] || @msg.question_id}-#{@q.id}"}
         phx-hook="QuestionOptions"
+        phx-change="draft_question_option"
         phx-submit="answer_question_text"
         class="group/qform flex flex-col gap-1"
       >
         <input type="hidden" name="question_id" value={@msg.question_id} />
         <input type="hidden" name="q" value={@q.id} />
-        <button
+        <%!-- A REAL input, so the BROWSER owns selection and it lands on the
+    frame you tapped. These were <button phx-click>s whose every visual
+    state came from a server assign: the tap round-tripped, and under any
+    load the late re-render arrived after you'd already moved on — which
+    is exactly the "checks, then unchecks" flicker. Nothing here waits on
+    the server now; the peer-checked rules do the whole selected look,
+    and the form carries the choice on submit. `phx-change` still tells
+    the server (multiplayer + durability), but no pixel depends on it. --%>
+        <label
           :for={o <- @q.options}
-          type="button"
-          phx-click={if @q[:multi], do: "toggle_question_option", else: "draft_question_option"}
-          phx-value-question_id={@msg.question_id}
-          phx-value-q={@q.id}
-          phx-value-option={o.label}
-          class={[
-            "q-option focus-ring group/opt flex w-full items-start gap-3 rounded-sm px-3 py-2.5 md:py-2 text-left transition-colors",
-            if(drafted?(@msg, @q, o.label),
-              do: "bg-orange-500/15 dark:bg-orange-500/20 ring-1 ring-orange-500/70",
-              else: "hover:bg-orange-500/[0.07] dark:hover:bg-orange-500/10"
-            )
-          ]}
+          class="q-option focus-ring group/opt relative flex w-full cursor-pointer items-start gap-3 rounded-sm px-3 py-2.5 md:py-2 text-left"
         >
+          <input
+            type={(@q[:multi] && "checkbox") || "radio"}
+            name={(@q[:multi] && "options[]") || "option"}
+            value={o.label}
+            checked={drafted?(@msg, @q, o.label)}
+            class="peer sr-only"
+          />
           <span
             aria-hidden="true"
-            class={[
-              "q-dot mt-px flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border-2 transition-colors",
-              if(drafted?(@msg, @q, o.label),
-                do: "border-orange-500 bg-orange-500 text-white",
-                else:
-                  "border-zinc-300 group-hover/opt:border-orange-400 dark:border-zinc-600 dark:group-hover/opt:border-orange-500"
-              )
-            ]}
+            class="pointer-events-none absolute inset-0 rounded-sm transition-colors group-hover/opt:bg-orange-500/[0.07] dark:group-hover/opt:bg-orange-500/10 peer-checked:bg-orange-500/15 dark:peer-checked:bg-orange-500/20 peer-checked:ring-1 peer-checked:ring-orange-500/70"
+          ></span>
+          <span
+            aria-hidden="true"
+            class="q-dot relative mt-px flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border-2 text-transparent transition-colors border-zinc-300 group-hover/opt:border-orange-400 dark:border-zinc-600 dark:group-hover/opt:border-orange-500 peer-checked:border-orange-500 peer-checked:bg-orange-500 peer-checked:text-white"
           >
-            <.check :if={drafted?(@msg, @q, o.label)} />
+            <.check />
           </span>
-          <span class="min-w-0 flex-1">
-            <span class={[
-              "chat-sub block font-medium",
-              if(drafted?(@msg, @q, o.label),
-                do: "text-orange-900 dark:text-orange-100 font-semibold",
-                else: "text-zinc-900 dark:text-zinc-100"
-              )
-            ]}>
+          <span class="relative min-w-0 flex-1">
+            <span class="chat-sub block font-medium text-zinc-900 dark:text-zinc-100">
               {o.label}
             </span>
             <span
@@ -172,7 +168,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
               {o.description}
             </span>
           </span>
-        </button>
+        </label>
 
         <%!-- "Other" is another draftable row: same grammar as the options —
     click in, type your own answer. Enter or the footer's Answer
@@ -202,10 +198,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
     and is the biggest target. The two ghosts stack in a column beneath
     it, also full width, so the whole footer is one predictable column
     rather than three things squeezed onto a 390px line.
-    DESKTOP (sm:+): the familiar dialog row — quiet pair left, Answer
-    right. Order flips via order-first/order-last so the DOM keeps its
-    logical order (skip, chat, commit) for keyboard and screen readers.
-    All targets clear 44px. --%>
+    DESKTOP (sm:+): Answer sits LEFT at half width, directly below the
+    options it commits — the eye finishes the last option and lands on
+    the button, instead of tracking to the far corner. The two ghosts
+    go right. All targets clear 44px. --%>
         <div class={[
           "mt-3 flex flex-col sm:flex-row sm:items-center gap-2",
           (@q[:multi] && "sm:justify-end") || "sm:justify-between"
@@ -219,7 +215,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
       and nothing on screen would teach it. --%>
           <div
             :if={!@q[:multi]}
-            class="flex flex-col sm:flex-row gap-2 mt-3 sm:mt-0 order-last sm:order-none"
+            class="flex flex-col sm:flex-row sm:items-center gap-2 mt-3 sm:mt-0 order-last sm:ml-auto"
           >
             <button
               :if={!@q[:multi]}
@@ -245,7 +241,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
             type="submit"
             class={
               [
-                "focus-ring w-full sm:w-auto order-first sm:order-none inline-flex items-center justify-center rounded-sm text-base font-semibold px-6 min-h-[3.25rem] sm:min-h-12 transition-all",
+                "focus-ring w-full sm:w-1/2 order-first inline-flex items-center justify-center rounded-sm text-base font-semibold px-6 min-h-[3.25rem] sm:min-h-12 transition-all",
                 if(draft_count(@msg, @q) > 0,
                   do: "bg-orange-600 hover:bg-orange-700 text-white shadow-md shadow-orange-600/30",
                   # Lights up the INSTANT you pick, with no server round-trip.

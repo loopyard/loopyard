@@ -279,14 +279,9 @@ defmodule LoopyardWeb.ProjectListLive do
     live status + what each agent is doing + openable ports. The big
     mission-control twin of the sidebar. --%>
           <header class="mb-8 flex items-end justify-between gap-4">
-            <div>
-              <h1 class="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-                Workspaces
-              </h1>
-              <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
-                {home_subtitle(@projects)}
-              </p>
-            </div>
+            <p class="text-sm text-zinc-500 dark:text-zinc-400">
+              {home_subtitle(@projects)}
+            </p>
             <.link
               navigate="/projects/new"
               class="hidden sm:inline-flex items-center gap-1.5 rounded-sm border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:border-violet-300 dark:hover:border-violet-500/40 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
@@ -406,11 +401,11 @@ defmodule LoopyardWeb.ProjectListLive do
               </button>
             </form>
             <div class=" border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-4">
-              <p class="text-[11px] text-zinc-500 dark:text-zinc-400 mb-1.5">
+              <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-1.5">
                 Or run this from that folder in your terminal:
               </p>
               <div class="flex items-center gap-2">
-                <div class="flex-1 min-w-0 bg-zinc-900 dark:bg-zinc-950 rounded-sm px-3 py-1.5 font-mono text-[11px] text-zinc-300 overflow-x-auto whitespace-nowrap select-all">
+                <div class="flex-1 min-w-0 bg-zinc-900 dark:bg-zinc-950 rounded-sm px-3 py-1.5 font-mono text-xs text-zinc-300 overflow-x-auto whitespace-nowrap select-all">
                   <span class="text-zinc-500 select-none">$ </span>{@launch_cmd}
                 </div>
                 <button
@@ -483,7 +478,7 @@ defmodule LoopyardWeb.ProjectListLive do
             </div>
             <p
               :if={@github_connected?}
-              class="text-[11px] text-zinc-500 dark:text-zinc-400"
+              class="text-xs text-zinc-500 dark:text-zinc-400"
             >
               GitHub is connected — private repos work too.
             </p>
@@ -510,7 +505,7 @@ defmodule LoopyardWeb.ProjectListLive do
           <span class="text-sm font-semibold">{@title}</span>
           <span
             :if={@badge}
-            class="text-[10px] font-medium uppercase tracking-wide rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400 px-1.5 py-0.5"
+            class="section-label rounded-full bg-zinc-200 dark:bg-zinc-700 px-1.5 py-0.5"
           >
             {@badge}
           </span>

@@ -288,6 +288,15 @@
 .chat-sub  { @apply text-chat-sub md:text-chat-sub-md; }
 .chat-meta { @apply text-chat-meta; }
 
+/* SECTION LABEL — the small uppercase heading over a group of rows ("IN MOTION",
+   "SUBSYSTEMS", "COMPONENT HEALTH"). It had drifted into text-[10px] and
+   text-[11px] variants across twenty files, so the same role rendered at three
+   sizes on one screen; 10px was below legibility besides. One class, matching
+   the SideNav exemplar. Never write an ad-hoc size for a label again. */
+.section-label {
+  @apply text-xs font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500;
+}
+
 /* The human prompt band reads at chat-body, same as the prose and the composer
    input — a typed message keeps its size as it peels off into the queue. */
 .markdown-body.human-prompt,

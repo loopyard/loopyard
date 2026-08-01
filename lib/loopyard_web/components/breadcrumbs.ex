@@ -32,8 +32,22 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
   attr :crumbs, :list, required: true
   attr :class, :string, default: ""
 
+  attr :include_current, :boolean,
+    default: false,
+    doc: """
+    Keep the last crumb in the trail instead of reserving it for the centre.
+    A FOCUSED view centres what you're DOING ("Review 1 of 6"), so the thing
+    you're doing it to belongs in the left anchor — otherwise its name renders
+    twice on one screen, centred and again in the subject header.
+    """
+
   def trail(assigns) do
-    assigns = assign(assigns, :crumbs, Enum.drop(assigns.crumbs, -1))
+    assigns =
+      assign(
+        assigns,
+        :crumbs,
+        (assigns.include_current && assigns.crumbs) || Enum.drop(assigns.crumbs, -1)
+      )
 
     ~H"""
     <.breadcrumbs :if={@crumbs != []} crumbs={@crumbs} class={@class} mobile={:back} />

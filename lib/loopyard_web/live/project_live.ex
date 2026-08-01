@@ -547,7 +547,7 @@ defmodule LoopyardWeb.ProjectLive do
                   />
                   <span
                     :if={workspace[:is_main]}
-                    class="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex-none"
+                    class="section-label flex-none"
                   >
                     default
                   </span>

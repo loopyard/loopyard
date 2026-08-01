@@ -172,4 +172,32 @@ defmodule Loopyard.WorkspaceTree do
   rescue
     _ -> []
   end
+
+  @doc """
+  Patch ONE agent's status in an already-built tree, leaving every other node
+  identical.
+
+  The hot path (a tool call, a status flip) must not rebuild the whole tree —
+  a fresh tree is a new term for every node, so LiveView re-renders the entire
+  rail and it visibly flickers. Structural changes (an agent or workspace
+  appearing) are the rare case that earns a rebuild.
+  """
+  @spec patch_agent_status([map()], String.t(), atom()) :: [map()]
+  def patch_agent_status(tree, agent_id, status) when is_list(tree) do
+    Enum.map(tree, fn project ->
+      workspaces =
+        Enum.map(project.workspaces, fn ws ->
+          agents =
+            Enum.map(ws.agents, fn a ->
+              if a.id == agent_id, do: %{a | status: status}, else: a
+            end)
+
+          %{ws | agents: agents}
+        end)
+
+      %{project | workspaces: workspaces}
+    end)
+  end
+
+  def patch_agent_status(tree, _id, _status), do: tree
 end

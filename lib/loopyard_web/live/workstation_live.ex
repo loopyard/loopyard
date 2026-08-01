@@ -237,7 +237,7 @@ defmodule LoopyardWeb.WorkstationLive do
               }
             >
               <:trailing :if={id == @current_id}>
-                <span class="inline-flex items-center gap-1.5 text-[11px] text-sky-600 dark:text-sky-400">
+                <span class="inline-flex items-center gap-1.5 text-xs text-sky-600 dark:text-sky-400">
                   <span class="w-1.5 h-1.5 rounded-full bg-sky-500"></span> current
                 </span>
               </:trailing>
@@ -451,15 +451,15 @@ defmodule LoopyardWeb.WorkstationLive do
           hint="Each tool's page has the easy path. For a custom key or a remote Loopyard, this is the general form (carries your push token):"
         >
           <div id="ws-push" phx-hook="PushCmd" data-token={@push_token} class="relative">
-            <pre class="overflow-x-auto rounded-sm bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-[11px] leading-relaxed font-mono p-3 pr-16 ring-1 ring-zinc-800"><code class="ws-push-cmd">{push_cmd(@push_token, @current_id)}</code></pre>
+            <pre class="overflow-x-auto rounded-sm bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-xs leading-relaxed font-mono p-3 pr-16 ring-1 ring-zinc-800"><code class="ws-push-cmd">{push_cmd(@push_token, @current_id)}</code></pre>
             <button
               type="button"
-              class="ws-push-copy focus-ring absolute top-2 right-2 rounded-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2 py-1 text-[11px]"
+              class="ws-push-copy focus-ring absolute top-2 right-2 rounded-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2 py-1 text-xs"
             >
               Copy
             </button>
           </div>
-          <p class="text-[11px] text-zinc-500 dark:text-zinc-400">
+          <p class="text-xs text-zinc-500 dark:text-zinc-400">
             Swap GITHUB_TOKEN for any key. On this machine you can drop the token entirely. Restart to apply — keep this command secret.
           </p>
         </.section>

@@ -23,7 +23,7 @@ defmodule LoopyardWeb.Components.Workstation do
     <section class="space-y-2">
       <div>
         <h2 class="text-sm font-medium text-zinc-800 dark:text-zinc-100">{@title}</h2>
-        <p :if={@hint} class="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+        <p :if={@hint} class="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
           {@hint}
         </p>
       </div>
@@ -60,7 +60,7 @@ defmodule LoopyardWeb.Components.Workstation do
     >
       <div class="min-w-0">
         <div class="text-sm font-medium text-zinc-800 dark:text-zinc-100">{@title}</div>
-        <div :if={@desc} class="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">{@desc}</div>
+        <div :if={@desc} class="text-xs text-zinc-500 dark:text-zinc-400 truncate">{@desc}</div>
       </div>
       <span class="flex items-center gap-2 flex-none text-xs">
         {render_slot(@trailing)}
@@ -117,7 +117,7 @@ defmodule LoopyardWeb.Components.Workstation do
   def command_box(assigns) do
     ~H"""
     <div class="flex items-stretch gap-2">
-      <pre class="flex-1 min-w-0 whitespace-pre-wrap break-all md:whitespace-pre md:break-normal md:overflow-x-auto rounded-sm bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-[11px] leading-relaxed font-mono px-3 py-3 md:py-2.5 ring-1 ring-zinc-800">{@command}</pre>
+      <pre class="flex-1 min-w-0 whitespace-pre-wrap break-all md:whitespace-pre md:break-normal md:overflow-x-auto rounded-sm bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-xs leading-relaxed font-mono px-3 py-3 md:py-2.5 ring-1 ring-zinc-800">{@command}</pre>
       <button
         id={@id}
         type="button"

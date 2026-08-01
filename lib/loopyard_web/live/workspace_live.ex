@@ -1538,7 +1538,12 @@ defmodule LoopyardWeb.WorkspaceLive do
     # right pane uses — patch the tree agent's status straight from the event
     # (no stale ETS re-read). Without this the rail freezes on an old frame:
     # the right pane goes green while the rail still shows red/gray.
-    socket = update(socket, :global_tree, &patch_tree_agent_status(&1, event.id, event.status))
+    socket =
+      update(
+        socket,
+        :global_tree,
+        &Loopyard.WorkspaceTree.patch_agent_status(&1, event.id, event.status)
+      )
 
     # When the selected agent finishes a turn (→ :idle), its working-tree
     # changes have settled — refresh the right-pane "Changes" hero (#58).
@@ -1553,24 +1558,6 @@ defmodule LoopyardWeb.WorkspaceLive do
   # Patch one agent's `:status` in the global tree from a StatusChanged event.
   # The dot is computed at render time from this status + live liveness, so the
   # rail reflects reality the instant the transition fires.
-  defp patch_tree_agent_status(tree, agent_id, status) when is_list(tree) do
-    Enum.map(tree, fn project ->
-      workspaces =
-        Enum.map(project.workspaces, fn ws ->
-          agents =
-            Enum.map(ws.agents, fn a ->
-              if a.id == agent_id, do: %{a | status: status}, else: a
-            end)
-
-          %{ws | agents: agents}
-        end)
-
-      %{project | workspaces: workspaces}
-    end)
-  end
-
-  defp patch_tree_agent_status(tree, _id, _status), do: tree
-
   # Rebuild the whole tree from scratch — ONLY for structural changes (an agent
   # or workspace appeared/disappeared), which are rare. Never on the hot path
   # (tool calls / status flips): those are handled by targeted patches so the

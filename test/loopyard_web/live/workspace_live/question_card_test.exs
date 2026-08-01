@@ -141,7 +141,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.QuestionCardTest do
 
     html = render_component(&Cards.question_card/1, %{msg: msg})
 
-    assert html =~ "toggle_question_option"
+    assert html =~ ~r/<input[^>]+type="checkbox"[^>]+value="A"[^>]+checked/
+    assert html =~ ~r/<input[^>]+type="checkbox"[^>]+value="B"(?![^>]*checked)/
+    assert html =~ ~s|phx-change="draft_question_option"|
     assert html =~ "confirm_question"
     assert html =~ "Done (1 selected)"
   end

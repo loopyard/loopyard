@@ -50,7 +50,11 @@ defmodule LoopyardWeb.Components.FocusedView do
              that misses it renders as bare text with no mark. --%>
         <% crumbs = LoopyardWeb.Components.AppHeader.with_root(@crumbs) %>
         <div class="min-w-0">
-          <LoopyardWeb.Components.Breadcrumbs.trail :if={@crumbs != []} crumbs={crumbs} />
+          <LoopyardWeb.Components.Breadcrumbs.trail
+            :if={@crumbs != []}
+            crumbs={crumbs}
+            include_current
+          />
         </div>
 
         <%!-- nowrap + truncate: at 390px the nav is five items wide, so the
@@ -58,7 +62,6 @@ defmodule LoopyardWeb.Components.FocusedView do
              history icon — a number broken across two lines reads as
              corruption. It now shortens rather than wraps. --%>
         <div class="flex items-center gap-2 justify-start sm:justify-center min-w-0 overflow-hidden">
-          <LoopyardWeb.Components.Breadcrumbs.current :if={@crumbs != []} crumbs={crumbs} />
           <span class={[
             "chat-meta font-semibold uppercase tracking-wide whitespace-nowrap truncate",
             @label_class

@@ -156,6 +156,21 @@ defmodule Loopyard.Harness.Questions do
   end
 
   @doc """
+  Replace a multi-select question's draft with the FULL set of chosen labels.
+
+  A checkbox group reports its whole selection on change, not a delta, so
+  syncing the set is the honest operation — deriving toggles from it would
+  reintroduce the drift between what the browser shows and what the server
+  believes.
+  """
+  @spec set_draft(String.t(), String.t(), [String.t()]) :: :ok | {:error, :not_found}
+  def set_draft(qid, q_id, labels) when is_binary(qid) and is_list(labels) do
+    with_entry(qid, fn entry ->
+      if q_id in (entry[:done] || []), do: entry, else: put_selection(entry, q_id, labels)
+    end)
+  end
+
+  @doc """
   Draft ONE option for a single-select question (replaces any prior draft) —
   broadcast so every viewer sees the highlight, but nothing commits until
   `commit_draft/2`. The tap-to-highlight half of tap → Answer.
