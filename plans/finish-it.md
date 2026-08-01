@@ -5,7 +5,7 @@ Brad raised about `.loopyard`. Ordered by what blocks the most.
 
 ---
 
-## P0-1. `.loopyard` is not portable between branches
+## P0-1. `.loopyard` is not portable between branches — DONE (44f5b202)
 
 ### The two questions, answered
 
@@ -67,7 +67,7 @@ names.
 
 ---
 
-## P0-2. Test isolation — the suite reaches the developer's live Docker
+## P0-2. Test isolation — the suite reaches the developer's live Docker — HALF DONE
 
 Half fixed. `Workstation.resource_prefix/0` now namespaces the identity
 container + home volume, and `materialize_home/2` raises outside its prefix, so
@@ -119,3 +119,24 @@ one slide with subscriptions keyed to it.
 - The question card's Skip/Chat stay at 40px, under the 44px floor: they're
   sized down relative to Answer so discarding a question isn't a plausible
   mis-tap. Expanding their hit area would undo that on purpose.
+
+---
+
+## Progress
+
+- **P0-1 done** (44f5b202). Writes stay portable; run time resolves. Found and
+  fixed two further holes while testing: `name: ${CODE_VOLUME}` (the setup
+  guide's own documented form) never resolved, and a foreign literal in a
+  SERVICE MOUNT wasn't normalized — a fork would have mounted the source's code.
+- **Consistency pass done** (db3435bd + the hero fix). One `mode_nav` for the
+  up/down move; `operator_link/1` deleted (it drew the command GRID while
+  linking to the operator). Every tappable element clears 44px at 390px across
+  six routes — was nine misses, now zero. Bar holds 56px/top-0 everywhere, no
+  horizontal overflow.
+- **Type scale**: nothing below the declared 14px floor. `/system` leans on 14px
+  where other pages lean on 15px — that's the documented two-step scale (xs for
+  secondary/mono, sm for body), not drift, so it's deliberately left alone.
+
+Still open: P0-2 (the remaining 128-site Docker coupling), P1-3 Changes/History,
+P1-4 integration pages, P1-5 wedged-turn reset, P2-6 operator rail composition,
+P2-7 Reviewer scroll-snap.

@@ -76,7 +76,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       eyebrow="Agent"
       name={@agent.name}
       dot={@hs.dot}
-      status={@hs.label}
+      status={hero_status(@hs.label)}
       status_class={"#{@hs.bg} #{@hs.text}"}
       expandable
       expanded={@expanded}
@@ -325,6 +325,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
         }
     end
   end
+
+  # A resting state doesn't earn a word next to a coloured light — same rule as
+  # Common.notable_state?/1, which the workspace rows already follow. "Ready"
+  # beside a green dot is the same fact twice, in the strip you look at most.
+  # Working / Rate-limited / Sign-in expired still speak: they depart from rest.
+  defp hero_status(label) when label in ["Ready", "Asleep"], do: nil
+  defp hero_status(label), do: label
 
   defp bad(label, detail, action \\ nil) do
     %{
