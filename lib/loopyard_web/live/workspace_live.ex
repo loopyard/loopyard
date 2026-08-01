@@ -187,6 +187,12 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:selected_service, nil)
      |> assign(:selected_volume, nil)
      |> assign(:mobile_detail_open, false)
+     # ONE flag for the whole detail sidebar, not per-agent: the choice persists
+     # as you switch between agents/services instead of resetting each time.
+     # Collapsed by default — the hero carries what you glance at (who, state,
+     # model, tokens, cost); Usage/Activity/Docker and the destructive buttons
+     # are reference you open deliberately.
+     |> assign(:agent_details_expanded, false)
      |> assign(:volume_tab, :info)
      |> assign(:file_tree, nil)
      |> assign(:file_content, nil)
@@ -1055,6 +1061,10 @@ defmodule LoopyardWeb.WorkspaceLive do
   end
 
   @impl true
+  def handle_event("toggle_agent_details", _params, socket) do
+    {:noreply, assign(socket, :agent_details_expanded, !socket.assigns.agent_details_expanded)}
+  end
+
   def handle_event("toggle_mobile_detail", _params, socket) do
     # Server-side toggle so the state SURVIVES navigation: with it open, using
     # the switchers keeps showing detail for the newly-selected thing until you
@@ -1877,6 +1887,7 @@ defmodule LoopyardWeb.WorkspaceLive do
           base_path={@base_path}
           host={@host}
           is_local_source?={@is_local_source?}
+          agent_details_expanded={@agent_details_expanded}
           sync_status={@sync_status}
           workspace_state={@workspace_state}
           workspace_state_since={@workspace_state_since}

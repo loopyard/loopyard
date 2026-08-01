@@ -55,6 +55,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
   attr :host, :string, default: nil
   attr :live_action, :atom, default: :index
   attr :streaming_text, :string, default: ""
+  attr :agent_details_expanded, :boolean, default: false
 
   def mobile_detail_inline(assigns) do
     # @volume_actions is a MODULE attribute — resolve it here (in the function
@@ -71,6 +72,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
         editing_name={@editing_name}
         base_path={@base_path}
         live_token_est={ChatStatus.token_estimate(@streaming_text)}
+        expanded={@agent_details_expanded}
       />
       <%!-- nil (not a status-only fallback) so service_context's `svc && …`
     short-circuits — a fallback map has no :ports and would KeyError. --%>
