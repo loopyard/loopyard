@@ -111,7 +111,21 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
           class="absolute inset-x-0 flex justify-center pointer-events-none"
           aria-label="Location"
         >
-          <div class="pointer-events-auto max-w-[55%] min-w-0 flex items-center text-lg">
+          <%!-- The project / workspace PAIR is the current thing here, not the
+    workspace alone: they're always shown together and the switcher moves
+    between them as a unit, so splitting them across zones would break the
+    thing the control acts on. A deliberate exception to "ancestors left,
+    current centred". --%>
+          <div class="pointer-events-auto max-w-[70%] min-w-0 flex items-center gap-1.5 text-lg">
+            <Nav.crumb
+              :if={@project}
+              id="nav-switcher"
+              label={@project.name}
+              switch?={@can_switch}
+              chevron={false}
+              href={"/projects/#{@project.id}"}
+            />
+            <span :if={@project} class="text-zinc-300 dark:text-zinc-600 flex-none">/</span>
             <Nav.crumb id="nav-switcher" label={@ws_name} current switch?={@can_switch} />
           </div>
         </nav>
@@ -136,10 +150,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
 
       <Nav.switcher_sheet :if={@can_switch} id="nav-switcher" title="Switch workspace">
         <:current>
-          <span :if={@project} class="flex-none text-zinc-500 dark:text-zinc-400 truncate">
-            {@project.name} /
+          <%!-- Same pair, same order, same weights as the bar's centre — only
+    the chevron flips. Nothing should move when the sheet opens. --%>
+          <span :if={@project} class="flex-none text-lg text-zinc-500 dark:text-zinc-400 truncate">
+            {@project.name}
           </span>
-          <span class="flex-1 min-w-0 truncate font-semibold text-zinc-900 dark:text-zinc-100">
+          <span :if={@project} class="text-zinc-300 dark:text-zinc-600 flex-none">/</span>
+          <span class="min-w-0 truncate text-lg font-semibold text-zinc-900 dark:text-zinc-100">
             {@ws_name}
           </span>
         </:current>

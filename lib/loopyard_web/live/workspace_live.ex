@@ -1720,46 +1720,6 @@ defmodule LoopyardWeb.WorkspaceLive do
     end)
   end
 
-  # Status of the workspace this page is showing, in words — same vocabulary as
-  # the workspace cards (Working / Needs you / Ready / Broken / Asleep), so the
-  # badge means the same thing wherever you meet it. nil when the entry hasn't
-  # loaded yet rather than guessing "Asleep".
-  defp ws_status_word(nil), do: nil
-
-  defp ws_status_word(entry) do
-    cond do
-      entry[:needs_you] -> "Needs you"
-      entry[:broken] -> "Broken"
-      true -> agent_status_word(Enum.map(entry[:agents] || [], &Map.get(&1, :status)))
-    end
-  end
-
-  defp agent_status_word(statuses) do
-    cond do
-      Enum.any?(statuses, &(&1 == :auth_expired)) ->
-        "Broken"
-
-      Enum.any?(statuses, &(&1 in [:thinking, :compacting, :booting, :backoff, :rate_limited])) ->
-        "Working"
-
-      Enum.any?(statuses, &(&1 == :idle)) ->
-        "Ready"
-
-      true ->
-        "Asleep"
-    end
-  end
-
-  defp ws_status_class(entry) do
-    case ws_status_word(entry) do
-      "Working" -> "text-violet-600 dark:text-violet-400"
-      "Needs you" -> "text-orange-700 dark:text-orange-400"
-      "Ready" -> "text-emerald-600 dark:text-emerald-400"
-      "Broken" -> "text-red-600 dark:text-red-400"
-      _ -> "text-zinc-400 dark:text-zinc-500"
-    end
-  end
-
   @impl true
   def render(assigns) do
     # Show the mobile detail only when it's toggled open AND there's actually a
@@ -1807,28 +1767,33 @@ defmodule LoopyardWeb.WorkspaceLive do
     modes right. Phones keep the two-row chat_header above (md:hidden) —
     this bar is desktop-only so mobile is untouched. --%>
       <div class="hidden md:grid grid-cols-[1fr_auto_1fr] items-center gap-3 flex-none h-14 px-4 md:px-5 border-b border-zinc-200 dark:border-zinc-800">
-        <% crumbs =
-          LoopyardWeb.Components.AppHeader.with_root([
-            {@project.name, "/projects/#{@project.id}"},
-            {(@workspace_entry || %{})[:name] || @workspace.id, nil}
-          ]) %>
+        <%!-- Left is just the brand: the project/workspace PAIR is the current
+    thing on this surface (the switcher moves between them as a unit), so it
+    lives whole in the centre rather than being split across zones. --%>
         <div class="min-w-0">
-          <LoopyardWeb.Components.Breadcrumbs.trail crumbs={crumbs} />
+          <LoopyardWeb.Components.Breadcrumbs.trail crumbs={
+            LoopyardWeb.Components.AppHeader.with_root([{@project.name, nil}])
+          } />
         </div>
 
-        <LoopyardWeb.Components.Breadcrumbs.current crumbs={crumbs} class="justify-center">
-          <:status>
-            <span
-              :if={ws_status_word(tree_entry(@global_tree, @workspace.id))}
-              class={[
-                "flex-none text-sm font-medium",
-                ws_status_class(tree_entry(@global_tree, @workspace.id))
-              ]}
-            >
-              {ws_status_word(tree_entry(@global_tree, @workspace.id))}
-            </span>
-          </:status>
-        </LoopyardWeb.Components.Breadcrumbs.current>
+        <div class="min-w-0 flex items-center justify-center gap-1.5">
+          <.link
+            navigate={"/projects/#{@project.id}"}
+            class="focus-ring rounded-sm text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors truncate"
+          >
+            {@project.name}
+          </.link>
+          <span class="text-zinc-300 dark:text-zinc-600 flex-none">/</span>
+          <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">
+            {(@workspace_entry || %{})[:name] || @workspace.id}
+          </span>
+          <LoopyardWeb.Components.Common.status_label
+            state={
+              LoopyardWeb.Components.Common.workspace_state(tree_entry(@global_tree, @workspace.id))
+            }
+            class="text-sm ml-1"
+          />
+        </div>
 
         <div class="flex items-center justify-end min-w-0">
           <LoopyardWeb.Components.Common.mode_nav active={:workspaces} />

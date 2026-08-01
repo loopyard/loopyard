@@ -25,7 +25,6 @@ defmodule LoopyardWeb.Components.ProjectList do
 
   # The raw agent statuses that mean "a turn is live" — mirrors Birdseye's
   # @working so the canonical workspace_identity light agrees with the ws_dot.
-  @working_statuses [:thinking, :compacting, :booting, :backoff, :rate_limited]
 
   @doc """
   Renders the grouped overview.
@@ -112,10 +111,15 @@ defmodule LoopyardWeb.Components.ProjectList do
           navigate={"/projects/#{project.id}"}
           phx-click={@row_click}
           data-sticky-header
-          class={[
-            "group sticky top-0 z-10 block bg-brand-paper-shade dark:bg-brand-ink transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]",
-            (@size == :xs && "py-2.5") || "pb-1"
-          ]}
+          class={
+            [
+              "group sticky top-0 z-10 flex items-center bg-brand-paper-shade dark:bg-brand-ink transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]",
+              # :xs = the mobile switcher — this heading is a LINK to the project,
+              # so it needs a finger-sized target like the rows beneath it. It
+              # measured 24px. min-h-11 = 44px.
+              (@size == :xs && "min-h-11 py-2") || "pb-1"
+            ]
+          }
         >
           <h2 class={[
             "font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors",
@@ -125,9 +129,13 @@ defmodule LoopyardWeb.Components.ProjectList do
           </h2>
         </.link>
 
-        <%!-- Branches, indented under the project: status light on the left,
-    branch name to its right. --%>
-        <div class="pl-3 space-y-0.5">
+        <%!-- Branches under the project. NOT indented: the heading sat at x=8
+    and the rows at x=12, which is too small to read as hierarchy — it
+    just looked like a broken gutter (ui-rhythm Rule 3: don't indent
+    unless the indent encodes hierarchy the reader needs). The status
+    light is the anchor that distinguishes a branch from its project, and
+    every row's dot now shares the heading's left edge. --%>
+        <div class="space-y-0.5">
           <.ws_row_compact
             :for={ws <- project.workspaces}
             ws={ws}
@@ -315,9 +323,9 @@ defmodule LoopyardWeb.Components.ProjectList do
              tight; the dot keeps carrying it there. --%>
         <span class={[
           "hidden sm:inline flex-none text-xs md:text-sm font-medium",
-          status_class(ws_state(@ws))
+          LoopyardWeb.Components.Common.status_class(ws_state(@ws))
         ]}>
-          {status_word(ws_state(@ws))}
+          {LoopyardWeb.Components.Common.status_word(ws_state(@ws))}
         </span>
         <div class="flex-1"></div>
         <span :if={ws_port_entry(@ws)} class="relative z-10 flex-none">
@@ -397,21 +405,6 @@ defmodule LoopyardWeb.Components.ProjectList do
   defp card_story_class(%{class: class}), do: class
   defp card_story_class(_), do: nil
 
-  # Say the state in words. The colour is the fast signal for someone who
-  # already knows the vocabulary; the word is what makes it legible to
-  # everyone else.
-  defp status_word(:working), do: "Working"
-  defp status_word(:needs_you), do: "Needs you"
-  defp status_word(:done), do: "Ready"
-  defp status_word(:broken), do: "Broken"
-  defp status_word(_), do: "Asleep"
-
-  defp status_class(:working), do: "text-violet-600 dark:text-violet-400"
-  defp status_class(:needs_you), do: "text-orange-700 dark:text-orange-400"
-  defp status_class(:done), do: "text-emerald-600 dark:text-emerald-400"
-  defp status_class(:broken), do: "text-red-600 dark:text-red-400"
-  defp status_class(_), do: "text-zinc-400 dark:text-zinc-500"
-
   # Quiet fallback line: who's here (the dot already says ready/asleep — no
   # status words), or that nobody is.
   defp quiet_line(%{agents: []}), do: "no agent yet"
@@ -424,25 +417,9 @@ defmodule LoopyardWeb.Components.ProjectList do
   # Map a workspace onto the ONE canonical workspace_identity light — same
   # priority order as Birdseye.ws_dot/1 (needs-you > broken > working > ready >
   # asleep) so the badge's light and the tree's dot can never disagree.
-  defp ws_state(ws) do
-    cond do
-      ws[:needs_you] ->
-        :needs_you
-
-      ws[:broken] ->
-        :broken
-
-      true ->
-        statuses = Enum.map(ws[:agents] || [], &Map.get(&1, :status))
-
-        cond do
-          Enum.any?(statuses, &(&1 == :auth_expired)) -> :broken
-          Enum.any?(statuses, &(&1 in @working_statuses)) -> :working
-          Enum.any?(statuses, &(&1 == :idle)) -> :done
-          true -> :asleep
-        end
-    end
-  end
+  # The ONE derivation lives in Common (beside state_light/1 and status_word/1)
+  # so the dot colour, the word, and the state can't drift apart.
+  defp ws_state(ws), do: LoopyardWeb.Components.Common.workspace_state(ws)
 
   # Line +/- for the card footer — %{added, removed}, only when known and nonzero
   # (nil = unknown / no running container, or clean = 0 add + 0 remove).

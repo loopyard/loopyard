@@ -268,6 +268,70 @@ defmodule LoopyardWeb.Components.Common do
   # The ONE status→light mapping. Every project·workspace light speaks this, so a
   # color always means the same thing across the whole app. (`:chugging` accepted
   # as an alias for the operator rail's live state.)
+  @doc """
+  A workspace's state as an atom — the ONE derivation.
+
+  Lives here beside `state_light/1` so the dot colour, the status word, and the
+  state itself can't drift apart. They already did once: the same agent read
+  "Working" in the top bar, "Whirling" in the agent list and "working…" in the
+  rail, because each surface had its own vocabulary.
+  """
+  @working_statuses [:thinking, :compacting, :booting, :backoff, :rate_limited]
+
+  def workspace_state(nil), do: nil
+
+  def workspace_state(ws) do
+    cond do
+      ws[:needs_you] ->
+        :needs_you
+
+      ws[:broken] ->
+        :broken
+
+      true ->
+        statuses = Enum.map(ws[:agents] || [], &Map.get(&1, :status))
+
+        cond do
+          Enum.any?(statuses, &(&1 == :auth_expired)) -> :broken
+          Enum.any?(statuses, &(&1 in @working_statuses)) -> :working
+          Enum.any?(statuses, &(&1 == :idle)) -> :done
+          true -> :asleep
+        end
+    end
+  end
+
+  @doc """
+  The state in WORDS. The dot is the fast signal for someone fluent in the
+  colours; the word is what makes it legible to everyone else.
+  """
+  def status_word(:working), do: "Working"
+  def status_word(:chugging), do: "Working"
+  def status_word(:needs_you), do: "Needs you"
+  def status_word(:done), do: "Ready"
+  def status_word(:broken), do: "Broken"
+  def status_word(_), do: "Asleep"
+
+  @doc "Text colour for `status_word/1`, matching `state_light/1`'s tones."
+  def status_class(s) when s in [:working, :chugging],
+    do: "text-violet-600 dark:text-violet-400"
+
+  def status_class(:needs_you), do: "text-orange-700 dark:text-orange-400"
+  def status_class(:done), do: "text-emerald-600 dark:text-emerald-400"
+  def status_class(:broken), do: "text-red-600 dark:text-red-400"
+  def status_class(_), do: "text-zinc-400 dark:text-zinc-500"
+
+  @doc "The status word as a styled span. Renders nothing without a state."
+  attr :state, :atom, default: nil
+  attr :class, :string, default: "text-sm"
+
+  def status_label(assigns) do
+    ~H"""
+    <span :if={@state} class={["flex-none font-medium", status_class(@state), @class]}>
+      {status_word(@state)}
+    </span>
+    """
+  end
+
   def state_light(s) when s in [:working, :chugging], do: "bg-violet-500 animate-pulse"
   def state_light(:needs_you), do: "bg-orange-500"
   def state_light(:done), do: "bg-emerald-500"
