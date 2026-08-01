@@ -1790,7 +1790,10 @@ defmodule LoopyardWeb.WorkspaceLive do
     dashboard, the rails and the switcher render, so the thing you're looking
     at is drawn identically wherever you meet it. Hand-assembling spans here
     is exactly how a "/" separator crept in where every other surface uses
-    "·", and how the status dot went missing. --%>
+    "·", and how the status dot went missing.
+    NO status word here: the dot already carries the state, and "Ready" beside
+    a green light is the same fact twice in the most valuable strip of the
+    app. --%>
         <div class="min-w-0 flex items-center justify-center gap-2">
           <LoopyardWeb.Components.Common.workspace_identity
             project={@project.name}
@@ -1800,12 +1803,6 @@ defmodule LoopyardWeb.WorkspaceLive do
                 :asleep
             }
             class="min-w-0"
-          />
-          <LoopyardWeb.Components.Common.status_label
-            state={
-              LoopyardWeb.Components.Common.workspace_state(tree_entry(@global_tree, @workspace.id))
-            }
-            class="text-sm"
           />
         </div>
 

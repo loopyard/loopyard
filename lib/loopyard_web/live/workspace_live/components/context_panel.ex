@@ -139,11 +139,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     to the bottom — the actions shouldn't hide behind a fold anyway.
     Laid out like the Service panel: a ghost-button grid, two-up where there's
     room. Destructive stays below the divider. --%>
+    <%!-- Both actions on ONE row, like the Service panel's Restart/Stop/Console
+    grid. Remove keeps its danger styling to stay distinguishable without
+    needing its own stacked row and divider. --%>
     <.action_bar>
       <:main>
-        <%!-- Grid so this scales the way the Service panel does when an agent
-        grows more actions; with one it simply fills the row. --%>
-        <div class="grid grid-cols-1 gap-1.5">
+        <div class="grid grid-cols-2 gap-1.5">
           <.control_btn
             phx-click="restart_session"
             phx-value-id={@agent.id}
@@ -152,19 +153,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
           >
             Restart
           </.control_btn>
+          <.control_btn
+            variant={:danger}
+            phx-click="remove_agent"
+            phx-value-id={@agent.id}
+            data-confirm={"Remove \"#{@agent.name}\"?\n\nIts session stops and the whole conversation with it — every message, tool call and decision — is gone from this workspace. This cannot be undone.\n\nYour code is NOT touched: the volume and everything the agent wrote stay exactly as they are."}
+            class="w-full justify-center"
+          >
+            Remove
+          </.control_btn>
         </div>
       </:main>
-      <:danger>
-        <.control_btn
-          variant={:danger}
-          phx-click="remove_agent"
-          phx-value-id={@agent.id}
-          data-confirm={"Remove agent \"#{@agent.name}\"? Its session stops and it's removed from this workspace. The code in the volume is not touched."}
-          class="w-full justify-center"
-        >
-          Remove agent
-        </.control_btn>
-      </:danger>
     </.action_bar>
     """
   end

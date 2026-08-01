@@ -123,7 +123,7 @@ defmodule LoopyardWeb.Components.ProjectList do
         >
           <h2 class={[
             "font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors",
-            (@size == :xs && "text-base") || "text-sm"
+            "text-base"
           ]}>
             {project.name}
           </h2>
@@ -191,11 +191,15 @@ defmodule LoopyardWeb.Components.ProjectList do
       <%!-- Indented BRANCH row: the project (white heading) is right above, so
     this shows just the branch — status light on the left, branch name to
     its right — quietly (muted) so the project heading leads. --%>
+      <%!-- :md at BOTH sizes so this rail reads at the same scale as the right
+    sidebar's nav rows (text-sm). It was :sm here, which maps to the tiny
+    chat-meta token — the left rail ended up noticeably smaller and harder
+    to read than the identical list on the right. Not muted for the same
+    reason: legible first, recessive second. --%>
       <LoopyardWeb.Components.Common.workspace_identity
         project={@ws.name}
         state={ws_state(@ws)}
-        size={(@size == :xs && :md) || :sm}
-        muted={@size == :sm}
+        size={:md}
         class="min-w-0 flex-1"
       />
       <%!-- The rail carries only the SIGNAL words (needs-you / broken / …), never

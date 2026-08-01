@@ -169,7 +169,7 @@ defmodule LoopyardWeb.DashboardLive do
         </.link>
         <.link
           navigate={"/workstations/#{@workstation}"}
-          class="focus-ring chat-meta py-2.5 md:py-1 text-zinc-600 dark:text-zinc-300 underline hover:text-zinc-900 dark:hover:text-zinc-100"
+          class="focus-ring text-sm py-2.5 md:py-1 text-zinc-600 dark:text-zinc-300 underline hover:text-zinc-900 dark:hover:text-zinc-100"
         >
           Connect more tools first
         </.link>
@@ -198,7 +198,7 @@ defmodule LoopyardWeb.DashboardLive do
           command={"curl -fsS \"__ORIGIN__/workstations/#{@workstation}/claude/setup.sh?token=#{Loopyard.PushToken.get()}\" | sh"}
         />
       </div>
-      <p class="chat-meta text-zinc-500 dark:text-zinc-400 mt-2.5">
+      <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-2.5">
         This band clears itself once the token lands — nothing else to do.
       </p>
       <%!-- Secondary routes as real targets, not inline text. On a phone these
@@ -208,13 +208,13 @@ defmodule LoopyardWeb.DashboardLive do
       <div class="mt-1 flex flex-col md:flex-row md:items-center md:gap-4">
         <.link
           navigate={"/workstations/#{@workstation}/claude"}
-          class="focus-ring chat-meta py-2.5 md:py-1 text-zinc-600 dark:text-zinc-300 underline hover:text-zinc-900 dark:hover:text-zinc-100"
+          class="focus-ring text-sm py-2.5 md:py-1 text-zinc-600 dark:text-zinc-300 underline hover:text-zinc-900 dark:hover:text-zinc-100"
         >
           Other ways to connect
         </.link>
         <.link
           navigate={"/workstations/#{@workstation}"}
-          class="focus-ring chat-meta py-2.5 md:py-1 text-zinc-600 dark:text-zinc-300 underline hover:text-zinc-900 dark:hover:text-zinc-100"
+          class="focus-ring text-sm py-2.5 md:py-1 text-zinc-600 dark:text-zinc-300 underline hover:text-zinc-900 dark:hover:text-zinc-100"
         >
           All your tools
         </.link>
@@ -260,12 +260,12 @@ defmodule LoopyardWeb.DashboardLive do
               <h2 class="text-base font-semibold tracking-tight">Workspaces</h2>
               <span
                 :if={@ws.working > 0}
-                class="ml-auto chat-meta text-violet-600 dark:text-violet-400"
+                class="ml-auto text-sm text-violet-600 dark:text-violet-400"
               >
                 {@ws.working} working
               </span>
             </div>
-            <p class="chat-meta text-zinc-500 dark:text-zinc-400 mt-1">
+            <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
               {@ws.projects} {plural(@ws.projects, "project")} · {@ws.workspaces} {plural(
                 @ws.workspaces,
                 "workspace"
@@ -296,32 +296,32 @@ defmodule LoopyardWeb.DashboardLive do
               <h2 class="text-base font-semibold tracking-tight">Operator</h2>
               <span
                 :if={@waiting > 0}
-                class="ml-auto chat-meta font-semibold text-orange-700 dark:text-orange-400"
+                class="ml-auto text-sm font-semibold text-orange-700 dark:text-orange-400"
               >
                 {@waiting} waiting on you
               </span>
             </div>
-            <p class="chat-meta text-zinc-500 dark:text-zinc-400 mt-1">
+            <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
               Running the shop as
               <span class="font-medium text-zinc-700 dark:text-zinc-300">{@operator}</span>
             </p>
             <div class="relative z-10 mt-4 space-y-1">
               <.link
                 navigate="/operator"
-                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 chat-meta text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
               >
                 Chat with the operator
               </.link>
               <.link
                 navigate="/review"
-                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 chat-meta text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
               >
                 For you
                 <span :if={@waiting > 0} class="text-orange-700 dark:text-orange-400 font-semibold">{@waiting}</span>
               </.link>
               <.link
                 navigate="/workstations"
-                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 chat-meta text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
               >
                 Workstations · {@operator_count}
               </.link>
@@ -335,10 +335,10 @@ defmodule LoopyardWeb.DashboardLive do
                 :if={@digest != []}
                 class="hidden md:block pt-3 mt-2 border-t border-zinc-200/70 dark:border-zinc-800"
               >
-                <p class="chat-meta text-zinc-400 dark:text-zinc-500 mb-1">Recently finished</p>
+                <p class="text-sm text-zinc-400 dark:text-zinc-500 mb-1">Recently finished</p>
                 <p
                   :for={e <- Enum.take(@digest, 5)}
-                  class="chat-meta text-zinc-600 dark:text-zinc-400 truncate py-0.5"
+                  class="text-sm text-zinc-600 dark:text-zinc-400 truncate py-0.5"
                 >
                   {e[:agent_name] || "agent"} — {e[:summary] || "finished a turn"}
                 </p>
@@ -368,7 +368,7 @@ defmodule LoopyardWeb.DashboardLive do
                    step is open the badge reports READINESS, amber (transitional
                    caution — the flame band above already owns the ask). --%>
               <span class={[
-                "ml-auto chat-meta font-semibold",
+                "ml-auto text-sm font-semibold",
                 (@first_run_step == :inference && "text-amber-600 dark:text-amber-400") ||
                   (@health == :healthy && "text-emerald-600 dark:text-emerald-400") ||
                   (@health == :degraded && "text-orange-700 dark:text-orange-400") ||
@@ -378,7 +378,7 @@ defmodule LoopyardWeb.DashboardLive do
                 {(@first_run_step == :inference && "not ready") || @health}
               </span>
             </div>
-            <p class="chat-meta text-zinc-500 dark:text-zinc-400 mt-1">
+            <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
               {system_line(@health, @first_run_step)} · {(@remote_exposed &&
                                                             "reachable on #{@host}") ||
                 "private to this machine"}
@@ -386,26 +386,26 @@ defmodule LoopyardWeb.DashboardLive do
             <div class="relative z-10 mt-4 space-y-1">
               <.link
                 navigate="/system"
-                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 chat-meta text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
               >
                 Health
               </.link>
               <.link
                 navigate="/system/ports"
-                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 chat-meta text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
               >
                 Ports
               </.link>
               <.link
                 navigate="/system/secrets"
-                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 chat-meta text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
               >
                 Secrets
               </.link>
               <%!-- Read-only. Binding is a boot flag (LOOPYARD_BIND), never a
                    switch in here: a toggle reachable over the connection it
                    controls can strand you the moment you tap it remotely. --%>
-              <div class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 chat-meta text-zinc-500 dark:text-zinc-400">
+              <div class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 text-sm text-zinc-500 dark:text-zinc-400">
                 Bound to <span class="font-mono">{@bind}</span>
               </div>
 
@@ -417,10 +417,10 @@ defmodule LoopyardWeb.DashboardLive do
                 :if={@health_map != %{}}
                 class="hidden md:block pt-3 mt-2 border-t border-zinc-200/70 dark:border-zinc-800"
               >
-                <p class="chat-meta text-zinc-400 dark:text-zinc-500 mb-1">Subsystems</p>
+                <p class="text-sm text-zinc-400 dark:text-zinc-500 mb-1">Subsystems</p>
                 <div
                   :for={{comp, status} <- Enum.sort_by(@health_map, &elem(&1, 0))}
-                  class="flex items-center gap-2 chat-meta py-0.5"
+                  class="flex items-center gap-2 text-sm py-0.5"
                 >
                   <span class={["w-1.5 h-1.5 rounded-full flex-none", health_dot(status)]}></span>
                   <span class="text-zinc-600 dark:text-zinc-400">
