@@ -5,8 +5,6 @@ defmodule LoopyardWeb.Components.AppHeader do
   """
   use Phoenix.Component
 
-  import LoopyardWeb.Components.Breadcrumbs, only: [breadcrumbs: 1]
-
   @doc """
   Renders the app header bar.
 
@@ -35,17 +33,36 @@ defmodule LoopyardWeb.Components.AppHeader do
 
     ~H"""
     <%!-- Insets: the page shell owns them (docs/CODE_RULES.md). --%>
-    <LoopyardWeb.Components.Nav.bar height="h-14" gap="gap-3">
-      {render_slot(@back)}
-      <.breadcrumbs crumbs={@breadcrumbs} />
-      <.iex_indicator :if={@iex_session.level} session={@iex_session} />
-      <:actions>
+    <%!-- Three zones, the one model (see Breadcrumbs.trail/1): brand + ancestors
+         left, the CURRENT thing centred, actions right.
+         A GRID, not absolute positioning: `1fr auto 1fr` centres the middle
+         against the bar (both side columns take an equal share of free space)
+         AND reserves real space for it, so it can never overlap the actions.
+         Absolute centring did exactly that on a 390px phone — the title sat on
+         top of the mode icons. --%>
+    <div class="flex-none grid grid-cols-[auto_1fr_auto] sm:grid-cols-[1fr_auto_1fr] items-center gap-3 h-14 px-4 md:px-5 border-b border-zinc-200 dark:border-zinc-700/80">
+      <div class="min-w-0 flex items-center gap-3">
+        {render_slot(@back)}
+        <LoopyardWeb.Components.Breadcrumbs.trail crumbs={@breadcrumbs} />
+      </div>
+
+      <%!-- Centred from sm: up. On a 390px phone there is not room to centre a
+           title AND clear three action icons — it collided. Phones get the
+           title next to the back button (the mobile spec is "a back button",
+           not a centred title); the centred zone returns as soon as there's
+           width for it. --%>
+      <div class="min-w-0 flex items-center justify-start sm:justify-center">
+        <LoopyardWeb.Components.Breadcrumbs.current crumbs={@breadcrumbs} />
+      </div>
+
+      <div class="min-w-0 flex items-center justify-end gap-3">
+        <.iex_indicator :if={@iex_session.level} session={@iex_session} />
         {render_slot(@inner_block)}
         <%!-- The mode nav (Workspaces ⇄ Operator, System) — the ONE global
              navigation, identical on every shell. --%>
         <LoopyardWeb.Components.Common.mode_nav active={@mode} />
-      </:actions>
-    </LoopyardWeb.Components.Nav.bar>
+      </div>
+    </div>
     """
   end
 

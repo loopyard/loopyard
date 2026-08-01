@@ -92,19 +92,28 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
       <%!-- Row 1: WHERE you are — back out + Project / Workspace + sound. Tapping
     either name throws open ONE full-screen switcher of every project and
     its workspaces (pick any to jump; ✕ / backdrop to bail). No pop-overs. --%>
-      <Nav.bar height="h-12" pad="px-2" gap="gap-1.5">
+      <%!-- Three zones, same model as desktop (see Breadcrumbs.trail/1): back
+    button left, the CURRENT thing centred, actions right. Phones drop the
+    logo and the ancestor crumbs entirely — a back button is the one
+    affordance that fits, and the path is desktop chrome. A grid (not flex)
+    so the centre is centred against the VIEWPORT, not against whatever the
+    side zones happen to weigh; otherwise the title drifts as the actions
+    change (a port chip appearing would shove it left). --%>
+      <Nav.bar height="h-14" pad="px-2" gap="gap-1.5" class="relative">
         <Nav.back_button navigate="/workspaces" label="Back to workspaces" />
-        <nav class="flex-1 min-w-0 flex items-center gap-1.5 text-lg" aria-label="Location">
-          <Nav.crumb
-            :if={@project}
-            id="nav-switcher"
-            label={@project.name}
-            switch?={@can_switch}
-            chevron={false}
-            href={"/projects/#{@project.id}"}
-          />
-          <span :if={@project} class="text-zinc-300 dark:text-zinc-600 flex-none">/</span>
-          <Nav.crumb id="nav-switcher" label={@ws_name} current switch?={@can_switch} />
+        <%!-- Absolutely centred against the BAR, not against the space left over
+    between the back button and the actions. Flex centring drifts: the port
+    chip appears only when a port is open, and the title would visibly shift
+    when it does. max-w keeps it clear of both side zones on a narrow phone;
+    pointer-events-none on the wrapper so the (invisible) full-width box
+    can't swallow taps meant for the actions. --%>
+        <nav
+          class="absolute inset-x-0 flex justify-center pointer-events-none"
+          aria-label="Location"
+        >
+          <div class="pointer-events-auto max-w-[55%] min-w-0 flex items-center text-lg">
+            <Nav.crumb id="nav-switcher" label={@ws_name} current switch?={@can_switch} />
+          </div>
         </nav>
         <:actions>
           <%!-- Details (agent/service/volume) moved to the section switcher row

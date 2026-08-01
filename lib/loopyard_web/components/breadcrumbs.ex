@@ -36,7 +36,7 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
     assigns = assign(assigns, :crumbs, Enum.drop(assigns.crumbs, -1))
 
     ~H"""
-    <.breadcrumbs :if={@crumbs != []} crumbs={@crumbs} class={@class} />
+    <.breadcrumbs :if={@crumbs != []} crumbs={@crumbs} class={@class} mobile={:back} />
     """
   end
 
@@ -71,13 +71,32 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
   attr :crumbs, :list, required: true
   attr :class, :string, default: ""
 
+  attr :mobile, :atom,
+    default: :current,
+    values: [:current, :back],
+    doc: """
+    Below `sm`: `:current` shows the current page's label (the default for a
+    standalone trail); `:back` shows ONLY the back button — no logo, no
+    chevrons. Phones get one affordance that returns to the previous screen;
+    the path itself is desktop chrome.
+    """
+
   def breadcrumbs(assigns) do
     # Below sm we hide the trail and show only the current page — so there's no
     # visible way UP. Add a back arrow to the parent (the crumb right before the
     # current one, if it links somewhere) that shows on mobile only.
+    # Where "back" goes on a phone. For a full trail the last crumb IS the
+    # current page, so the parent is the one before it. For a `trail/1` (which
+    # has already dropped the current thing) the last crumb IS the parent —
+    # taking the one before it would skip a level and jump straight home.
+    #
+    # A link to the parent rather than history.back(): a pasted deep link has
+    # no history to return to, and browser-back would leave the app entirely.
     parent_path =
-      case Enum.reverse(assigns.crumbs) do
-        [_current, {_label, path} | _] when is_binary(path) -> path
+      case {assigns.mobile, Enum.reverse(assigns.crumbs)} do
+        {:back, [{_label, path} | _]} when is_binary(path) -> path
+        {:back, _} -> nil
+        {_, [_current, {_label, path} | _]} when is_binary(path) -> path
         _ -> nil
       end
 
@@ -96,7 +115,11 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
     throughout so navigating up never shifts the layout by a pixel. --%>
           <li class={[
             "items-center gap-1.5 min-w-0",
-            if(idx == length(@crumbs) - 1, do: "flex", else: "hidden sm:flex")
+            cond do
+              @mobile == :back -> "hidden sm:flex"
+              idx == length(@crumbs) - 1 -> "flex"
+              true -> "hidden sm:flex"
+            end
           ]}>
             <%= cond do %>
               <% brand_root?(label, path) -> %>
