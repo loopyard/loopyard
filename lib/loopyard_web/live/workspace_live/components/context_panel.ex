@@ -165,10 +165,25 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
               class="text-zinc-400 dark:text-zinc-500"
             > · </span>{@hs.detail}
           </div>
+          <.link
+            :if={@hs[:action]}
+            navigate={elem(@hs.action, 1)}
+            class="focus-ring mt-2 inline-flex items-center gap-1 rounded-sm text-sm font-medium text-violet-600 dark:text-violet-400 hover:underline"
+          >
+            {elem(@hs.action, 0)} <span aria-hidden="true">→</span>
+          </.link>
         </div>
       </div>
     </div>
     """
+  end
+
+  # The operating workstation, for links out of a problem state. Falls back to
+  # "brad"-style default rather than crashing the panel if the store is wedged.
+  defp safe_workstation do
+    Loopyard.Workstation.current()
+  rescue
+    _ -> "default"
   end
 
   # Which harness states deserve the loud card (vs a calm one-liner). Only the
@@ -208,7 +223,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
         )
 
       agent[:auth_error] ->
-        bad("Sign-in expired", "your Claude login expired — reconnect it on the Workstation page")
+        bad(
+          "Sign-in expired",
+          "your Claude login expired — agents are paused until it's reconnected",
+          {"Reconnect Claude", "/workstations/#{safe_workstation()}/claude"}
+        )
 
       Map.get(agent, :rate_limit_status, :ok) != :ok or status == :rate_limited ->
         resets_at = agent[:rate_limit_resets_at_ms]
@@ -270,14 +289,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     end
   end
 
-  defp bad(label, detail) do
+  defp bad(label, detail, action \\ nil) do
     %{
       bg: "bg-red-500/10",
       dot: "bg-red-500",
       pulse: "animate-pulse",
       text: "text-red-600 dark:text-red-400",
       label: label,
-      detail: detail
+      detail: detail,
+      # {label, path} — a problem state that names a page you must visit should
+      # TAKE you there. "reconnect it on the Workstation page" as plain prose
+      # made the panel a sign pointing at a door instead of the door.
+      action: action
     }
   end
 
