@@ -172,8 +172,9 @@ defmodule Loopyard.Workstation.Env do
   @spec delete(String.t(), String.t()) :: :ok
   def delete(key, id) do
     with {:ok, current} <- current_for_write(id),
-         :ok <- save(Map.delete(current, key), id) do
-      sync_home(id)
+         remaining <- Map.delete(current, key),
+         :ok <- save(remaining, id) do
+      sync_home_asserted(id, remaining)
       :ok
     end
   end
@@ -201,14 +202,57 @@ defmodule Loopyard.Workstation.Env do
       # NEVER overwrite the container's env with an empty file just because we
       # momentarily couldn't read the store — that would strip a live harness of
       # CLAUDE_CODE_OAUTH_TOKEN and 401 it. Bail, keep the container's good env.
-      {:error, reason} -> {:error, {:store_unreadable, reason}}
-      :absent -> materialize_home(id, %{})
-      {:ok, map} -> materialize_home(id, map)
+      {:error, reason} ->
+        {:error, {:store_unreadable, reason}}
+
+      # An ABSENT store is the same hazard wearing different clothes, and it is
+      # the one that actually bit: volume names are NOT scoped by LOOPYARD_HOME,
+      # so a process pointed at a different home (the test suite, which
+      # redirects LOOPYARD_HOME to a scratch dir) reads "no env.json" and then
+      # writes an EMPTY env file into the REAL `loopyard-ws-<id>-home` volume —
+      # logging every live agent out of Claude. "I can't find a store" is never
+      # a reason to erase one; only a store that EXISTS may assert emptiness.
+      :absent ->
+        {:error, {:store_absent, path(id)}}
+
+      # An EMPTY store is the same hazard again, and it is the one that actually
+      # ran: `mix test` redirects LOOPYARD_HOME to a scratch dir and writes an
+      # empty `{}` env.json there — but Docker VOLUME NAMES are global and are
+      # NOT scoped by LOOPYARD_HOME, so materializing that `{}` wrote an empty
+      # `~/.loopyard/env` into the developer's REAL `loopyard-ws-<id>-home`
+      # volume and logged every live agent out of Claude. On every test run.
+      #
+      # Erasing an identity's whole environment is never something to do as a
+      # SIDE EFFECT of a sync. Removing the last var goes through `delete/2`,
+      # which says so explicitly.
+      {:ok, map} when map_size(map) == 0 ->
+        {:error, :refusing_empty_env}
+
+      {:ok, map} ->
+        materialize_home(id, map)
     end
   end
 
+  # `delete/2`'s path: the caller is ASSERTING the new (possibly empty) env,
+  # rather than syncing whatever it happened to read, so an empty write is
+  # intentional here and only here.
+  defp sync_home_asserted(id, map), do: materialize_home(id, map)
+
   defp materialize_home(id, map) do
     vol = Workstation.home_volume(id)
+
+    # This function is the one that writes into a live $HOME volume, so it is
+    # the right place to assert the isolation boundary: a name outside this
+    # environment's prefix means someone constructed a REAL resource name from
+    # a process that should not be able to touch it. Fail here, with a stack
+    # trace naming the caller, rather than silently erasing a running
+    # identity's credentials.
+    prefix = Workstation.resource_prefix()
+
+    unless String.starts_with?(vol, prefix) do
+      raise "refusing to write #{inspect(vol)} — outside this environment's prefix #{inspect(prefix)}"
+    end
+
     b64 = map |> env_file_body() |> Base.encode64()
 
     script =

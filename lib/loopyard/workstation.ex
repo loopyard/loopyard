@@ -198,8 +198,25 @@ defmodule Loopyard.Workstation do
   # --- Docker naming (per identity) ---
   # Identity is the home volume; the toolchain is the shared base image, so there
   # is no per-identity image tag.
-  def container_name(id), do: "loopyard-ws-#{id}"
-  def home_volume(id), do: "loopyard-ws-#{id}-home"
+  def container_name(id), do: "#{resource_prefix()}ws-#{id}"
+  def home_volume(id), do: "#{resource_prefix()}ws-#{id}-home"
+
+  @doc """
+  Prefix for this identity's Docker resources.
+
+  Docker names are GLOBAL — `LOOPYARD_HOME` scopes files on disk, nothing more.
+  So a process pointed at a scratch home still addresses the REAL container and
+  volume. The test suite does exactly that: it redirects LOOPYARD_HOME, writes
+  its own env store, and `Env.sync_home/1` then materialized those test vars
+  into the developer's live `loopyard-ws-<id>-home` volume — replacing
+  `CLAUDE_CODE_OAUTH_TOKEN` and logging every agent out of Claude on every
+  `mix test`.
+
+  A different prefix in test means the suite cannot NAME the real resources, so
+  it cannot corrupt them — the isolation holds by construction instead of by
+  everyone remembering.
+  """
+  def resource_prefix, do: Application.get_env(:loopyard, :resource_prefix, "loopyard-")
 
   @doc """
   The id to bootstrap a fresh install with — your name, not a generic "default".

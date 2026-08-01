@@ -79,3 +79,8 @@ config :loopyard, operator_digest_enabled?: false
 # Harness memory monitor runs `docker stats` sweeps + restarts bloated agents —
 # meaningless (and Docker-dependent) in tests. :ignore so no child even starts.
 config :loopyard, harness_memory_monitor_enabled?: false
+
+# Docker names are global; LOOPYARD_HOME only scopes files. Without its own
+# prefix the suite addresses — and overwrites — the developer's live identity
+# container and home volume. See Loopyard.Workstation.resource_prefix/0.
+config :loopyard, resource_prefix: "loopyard-test-"

@@ -100,8 +100,11 @@ defmodule Loopyard.WorkstationTest do
 
   describe "naming (per identity)" do
     test "container / volume names are derived from the id" do
-      assert Workstation.container_name("brad") == "loopyard-ws-brad"
-      assert Workstation.home_volume("brad") == "loopyard-ws-brad-home"
+      # Prefixed per environment so the suite can't name (or clobber) the
+      # developer's real container/volume — see resource_prefix/0.
+      p = Workstation.resource_prefix()
+      assert Workstation.container_name("brad") == "#{p}ws-brad"
+      assert Workstation.home_volume("brad") == "#{p}ws-brad-home"
     end
   end
 
