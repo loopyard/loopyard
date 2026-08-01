@@ -253,9 +253,8 @@ defmodule LoopyardWeb.DashboardLive do
 
         <div class="mt-6 grid gap-4 md:grid-cols-3 md:auto-rows-fr lg:min-h-[26rem]">
           <%!-- ── WORKSPACES ─────────────────────────────────────────────── --%>
-          <section class="relative border border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-white/[0.03] p-5 md:p-6">
-            <.link navigate="/workspaces" class="absolute inset-0 focus-ring" aria-label="Workspaces"></.link>
-            <div class="flex items-center gap-2.5 text-zinc-900 dark:text-zinc-50">
+          <.dash_card title="Workspaces" navigate="/workspaces">
+            <:icon>
               <svg
                 viewBox="0 0 20 20"
                 fill="currentColor"
@@ -264,8 +263,7 @@ defmodule LoopyardWeb.DashboardLive do
               >
                 <path d="M3 3.5A1.5 1.5 0 0 1 4.5 2h3A1.5 1.5 0 0 1 9 3.5v3A1.5 1.5 0 0 1 7.5 8h-3A1.5 1.5 0 0 1 3 6.5v-3ZM3 13.5A1.5 1.5 0 0 1 4.5 12h3A1.5 1.5 0 0 1 9 13.5v3A1.5 1.5 0 0 1 7.5 18h-3A1.5 1.5 0 0 1 3 16.5v-3ZM11 3.5A1.5 1.5 0 0 1 12.5 2h3A1.5 1.5 0 0 1 17 3.5v3A1.5 1.5 0 0 1 15.5 8h-3A1.5 1.5 0 0 1 11 6.5v-3ZM11 13.5a1.5 1.5 0 0 1 1.5-1.5h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3a1.5 1.5 0 0 1-1.5-1.5v-3Z" />
               </svg>
-              <h2 class="text-lead font-semibold tracking-tight">Workspaces</h2>
-            </div>
+            </:icon>
             <.gauge navigate="/workspaces" tone={(@ws.working > 0 && :working) || :calm}>
               {(@ws.working > 0 && "#{@ws.working} #{plural(@ws.working, "workspace")} working") ||
                 "Nothing running"}
@@ -290,15 +288,13 @@ defmodule LoopyardWeb.DashboardLive do
                 />
               </.link>
             </div>
-          </section>
+          </.dash_card>
 
           <%!-- ── OPERATOR ───────────────────────────────────────────────── --%>
-          <section class="relative border border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-white/[0.03] p-5 md:p-6">
-            <.link navigate="/operator" class="absolute inset-0 focus-ring" aria-label="Operator"></.link>
-            <div class="flex items-center gap-2.5 text-zinc-900 dark:text-zinc-50">
+          <.dash_card title="Operator" navigate="/operator">
+            <:icon>
               <span class="text-violet-600 dark:text-violet-400"><Brand.mark class="w-5 h-5" /></span>
-              <h2 class="text-lead font-semibold tracking-tight">Operator</h2>
-            </div>
+            </:icon>
             <%!-- The gauge NAMES what's waiting. "6 waiting on you" prompts the
                  only question that matters — six WHAT? — and answers none of
                  them; the breakdown by kind does. --%>
@@ -361,12 +357,11 @@ defmodule LoopyardWeb.DashboardLive do
                 </.link>
               </div>
             </div>
-          </section>
+          </.dash_card>
 
           <%!-- ── SYSTEM ─────────────────────────────────────────────────── --%>
-          <section class="relative border border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-white/[0.03] p-5 md:p-6">
-            <.link navigate="/system" class="absolute inset-0 focus-ring" aria-label="System"></.link>
-            <div class="flex items-center gap-2.5 text-zinc-900 dark:text-zinc-50">
+          <.dash_card title="System" navigate="/system">
+            <:icon>
               <svg
                 viewBox="0 0 20 20"
                 fill="currentColor"
@@ -379,8 +374,7 @@ defmodule LoopyardWeb.DashboardLive do
                   clip-rule="evenodd"
                 />
               </svg>
-              <h2 class="text-lead font-semibold tracking-tight">System</h2>
-            </div>
+            </:icon>
             <.gauge
               navigate="/system"
               tone={
@@ -437,7 +431,7 @@ defmodule LoopyardWeb.DashboardLive do
                 </div>
               </div>
             </div>
-          </section>
+          </.dash_card>
         </div>
       </div>
     </.page_shell>
@@ -500,6 +494,33 @@ defmodule LoopyardWeb.DashboardLive do
   defp health_line(:degraded), do: "A subsystem is degraded — tap for detail"
   defp health_line(:down), do: "A subsystem is down — tap for detail"
   defp health_line(_), do: "Status unavailable"
+
+  @doc """
+  A dashboard card: bordered panel, icon + title, whole-card link.
+
+  The three cards on this page each hand-assembled the same chrome and the same
+  title row — which is how the title on one of them ended up a different size
+  from its neighbours. The chrome lives here now, so there is one place to
+  change it and no way for the three to disagree.
+  """
+  attr :title, :string, required: true
+  attr :navigate, :string, required: true
+  slot :icon, required: true
+  slot :inner_block, required: true
+
+  def dash_card(assigns) do
+    ~H"""
+    <section class="relative border border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-white/[0.03] p-5 md:p-6">
+      <%!-- The whole card is the target; inner links sit above it on z-10. --%>
+      <.link navigate={@navigate} class="absolute inset-0 focus-ring" aria-label={@title}></.link>
+      <div class="flex items-center gap-2.5 text-zinc-900 dark:text-zinc-50">
+        {render_slot(@icon)}
+        <h2 class="text-lead font-semibold tracking-tight">{@title}</h2>
+      </div>
+      {render_slot(@inner_block)}
+    </section>
+    """
+  end
 
   @doc """
   A card's status gauge: the one line that says how this system is doing, sitting
