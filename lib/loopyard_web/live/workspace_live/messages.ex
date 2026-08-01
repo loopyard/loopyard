@@ -162,12 +162,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         :if={@show_user_label}
         class="flex items-center justify-between gap-3 mb-2"
       >
-        <span class="text-lead inline-flex items-center gap-1.5 font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
+        <span class="text-body inline-flex items-center gap-1.5 font-medium text-violet-600/80 dark:text-violet-300/70">
           <.icon name={:user} class="w-3.5 h-3.5 flex-none self-center" /> {@user_label}
         </span>
         <span
           :if={@msg[:timestamp]}
-          class="text-lead flex-none text-violet-500/80 dark:text-violet-300/60"
+          class="text-body flex-none text-violet-500/60 dark:text-violet-300/45"
         >
           {Calendar.strftime(@msg.timestamp, "%b %-d, %-I:%M %p")}
         </span>
