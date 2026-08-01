@@ -45,8 +45,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.AgentEmbed do
             state={embed_identity_state(@st)}
             class="min-w-0"
           />
-          <span class="text-meta text-zinc-500 dark:text-zinc-400 flex-none">· {embed_word(@st)}</span>
-          <span class="text-meta ml-auto flex-none inline-flex items-center gap-1 rounded-sm px-2 py-0.5 font-medium text-violet-600 dark:text-violet-400 group-hover:bg-violet-500/10 transition-colors">
+          <span class="text-lead text-zinc-500 dark:text-zinc-400 flex-none">· {embed_word(@st)}</span>
+          <span class="text-lead ml-auto flex-none inline-flex items-center gap-1 rounded-sm px-2 py-0.5 font-medium text-violet-600 dark:text-violet-400 group-hover:bg-violet-500/10 transition-colors">
             open →
           </span>
         </.link>
@@ -61,13 +61,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.AgentEmbed do
           <div :for={line <- @recent}>
             <div
               :if={line.kind == :text}
-              class="markdown-body text-body text-zinc-700 dark:text-zinc-200 line-clamp-4"
+              class="markdown-body text-lead text-zinc-700 dark:text-zinc-200 line-clamp-4"
             >
               {Loopyard.Markdown.to_html(line.text)}
             </div>
             <div
               :if={line.kind == :tool}
-              class="font-mono text-meta text-zinc-500 dark:text-zinc-400 truncate"
+              class="font-mono text-lead text-zinc-500 dark:text-zinc-400 truncate"
             >
               ⚙ {line.tool}
             </div>
@@ -75,14 +75,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.AgentEmbed do
           <%!-- What it's doing right NOW (mid-turn), when known --%>
           <div
             :if={embed_detail(@st) && @st[:status] == :thinking}
-            class="font-mono text-meta text-violet-500 dark:text-violet-400 truncate"
+            class="font-mono text-lead text-violet-500 dark:text-violet-400 truncate"
           >
             {embed_detail(@st)}
           </div>
         </div>
         <div
           :if={@recent == [] && embed_detail(@st)}
-          class="border-t border-zinc-100 dark:border-zinc-800 px-3 py-2 text-meta text-zinc-500 dark:text-zinc-400 truncate"
+          class="border-t border-zinc-100 dark:border-zinc-800 px-3 py-2 text-lead text-zinc-500 dark:text-zinc-400 truncate"
         >
           {embed_detail(@st)}
         </div>

@@ -9,7 +9,7 @@ defmodule LoopyardWeb.Components.StreamCard do
   toned by meaning: `:needs_you` amber, `:you` violet, `:neutral` quiet.
   * `header/1` — the standard top row: the canonical `workspace_identity`
   chip TOP-LEFT (when the card knows its subject), the card's label
-  TOP-RIGHT opposite it (icon + uppercase `text-meta` text). Without a
+  TOP-RIGHT opposite it (uppercase, inheriting the card's size). Without a
   chip the label holds the left edge.
   * Actions/links belong at the BOTTOM of the card (convention, not markup).
 
@@ -37,7 +37,7 @@ defmodule LoopyardWeb.Components.StreamCard do
   def band(assigns) do
     ~H"""
     <div class={[
-      "-mx-4 md:-mx-6 wide:-mx-4 px-4 md:px-6 pt-4 md:pt-5 pb-4 md:pb-5",
+      "-mx-4 md:-mx-6 wide:-mx-4 px-4 md:px-6 pt-4 md:pt-5 pb-4 md:pb-5 text-lead",
       band_tone(@tone, @chrome),
       @class
     ]}>
@@ -86,7 +86,7 @@ defmodule LoopyardWeb.Components.StreamCard do
         class="min-w-0"
       />
       <span class={[
-        "text-meta flex items-center gap-1.5 font-semibold uppercase tracking-wide flex-none",
+        "flex items-center gap-1.5 font-semibold uppercase tracking-wide flex-none",
         @label_class
       ]}>
         {render_slot(@label)}

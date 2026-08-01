@@ -41,7 +41,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
             class="min-w-0"
           />
           <span class={[
-            "text-meta flex items-center gap-1.5 font-semibold uppercase tracking-wide flex-none",
+            "text-lead flex items-center gap-1.5 font-semibold uppercase tracking-wide flex-none",
             (@msg.status == :pending && "text-orange-700 dark:text-orange-400") ||
               "text-zinc-500 dark:text-zinc-400"
           ]}>
@@ -63,12 +63,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
 
         <div
           :if={@msg.status == :pending}
-          class="text-meta mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400"
+          class="text-lead mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400"
         >
           …or just reply in the chat — your message is sent to the agent as the answer.
         </div>
 
-        <div :if={@msg.status == :timeout} class="text-meta text-zinc-500 dark:text-zinc-400">
+        <div :if={@msg.status == :timeout} class="text-lead text-zinc-500 dark:text-zinc-400">
           No answer — the agent moved on.
         </div>
       </LoopyardWeb.Components.StreamCard.band>
@@ -99,11 +99,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
     <div class="mb-8 last:mb-0">
       <div
         :if={@q.header != ""}
-        class="text-meta font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1"
+        class="text-lead font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1"
       >
         {@q.header}
       </div>
-      <div class="text-body font-semibold leading-snug text-zinc-900 dark:text-zinc-50 mb-3">
+      <div class="text-lead font-semibold leading-snug text-zinc-900 dark:text-zinc-50 mb-3">
         {@q.prompt}
       </div>
 
@@ -157,12 +157,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
             <.check />
           </span>
           <span class="relative min-w-0 flex-1">
-            <span class="text-body block font-medium text-zinc-900 dark:text-zinc-100">
+            <span class="text-lead block font-medium text-zinc-900 dark:text-zinc-100">
               {o.label}
             </span>
             <span
               :if={o.description not in [nil, ""]}
-              class="text-body mt-0.5 block text-zinc-600 dark:text-zinc-400"
+              class="text-lead mt-0.5 block text-zinc-600 dark:text-zinc-400"
             >
               {o.description}
             </span>
@@ -186,7 +186,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
             data-qother
             phx-value-question_id={@msg.question_id}
             phx-value-q={@q.id}
-            class="text-body min-w-0 flex-1 border-0 bg-transparent px-0 py-2 font-medium text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-none focus:ring-0"
+            class="text-lead min-w-0 flex-1 border-0 bg-transparent px-0 py-2 font-medium text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-none focus:ring-0"
           />
         </div>
 
@@ -206,7 +206,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
           (@q[:multi] && "sm:justify-end") || "sm:justify-between"
         ]}>
           <%!-- Set apart from the primary on mobile (mt-3) and deliberately
-      smaller (min-h-10 vs 52px, text-meta vs text-body). Skip also sits
+      smaller (min-h-10 vs 52px, text-lead vs text-lead). Skip also sits
       LAST — furthest from Answer — because it was directly beneath the
       primary at identical weight, which made discarding a question a
       plausible mis-tap. Size + distance beats a confirm-tap: requiring a
@@ -222,14 +222,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
               phx-click="skip_question"
               phx-value-question_id={@msg.question_id}
               phx-value-q={@q.id}
-              class="focus-ring text-meta w-full sm:w-auto order-last sm:order-first inline-flex items-center justify-center rounded-sm px-4 min-h-10 text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              class="focus-ring text-lead w-full sm:w-auto order-last sm:order-first inline-flex items-center justify-center rounded-sm px-4 min-h-10 text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
             >
               Skip
             </button>
             <.link
               :if={!@q[:multi] && @chat_path}
               navigate={@chat_path}
-              class="focus-ring text-meta w-full sm:w-auto inline-flex items-center justify-center rounded-sm border border-zinc-300 dark:border-zinc-600 px-4 min-h-10 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              class="focus-ring text-lead w-full sm:w-auto inline-flex items-center justify-center rounded-sm border border-zinc-300 dark:border-zinc-600 px-4 min-h-10 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
             >
               Chat
             </.link>
@@ -240,7 +240,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
             type="submit"
             class={
               [
-                "focus-ring w-full sm:w-1/2 order-first inline-flex items-center justify-center rounded-sm text-body font-semibold px-6 min-h-[3.25rem] sm:min-h-12 transition-all",
+                "focus-ring w-full sm:w-1/2 order-first inline-flex items-center justify-center rounded-sm text-lead font-semibold px-6 min-h-[3.25rem] sm:min-h-12 transition-all",
                 if(draft_count(@msg, @q) > 0,
                   do: "bg-orange-600 hover:bg-orange-700 text-white shadow-md shadow-orange-600/30",
                   # Lights up the INSTANT you pick, with no server round-trip.
@@ -271,7 +271,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
             phx-click="confirm_question"
             phx-value-question_id={@msg.question_id}
             phx-value-q={@q.id}
-            class="focus-ring text-body flex-none inline-flex items-center rounded-sm bg-orange-700 hover:bg-orange-800 text-white font-medium px-4 py-2 transition-colors"
+            class="focus-ring text-lead flex-none inline-flex items-center rounded-sm bg-orange-700 hover:bg-orange-800 text-white font-medium px-4 py-2 transition-colors"
           >
             {if draft_count(@msg, @q) > 0,
               do: "Done (#{draft_count(@msg, @q)} selected)",
@@ -308,7 +308,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
           </span>
           <span class="min-w-0 flex-1">
             <span class={[
-              "text-body block font-medium",
+              "text-lead block font-medium",
               if(chosen?(@msg, @q, o.label),
                 do: "text-emerald-800 dark:text-emerald-200",
                 else: "text-zinc-600 dark:text-zinc-400"
@@ -319,7 +319,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
             <span
               :if={o.description not in [nil, ""]}
               class={[
-                "text-body mt-0.5 block",
+                "text-lead mt-0.5 block",
                 if(chosen?(@msg, @q, o.label),
                   do: "text-emerald-700/80 dark:text-emerald-300/70",
                   else: "text-zinc-500 dark:text-zinc-500"
@@ -332,7 +332,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
         </div>
 
         <%!-- No option row matched: a free-text answer (show it) or a skip. --%>
-        <div :if={!any_option_chosen?(@msg, @q)} class="text-body flex flex-wrap items-center gap-2">
+        <div :if={!any_option_chosen?(@msg, @q)} class="text-lead flex flex-wrap items-center gap-2">
           <span
             :if={answer_for(@msg, @q)}
             class="inline-flex items-center gap-1.5 rounded-sm bg-emerald-500/15 px-3 py-1.5 font-medium text-emerald-700 dark:text-emerald-300"

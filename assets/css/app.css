@@ -164,7 +164,7 @@
      and the 68ch measure — the document feel comes from size + rhythm + measure,
      not from a typeface change. (Tried a serif; it didn't sit right.) */
   max-width: 68ch;          /* the measure — the single biggest readability win */
-  @apply text-body; /* the ONE reading size — see tailwind.config.js */
+  @apply text-lead; /* the chat reads one step up — see tailwind.config.js */
   letter-spacing: 0;
 }
 .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
@@ -175,9 +175,9 @@
   letter-spacing: -0.01em;
 }
 .markdown-body > :first-child { margin-top: 0; }
-.markdown-body h1 { @apply text-title; }
-.markdown-body h2 { @apply text-lead; }
-.markdown-body h3 { @apply text-body; }
+.markdown-body h1 { @apply text-hero; }
+.markdown-body h2 { @apply text-title; }
+.markdown-body h3 { @apply text-lead; }
 .markdown-body p { margin: 1em 0; }        /* real air between paragraphs = skimmable */
 .markdown-body p:first-child { margin-top: 0; }
 .markdown-body p:last-child { margin-bottom: 0; }
@@ -214,7 +214,7 @@
   background: transparent;
   /* One fixed-width size everywhere — it used to be 15px, dropping to 13px on
      md+, so a code block changed size when you rotated the phone. */
-  @apply text-meta;
+  @apply text-body;
 }
 .markdown-body blockquote {
   margin: 0.5em 0;
@@ -293,13 +293,13 @@
   @apply text-meta font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500;
 }
 
-/* The human prompt band reads at chat-body, same as the prose and the composer
-   input — a typed message keeps its size as it peels off into the queue. */
+/* The human prompt band reads the same as the prose and the composer input — a
+   typed message keeps its size as it peels off into the queue. */
 .markdown-body.human-prompt,
 .markdown-body.human-prompt p,
 .markdown-body.human-prompt li {
   font-family: inherit;
-  @apply text-body;
+  @apply text-lead;
   line-height: 1.55;
 }
 

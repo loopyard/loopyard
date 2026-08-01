@@ -249,7 +249,11 @@ defmodule LoopyardWeb.Components.Common do
         aria-hidden="true"
         class={["flex-none rounded-full w-2 h-2", state_light(@state)]}
       ></span>
-      <span class="min-w-0 truncate text-body">
+      <%!-- No size of its own: it INHERITS the surface it sits on. In a rail
+    that's body; inside a turn card, where every font is the chat's reading
+    size, it's that. A component that names its own size is the thing that
+    makes one card read at two sizes. --%>
+      <span class="min-w-0 truncate">
         <span class={
           (@muted && "text-zinc-500 dark:text-zinc-400") ||
             "font-medium text-zinc-800 dark:text-zinc-100"

@@ -31,7 +31,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.AuthFix do
         </LoopyardWeb.Components.StreamCard.header>
 
         <div :if={@msg.status == :pending}>
-          <p class="text-body text-zinc-800 dark:text-zinc-100 mb-2.5">
+          <p class="text-lead text-zinc-800 dark:text-zinc-100 mb-2.5">
             Claude can't authenticate, so agents are paused. Run this on your Mac —
             it opens a browser to authorize and pushes a 1-year token here:
           </p>
@@ -39,7 +39,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.AuthFix do
             id={"auth-fix-#{@msg.id}"}
             command={"curl -fsS \"__ORIGIN__/workstations/#{@msg.workstation_id}/claude/setup.sh?token=#{Loopyard.PushToken.get()}\" | sh"}
           />
-          <p class="text-meta text-zinc-500 dark:text-zinc-400 mt-2">
+          <p class="text-lead text-zinc-500 dark:text-zinc-400 mt-2">
             Everything resumes on its own once the token lands — this card turns green.
             No terminal handy?
             <.link
@@ -66,7 +66,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.AuthFix do
               <path d="M2.5 6.5 5 9l4.5-5.5" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
           </span>
-          <span class="text-body text-emerald-800 dark:text-emerald-200">
+          <span class="text-lead text-emerald-800 dark:text-emerald-200">
             Token landed — agents are back and queued messages are sending.
           </span>
         </div>
