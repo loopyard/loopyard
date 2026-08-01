@@ -1709,6 +1709,57 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   # --- Render ---
 
+  # Read the workspace out of the SAME tree the sidebar renders from. Sourcing
+  # this from @workspace_entry made the bar say "Asleep" next to a green dot and
+  # a "Ready" agent panel — that entry doesn't carry agent statuses, so the
+  # helper silently fell through to the default. Two badges disagreeing on one
+  # screen is worse than one being absent.
+  defp tree_entry(tree, ws_id) do
+    Enum.find_value(tree || [], fn p ->
+      Enum.find(p.workspaces || [], &(&1.id == ws_id))
+    end)
+  end
+
+  # Status of the workspace this page is showing, in words — same vocabulary as
+  # the workspace cards (Working / Needs you / Ready / Broken / Asleep), so the
+  # badge means the same thing wherever you meet it. nil when the entry hasn't
+  # loaded yet rather than guessing "Asleep".
+  defp ws_status_word(nil), do: nil
+
+  defp ws_status_word(entry) do
+    cond do
+      entry[:needs_you] -> "Needs you"
+      entry[:broken] -> "Broken"
+      true -> agent_status_word(Enum.map(entry[:agents] || [], &Map.get(&1, :status)))
+    end
+  end
+
+  defp agent_status_word(statuses) do
+    cond do
+      Enum.any?(statuses, &(&1 == :auth_expired)) ->
+        "Broken"
+
+      Enum.any?(statuses, &(&1 in [:thinking, :compacting, :booting, :backoff, :rate_limited])) ->
+        "Working"
+
+      Enum.any?(statuses, &(&1 == :idle)) ->
+        "Ready"
+
+      true ->
+        "Asleep"
+    end
+  end
+
+  defp ws_status_class(entry) do
+    case ws_status_word(entry) do
+      "Working" -> "text-violet-600 dark:text-violet-400"
+      "Needs you" -> "text-orange-700 dark:text-orange-400"
+      "Ready" -> "text-emerald-600 dark:text-emerald-400"
+      "Broken" -> "text-red-600 dark:text-red-400"
+      _ -> "text-zinc-400 dark:text-zinc-500"
+    end
+  end
+
   @impl true
   def render(assigns) do
     # Show the mobile detail only when it's toggled open AND there's actually a
@@ -1748,6 +1799,33 @@ defmodule LoopyardWeb.WorkspaceLive do
         has_container={@has_container}
         mobile_detail_open={@mobile_detail_open}
       />
+      <%!-- DESKTOP top bar, full width above both rails. The chat view used to
+    put the brand + mode icons inside the SIDEBAR head, so the chrome sat at
+    a different place than on /review, /workspaces and "/" — switching
+    between them moved the frame. Now every surface shares one bar: anchor
+    left (loopyard > project > workspace, with the workspace's status),
+    modes right. Phones keep the two-row chat_header above (md:hidden) —
+    this bar is desktop-only so mobile is untouched. --%>
+      <div class="hidden md:flex flex-none items-center gap-3 h-14 px-4 md:px-5 border-b border-zinc-200 dark:border-zinc-800">
+        <LoopyardWeb.Components.Breadcrumbs.breadcrumbs crumbs={
+          LoopyardWeb.Components.AppHeader.with_root([
+            {@project.name, "/projects/#{@project.id}"},
+            {(@workspace_entry || %{})[:name] || @workspace.id, nil}
+          ])
+        } />
+        <span
+          :if={ws_status_word(tree_entry(@global_tree, @workspace.id))}
+          class={[
+            "flex-none text-sm font-medium",
+            ws_status_class(tree_entry(@global_tree, @workspace.id))
+          ]}
+        >
+          {ws_status_word(tree_entry(@global_tree, @workspace.id))}
+        </span>
+        <div class="flex-1"></div>
+        <LoopyardWeb.Components.Common.mode_nav active={:workspaces} />
+      </div>
+
       <.flash_banner flash={@flash} kind={:error} class="mx-4 mt-2" />
       <div class="flex-1 flex min-h-0">
         <%!-- LEFT rail: god-mode tree — every project → workspace → agent, live

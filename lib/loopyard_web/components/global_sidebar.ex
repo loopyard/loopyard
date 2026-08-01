@@ -21,27 +21,10 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
   def global_sidebar(assigns) do
     ~H"""
     <nav class={["flex flex-col", @class]} aria-label="Navigation">
-      <%!-- Persistent home + sound: the wordmark always returns to the root
-    screen; the speaker (desktop's only always-visible header, since the
-    mobile chat_header is md:hidden) toggles/opens ambient sound. Fixed
-    height so nothing shifts. --%>
-      <div class="relative z-20 flex items-center h-14 flex-none border-b border-zinc-200/70 dark:border-zinc-800 bg-brand-paper-shade dark:bg-brand-ink">
-        <%!-- Left inset matches the app header's Nav.bar pad (`px-4 md:px-5`)
-    EXACTLY, so the loopyard mark sits at the same x whether you're on
-    a header page (dashboard/list) or the 3-pane rail — it never jumps
-    on navigation. --%>
-        <.link
-          navigate="/"
-          aria-label="loopyard home"
-          class="flex-1 min-w-0 flex items-center h-full px-4 md:px-5 text-zinc-900 dark:text-zinc-50 hover:opacity-70 transition-opacity"
-        >
-          <%!-- Official trefoil mark + lowercase wordmark (loopyard.ai/branding).
-    Mark sized w-5 to match the breadcrumb logo exactly. --%>
-          <Brand.logo mark_class="w-5 h-5 flex-none" wordmark_class="text-base tracking-tight" />
-        </.link>
-        <LoopyardWeb.Components.Common.mode_nav active={:workspaces} class="mr-1.5" />
-      </div>
-
+      <%!-- No brand/mode head here any more: the chat page now renders ONE
+    full-width bar above both rails (workspace_live.ex), so the wordmark
+    and mode icons sit at the same place as every other surface instead of
+    being nested in this column. --%>
       <%!-- The SAME grouped list the /workspaces page and the mobile switcher use,
     so the switch gesture is identical everywhere. A subtly TINTED surface
     (zinc-50, not pure white) so the rail reads as distinct from the white
