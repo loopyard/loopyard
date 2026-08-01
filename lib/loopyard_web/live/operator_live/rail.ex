@@ -128,7 +128,7 @@ defmodule LoopyardWeb.OperatorLive.Rail do
             phx-value-project={i.project_id}
             phx-value-agent={i.agent_id}
             title={"#{i.project_name} · #{i.workspace_name} — #{state_label(i.state)}"}
-            class="group flex items-center gap-2.5 rounded-sm px-2.5 py-3 lg:py-1.5 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+            class="group flex items-center gap-2.5 rounded-sm px-2.5 py-3 min-h-11 lg:min-h-0 lg:py-1.5 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
           >
             <.workspace_identity
               project={i.project_name}

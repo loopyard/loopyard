@@ -446,13 +446,13 @@ defmodule LoopyardWeb.ReviewLive do
         <.link
           :if={!@history?}
           navigate="/review/history"
-          class="chat-sub font-medium text-violet-600 dark:text-violet-400 hover:underline"
+          class="chat-sub font-medium inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
         >
           Flip through past questions →
         </.link>
         <.link
           navigate="/operator"
-          class="chat-sub font-medium text-violet-600 dark:text-violet-400 hover:underline"
+          class="chat-sub font-medium inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
         >
           ← Back to the operator
         </.link>

@@ -37,7 +37,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.AgentEmbed do
         <%!-- Header: who + live status + drill-in --%>
         <.link
           navigate={embed_link(@msg)}
-          class="group flex items-center gap-2 px-3.5 py-2.5 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/50 transition-colors"
+          class="group flex items-center gap-2 px-3.5 py-2.5 min-h-11 md:min-h-0 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/50 transition-colors"
         >
           <LoopyardWeb.Components.Common.workspace_identity
             project={@proj}

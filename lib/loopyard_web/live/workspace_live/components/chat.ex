@@ -491,7 +491,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               <button
                 type="submit"
                 aria-label="Send"
-                class="focus-ring flex-none flex items-center justify-center rounded-full w-10 h-10 mb-[5px] md:mb-1 text-violet-600 dark:text-violet-400
+                class="focus-ring flex-none flex items-center justify-center rounded-full w-11 h-11 md:w-10 md:h-10 mb-[5px] md:mb-1 text-violet-600 dark:text-violet-400
     hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
               >
                 <.icon name={:arrow_up} class="w-6 h-6" />
