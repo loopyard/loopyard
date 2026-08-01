@@ -67,7 +67,7 @@ names.
 
 ---
 
-## P0-2. Test isolation — the suite reaches the developer's live Docker — HALF DONE
+## P0-2. Test isolation — the suite reaches the developer's live Docker — DONE
 
 Half fixed. `Workstation.resource_prefix/0` now namespaces the identity
 container + home volume, and `materialize_home/2` raises outside its prefix, so
@@ -140,3 +140,32 @@ one slide with subscriptions keyed to it.
 Still open: P0-2 (the remaining 128-site Docker coupling), P1-3 Changes/History,
 P1-4 integration pages, P1-5 wedged-turn reset, P2-6 operator rail composition,
 P2-7 Reviewer scroll-snap.
+
+---
+
+## P0-2 closed (2106b87c, b021439e)
+
+**The suite can no longer touch real state.** Every Docker resource name is
+built from `Loopyard.Docker.prefix/0` (16 constructors were interpolating the
+literal), and a backstop in `Docker.docker/2` raises if a test names a real
+resource anyway — mutations only, since reads change nothing and some tests
+legitimately list what's running. It caught two hand-written fixtures
+immediately.
+
+**And it doesn't talk to the daemon at all by default.** Prefixing meant calls
+started CREATING namespaced volumes rather than hitting existing ones (740
+accumulated), and the I/O pushed tests past the 2s budget so timeouts landed on
+innocent tests. A unit test has no business shelling out to a daemon.
+
+Two production bugs fell out of chasing those timeouts: `Attention.line/0`
+resolved agent states with SERIAL 500ms-capped GenServer calls on the mount
+path for the dashboard and the operator rail (one wedged agent delayed all the
+others); and the design-system tests re-walked the whole web tree per test.
+
+### What's left, and it isn't this
+
+3–5 tests still fail per full run, varying by seed, clustered in ChatAgent ETS
+(`SessionResume`, `RateLimit`, `RestartState`, `DashboardFirstRun`). They all
+pass in isolation. This pollution PREDATES the isolation work — the same seed
+on the prior commit fails more, not fewer — so it's a distinct problem: shared
+agent/ETS state between tests, not shared Docker resources. Worth its own pass.
