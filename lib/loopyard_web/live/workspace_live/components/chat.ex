@@ -386,7 +386,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               </span>
               <div class="flex items-baseline gap-3 min-w-0">
                 <span class="text-sm text-violet-500/70 dark:text-violet-300/50 truncate">
-                  queued · sends when the agent finishes
+                  Queued
                 </span>
                 <button
                   :if={(@agent[:pending_count] || 0) > 1}

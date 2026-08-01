@@ -153,26 +153,30 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       id={"msg-user-#{@msg[:id] || hash_content(@msg.content)}"}
       data-sticky-header={@show_user_label}
     >
+      <%!-- Identity left, timestamp hard right. This sits ABOVE the
+    content/actions row, not inside the content column: the hover-actions
+    column is opacity-toggled (not display), so it reserves ~60px of
+    layout width even while invisible, and a timestamp inside the content
+    column stopped that far short of the band's edge. --%>
+      <div
+        :if={@show_user_label}
+        class="flex items-center justify-between gap-3 mb-2"
+      >
+        <span class="chat-meta inline-flex items-center gap-1.5 font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
+          <.icon name={:user} class="w-3.5 h-3.5 flex-none self-center" /> {@user_label}
+        </span>
+        <span
+          :if={@msg[:timestamp]}
+          class="chat-meta flex-none text-violet-500/80 dark:text-violet-300/60"
+        >
+          {Calendar.strftime(@msg.timestamp, "%b %-d, %-I:%M %p")}
+        </span>
+      </div>
       <div class="flex items-start justify-between gap-3">
-        <div class="min-w-0">
-          <%!-- Identity left, timestamp pushed to the RIGHT edge. They used to
-    sit adjacent on the left, so the eye had to parse "who" and "when"
-    as one run of text; separating them gives each a fixed place to
-    look, and matches the band header anatomy elsewhere. --%>
-          <div
-            :if={@show_user_label}
-            class="flex items-center justify-between gap-3 mb-2"
-          >
-            <span class="chat-meta inline-flex items-center gap-1.5 font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
-              <.icon name={:user} class="w-3.5 h-3.5 flex-none self-center" /> {@user_label}
-            </span>
-            <span
-              :if={@msg[:timestamp]}
-              class="chat-meta flex-none text-violet-500/80 dark:text-violet-300/60"
-            >
-              {Calendar.strftime(@msg.timestamp, "%b %-d, %-I:%M %p")}
-            </span>
-          </div>
+        <%!-- flex-1: without it this column is only as wide as its text, so the
+      header's justify-between spanned the TEXT, not the band, and the
+      timestamp stopped short of the right edge. --%>
+        <div class="flex-1 min-w-0">
           <%!-- Clamp to a few lines: the prompt is a sticky HEADER, so a long
     paste must stay header-sized (full text via the ↗ link). --%>
           <div class="markdown-body human-prompt text-zinc-800 dark:text-zinc-100 max-w-3xl line-clamp-3">
