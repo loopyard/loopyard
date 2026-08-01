@@ -276,15 +276,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
     deletes the agent). On phones you interrupt with the red pill above
     the input and start/remove from the agents switcher. --%>
           <div class="flex items-center gap-2">
-            <%!-- Stop = interrupt the RUNNING turn. Only shown while the agent is
-    actually working — an idle "Stop" is meaningless ("stop what?"). --%>
-            <.control_btn
-              :if={agent_display_status(@agent) == :thinking}
-              phx-click="interrupt_agent"
-              phx-value-id={@agent.id}
-            >
-              Stop
-            </.control_btn>
+            <%!-- No Stop here. The live status row above the composer already
+    carries one, right where you're watching the turn happen — two Stops
+    on one screen is a second place to look for the same control. --%>
             <.control_btn
               :if={agent_display_status(@agent) in [:sleeping, :crashed]}
               variant={:primary}
