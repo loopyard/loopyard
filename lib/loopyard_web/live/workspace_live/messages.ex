@@ -183,7 +183,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
             {Loopyard.Markdown.to_html(@msg.content)}
           </div>
         </div>
-        <div class="flex items-center gap-1 flex-none opacity-0 group-hover/msg:opacity-100 transition-opacity">
+        <div class="flex items-center gap-1 flex-none opacity-100 md:opacity-0 md:group-hover/msg:opacity-100 transition-opacity">
           <.copy_btn :if={@raw} raw_url={@raw} />
           <.open_btn :if={@url} url={@url} />
         </div>
