@@ -200,7 +200,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
 
         <%!-- SECONDARY: full-width single column on mobile (big tap targets),
     2-up grid on the desktop rail where space is tight. --%>
-        <div :if={@running?} class="grid grid-cols-1 md:grid-cols-2 gap-1.5">
+        <%!-- All three on ONE row: two-up left Console orphaned on a second
+        line, which read as a separate group rather than one action set. --%>
+        <div :if={@running?} class="grid grid-cols-3 gap-1.5">
           <.control_btn
             phx-click="restart_service"
             phx-value-service_name={@service_name}
