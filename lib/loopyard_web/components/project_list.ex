@@ -285,8 +285,12 @@ defmodule LoopyardWeb.Components.ProjectList do
       |> assign(:changes, card_changes(assigns.ws))
 
     ~H"""
+    <%!-- Weight matched to the dashboard cards: same padding and a real
+         min-height, so a workspace reads as a CARD rather than a bordered
+         line of text. The grid was previously one thin box floating in an
+         empty page. --%>
     <div class={[
-      "relative  border p-4 transition-colors",
+      "relative border p-5 md:p-6 min-h-[9rem] flex flex-col transition-colors",
       card_tint(@headline)
     ]}>
       <%!-- Stretched link covers the card (→ the agent chat) WITHOUT nesting
@@ -304,8 +308,18 @@ defmodule LoopyardWeb.Components.ProjectList do
           project={@ws.name}
           state={ws_state(@ws)}
           size={:md}
-          class="min-w-0 flex-1"
+          class="min-w-0"
         />
+        <%!-- The dot alone doesn't SAY anything — "green" isn't a status a new
+             user can read. Name it. Hidden below sm where the row is already
+             tight; the dot keeps carrying it there. --%>
+        <span class={[
+          "hidden sm:inline flex-none text-xs md:text-sm font-medium",
+          status_class(ws_state(@ws))
+        ]}>
+          {status_word(ws_state(@ws))}
+        </span>
+        <div class="flex-1"></div>
         <span :if={ws_port_entry(@ws)} class="relative z-10 flex-none">
           <Birdseye.port_chip port={ws_port_entry(@ws).port} url={ws_port_entry(@ws).url} />
         </span>
@@ -315,17 +329,19 @@ defmodule LoopyardWeb.Components.ProjectList do
     footer fact), so on the card it collapses to the quiet who's-here line;
     ±N shows once, in the footer. --%>
       <div class={[
-        "mt-2 text-sm truncate",
+        "mt-2 text-sm md:text-base truncate",
         card_story_class(@headline) || "text-zinc-500 dark:text-zinc-400"
       ]}>
         {card_story_text(@headline, @ws)}
       </div>
       <%!-- Footer facts: last activity (the STEADY anchor — always present) then
     changes to its RIGHT (conditional: only when known + nonzero). This is
-    the ONLY place ±N shows; the story line never repeats it. --%>
+    the ONLY place ±N shows; the story line never repeats it. Pushed to the
+    bottom (mt-auto) so every card in the row shares one baseline. --%>
+      <div class="mt-auto"></div>
       <div
         :if={@ws[:last_activity_at] || @changes}
-        class="mt-1 text-xs text-zinc-400 dark:text-zinc-500"
+        class="mt-1 text-xs md:text-sm text-zinc-400 dark:text-zinc-500"
       >
         <span :if={@ws[:last_activity_at]}>Active {time_ago(@ws.last_activity_at)}</span>
         <span :if={@ws[:last_activity_at] && @changes}> · </span>
@@ -380,6 +396,21 @@ defmodule LoopyardWeb.Components.ProjectList do
   defp card_story_class(%{kind: :changed}), do: nil
   defp card_story_class(%{class: class}), do: class
   defp card_story_class(_), do: nil
+
+  # Say the state in words. The colour is the fast signal for someone who
+  # already knows the vocabulary; the word is what makes it legible to
+  # everyone else.
+  defp status_word(:working), do: "Working"
+  defp status_word(:needs_you), do: "Needs you"
+  defp status_word(:done), do: "Ready"
+  defp status_word(:broken), do: "Broken"
+  defp status_word(_), do: "Asleep"
+
+  defp status_class(:working), do: "text-violet-600 dark:text-violet-400"
+  defp status_class(:needs_you), do: "text-orange-700 dark:text-orange-400"
+  defp status_class(:done), do: "text-emerald-600 dark:text-emerald-400"
+  defp status_class(:broken), do: "text-red-600 dark:text-red-400"
+  defp status_class(_), do: "text-zinc-400 dark:text-zinc-500"
 
   # Quiet fallback line: who's here (the dot already says ready/asleep — no
   # status words), or that nobody is.
