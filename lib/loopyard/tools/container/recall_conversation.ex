@@ -22,7 +22,9 @@ defmodule Loopyard.Tools.Container.RecallConversation do
         "durable log — use this when you don't remember something that was discussed " <>
         "earlier (e.g. after a restart or a model/harness switch your context may be " <>
         "empty even though the full history is preserved). Returns messages oldest→" <>
-        "newest. Page further back with before_id, or search with query.",
+        "newest, and always within a bounded size so it can't flood your context. " <>
+        "SEARCH with query when you're after something specific; page with before_id " <>
+        "(printed next to every message as `id`) to read further back.",
     params: [
       agent_id: {:string, required: true},
       limit: {:integer, description: "How many messages to return (default 30, max 200)."},
@@ -33,7 +35,7 @@ defmodule Loopyard.Tools.Container.RecallConversation do
       query:
         {:string,
          description:
-           "Case-insensitive substring to search message text for. Returns the most recent matches (before_id is ignored when searching)."}
+           "Search terms. Case-insensitive; EVERY whitespace-separated term must appear in a message (any order), so \"nfhs creds\" finds a message containing both. Searches message text AND tool names. Excerpts are centred on the match, so a hit deep inside a long message is actually shown. Returns the most recent matches (before_id is ignored when searching). PREFER this over paging when you're looking for something specific — it's far cheaper than reading history back."}
     ]
 
   alias Loopyard.ChatAgent.MessageWindow
@@ -41,6 +43,18 @@ defmodule Loopyard.Tools.Container.RecallConversation do
   @default_limit 30
   @max_limit 200
   @body_cap 800
+
+  # TOTAL output budget, independent of the message count. The per-message cap
+  # alone doesn't bound anything useful: 200 messages x 800 bytes is ~160KB —
+  # roughly 40k tokens dumped into the context by one call, which is the exact
+  # thing this tool exists to avoid. We fill up to the budget newest-first and
+  # say plainly how many were left out and how to reach them.
+  @total_cap 12_000
+
+  # Search excerpts are centred ON the match. Showing the first N bytes of a
+  # long message is how a search can "find" something and still not show it —
+  # a credential 3KB into a message was located and then truncated away.
+  @excerpt_radius 320
 
   def execute(%{agent_id: agent_id} = params, _assigns) do
     limit = params |> Map.get(:limit) |> clamp(@default_limit, 1, @max_limit)
@@ -96,11 +110,16 @@ defmodule Loopyard.Tools.Container.RecallConversation do
 
   # --- search (most-recent matches) ---
   defp search(all, total, query, limit) do
-    q = String.downcase(query)
+    # Every whitespace-separated term must appear (order-independent), so
+    # "nfhs creds" finds a message containing both rather than only the exact
+    # phrase. Tool NAMES are searchable too — "which tool did I run" is a
+    # question about the transcript like any other.
+    terms = query |> String.downcase() |> String.split(~r/\s+/, trim: true)
 
     matches =
       Enum.filter(all, fn m ->
-        m[:content] |> to_string() |> String.downcase() |> String.contains?(q)
+        haystack = (to_string(m[:content]) <> " " <> to_string(m[:tool])) |> String.downcase()
+        Enum.all?(terms, &String.contains?(haystack, &1))
       end)
 
     shown = Enum.take(matches, -limit)
@@ -114,14 +133,49 @@ defmodule Loopyard.Tools.Container.RecallConversation do
         ) <>
         if(match_count == 0, do: ".", else: ", oldest first:")
 
-    body = if shown == [], do: "", else: "\n\n" <> render(shown)
+    body = if shown == [], do: "", else: "\n\n" <> render(shown, terms)
     {:ok, header <> body}
   end
 
   # --- rendering ---
-  defp render(messages), do: Enum.map_join(messages, "\n\n", &render_one/1)
+  #
+  # Renders NEWEST-first into the byte budget, then flips back to chronological
+  # order for the reader. Dropping from the OLD end is the right trade: the most
+  # recent context is what an agent that has lost its memory needs first, and
+  # the footer tells it exactly how to page further back.
+  defp render(messages, terms \\ []) do
+    {kept, omitted} = fit_to_budget(messages, terms)
 
-  defp render_one(m) do
+    body = kept |> Enum.map_join("\n\n", &render_one(&1, terms))
+
+    if omitted > 0 do
+      "(#{omitted} older message(s) in this window omitted to stay within the " <>
+        "context budget — narrow with `query`, or page with `before_id`.)\n\n" <> body
+    else
+      body
+    end
+  end
+
+  # Fill newest-first until the budget is spent. Always keeps at least one
+  # message, so a single oversized message still returns something.
+  defp fit_to_budget(messages, terms) do
+    {kept_rev, _spent} =
+      messages
+      |> Enum.reverse()
+      |> Enum.reduce_while({[], 0}, fn m, {acc, spent} ->
+        cost = m |> render_one(terms) |> byte_size()
+
+        cond do
+          acc == [] -> {:cont, {[m], cost}}
+          spent + cost > @total_cap -> {:halt, {acc, spent}}
+          true -> {:cont, {[m | acc], spent + cost}}
+        end
+      end)
+
+    {kept_rev, length(messages) - length(kept_rev)}
+  end
+
+  defp render_one(m, terms) do
     who =
       case m[:role] do
         :user -> "User"
@@ -132,17 +186,48 @@ defmodule Loopyard.Tools.Container.RecallConversation do
         _ -> "System"
       end
 
-    "#{who}#{ts(m[:timestamp])}: #{body(m[:content])}"
+    "#{who}#{ts(m[:timestamp])} (id #{m[:id]}): #{body(m[:content], terms)}"
   end
 
-  defp body(content) do
-    text = to_string(content)
+  # No search terms: the head of the message, capped.
+  defp body(content, []), do: clip_head(to_string(content))
 
+  # Searching: centre the excerpt ON the first matching term. Showing the head
+  # of a long message is how a search finds something and still doesn't show it.
+  defp body(content, terms) do
+    text = to_string(content)
+    down = String.downcase(text)
+
+    case terms |> Enum.map(&:binary.match(down, &1)) |> Enum.reject(&(&1 == :nomatch)) do
+      [] ->
+        clip_head(text)
+
+      hits ->
+        {at, _} = Enum.min_by(hits, fn {a, _} -> a end)
+        excerpt(text, at)
+    end
+  end
+
+  defp clip_head(text) do
     if byte_size(text) > @body_cap do
       String.slice(text, 0, @body_cap) <> "… [truncated — #{byte_size(text)} bytes]"
     else
       text
     end
+  end
+
+  defp excerpt(text, _at) when byte_size(text) <= @body_cap, do: text
+
+  defp excerpt(text, at) do
+    start = max(0, at - @excerpt_radius)
+    len = @excerpt_radius * 2
+
+    lead = if start > 0, do: "…", else: ""
+    trail = if start + len < byte_size(text), do: "…", else: ""
+
+    lead <>
+      binary_part(text, start, min(len, byte_size(text) - start)) <>
+      trail <> " [match shown; full message #{byte_size(text)} bytes]"
   end
 
   defp ts(%DateTime{} = dt),
