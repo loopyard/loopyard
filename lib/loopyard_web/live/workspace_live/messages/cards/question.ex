@@ -222,7 +222,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
               phx-click="skip_question"
               phx-value-question_id={@msg.question_id}
               phx-value-q={@q.id}
-              class="focus-ring text-lead w-full sm:w-auto order-last sm:order-first inline-flex items-center justify-center rounded-sm px-4 min-h-10 text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              class="focus-ring text-lead w-full sm:w-auto order-last sm:order-first inline-flex items-center justify-center rounded-sm border border-zinc-300 dark:border-zinc-600 px-4 min-h-10 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
             >
               Skip
             </button>
