@@ -135,6 +135,33 @@ defmodule LoopyardWeb.DesignSystemTest do
            """
   end
 
+  test "the scale's sizes are responsive, and defined in exactly one place" do
+    # Phone LARGER, desktop smaller — a phone is small, often in motion and
+    # held at arm's length; a desktop display is stationary and closer. The
+    # sizes live in CSS custom properties so the whole scale shifts at ONE
+    # breakpoint, which is what lets every template keep a single class and
+    # still be right at both widths.
+    config = File.read!("assets/tailwind.config.js")
+
+    for token <- ~w(meta body lead title hero) do
+      assert config =~ "#{token}: ['var(--t-#{token})'",
+             "#{token} must take its size from --t-#{token}, not a hardcoded value"
+    end
+
+    css = File.read!("assets/css/app.css")
+    assert css =~ ~r/:root\s*\{[^}]*--t-body:/, "the phone scale must be defined on :root"
+
+    assert css =~ ~r/@media \(min-width: 768px\)\s*\{\s*:root/,
+           "the desktop scale must be the ONE media query that shifts it"
+
+    # Inheritance has to land ON the scale: components that deliberately take
+    # their size from context were falling back to the browser's 16px, which
+    # the scale doesn't contain — that's why the switcher read smaller than
+    # the mono port chip beside it.
+    assert css =~ ~r/body\s*\{[^}]*font-size:\s*var\(--t-body\)/,
+           "body must inherit from the scale, not the browser default"
+  end
+
   test "no element changes size between breakpoints" do
     # A responsive size flip (text-lead md:text-body) means the same element is
     # two sizes depending on the window — the page's own title changing size

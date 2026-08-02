@@ -4,6 +4,45 @@
 @import "@xterm/xterm/css/xterm.css";
 @import "../../packages/brand/assets/brand.css";
 
+/* THE TYPE SCALE'S ACTUAL SIZES — the one place they live.
+ *
+ * Phone first and LARGER; desktop smaller. That reads backwards written down
+ * and is obvious with both in hand: a phone is small, often in motion, and
+ * held at arm's length, so text needs weight; a desktop display is stationary
+ * and closer, so the same text reads comfortably a notch tighter.
+ *
+ * Shifting the whole scale at ONE breakpoint is what lets every template keep
+ * a single class (`text-body`) and still be right at both sizes. Per-element
+ * responsive flips stay banned — that's how an element ends up two sizes for
+ * no reason — and design_system_test enforces it. */
+:root {
+  --t-meta: 14px;
+  --t-body: 17px;
+  --t-lead: 20px;
+  --t-title: 22px;
+  --t-hero: 26px;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --t-meta: 13px;
+    --t-body: 15px;
+    --t-lead: 17px;
+    --t-title: 20px;
+    --t-hero: 24px;
+  }
+}
+
+/* Inheritance must land ON the scale. Components that deliberately take their
+ * size from context (workspace_identity, the card labels) were inheriting the
+ * BROWSER default of 16px — a size the scale doesn't contain — so the
+ * project·workspace switcher rendered a notch smaller than the mono port chip
+ * beside it, for no reason anyone could see. */
+body {
+  font-size: var(--t-body);
+}
+
+
 /* Accessibility — design tokens
  *
  * --tap-min:   44×44 CSS px is the WCAG AA + Apple HIG touch-target floor.

@@ -36,12 +36,17 @@ module.exports = {
     // a 2px band, differences too small to read as hierarchy but big enough to
     // look like a mistake — cannot come back by habit. If you reach for a size
     // that isn't here, the answer is one of these five, not a sixth.
+    //
+    // The SIZES are CSS custom properties (assets/css/app.css) so the whole
+    // scale can shift at one breakpoint — bigger on a phone, smaller on a
+    // desktop. Doing it there, once, is what keeps `md:text-body` out of the
+    // templates; a per-element responsive flip is still banned, and tested.
     fontSize: {
-      meta: ['0.8125rem', '1.4'],
-      body: ['1rem', '1.5'],
-      lead: ['1.125rem', '1.6'],
-      title: ['1.25rem', '1.4'],
-      hero: ['1.5rem', '1.25']
+      meta: ['var(--t-meta)', '1.4'],
+      body: ['var(--t-body)', '1.5'],
+      lead: ['var(--t-lead)', '1.55'],
+      title: ['var(--t-title)', '1.4'],
+      hero: ['var(--t-hero)', '1.25']
     },
     extend: {
       // The ULTRAWIDE cutover. Below it the chat's prompt bands + composer run
