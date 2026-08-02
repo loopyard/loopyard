@@ -62,18 +62,40 @@ defmodule LoopyardWeb.DashboardLive do
     |> assign(:bind, safe(&Loopyard.Bind.describe/0, "unknown"))
     |> assign(:operator, safe(&Loopyard.Workstation.current/0, "—"))
     |> assign(:operator_count, safe(fn -> length(Loopyard.Workstation.list()) end, 1))
-    |> then(fn socket ->
-      # The line itself, not just its length — the card shows the actual asks.
-      items = safe(fn -> Loopyard.Attention.line() end, [])
-
-      socket
-      |> assign(:attention, items)
-      |> assign(:waiting, length(items))
-    end)
+    |> load_attention_async()
     |> assign(:inference_ready?, safe(&inference_ready?/0, true))
     |> assign(:digest, safe(fn -> Loopyard.Operator.Digest.recent(6) end, []))
     |> assign(:health_map, safe(&Loopyard.Health.overall/0, %{}))
     |> then(&assign(&1, :first_run_step, first_run_step(&1.assigns)))
+  end
+
+  # Kick the attention load off the render path. Keeps whatever it already had
+  # while reloading, so the heartbeat never blanks a card you're reading — only
+  # the very first load shows the checking state.
+  defp load_attention_async(socket) do
+    host = socket.assigns.host
+
+    socket
+    |> assign_new(:attention, fn -> [] end)
+    |> assign_new(:waiting, fn -> 0 end)
+    |> assign_new(:attention_loaded?, fn -> false end)
+    |> start_async(:attention, fn -> Loopyard.Attention.line(host) end)
+  end
+
+  @impl true
+  def handle_async(:attention, {:ok, items}, socket) when is_list(items) do
+    {:noreply,
+     socket
+     |> assign(:attention, items)
+     |> assign(:waiting, length(items))
+     |> assign(:attention_loaded?, true)
+     |> then(&assign(&1, :first_run_step, first_run_step(&1.assigns)))}
+  end
+
+  # A failed or crashed lookup must not wedge the card in "checking" forever —
+  # mark it loaded and show what we know (nothing waiting).
+  def handle_async(:attention, _other, socket) do
+    {:noreply, assign(socket, :attention_loaded?, true)}
   end
 
   # Which step of getting started is the user actually on? nil once they're
@@ -298,8 +320,15 @@ defmodule LoopyardWeb.DashboardLive do
             <%!-- The gauge NAMES what's waiting. "6 waiting on you" prompts the
                  only question that matters — six WHAT? — and answers none of
                  them; the breakdown by kind does. --%>
-            <.gauge navigate="/review" tone={(@waiting > 0 && :needs_you) || :calm}>
-              {(@waiting > 0 && attention_headline(@attention)) || "No decisions waiting"}
+            <.gauge
+              navigate="/review"
+              tone={(!@attention_loaded? && :calm) || (@waiting > 0 && :needs_you) || :calm}
+            >
+              {cond do
+                not @attention_loaded? -> "Checking for decisions…"
+                @waiting > 0 -> attention_headline(@attention)
+                true -> "No decisions waiting"
+              end}
               <:detail>Running the shop as {@operator}</:detail>
             </.gauge>
 

@@ -196,8 +196,23 @@ defmodule Loopyard.Attention do
 
   # get_state is a 500ms GenServer call with an ETS fallback (a wedged agent must
   # not hang the queue). Belt-and-suspenders around it here too.
+  # ETS FIRST. This is a render path — it feeds the dashboard's decisions card
+  # and the operator rail — and all it needs is the agent's name, workspace and
+  # messages, which is exactly what the ETS summary carries. `get_state/1` asks
+  # the GenServer first and only falls back to ETS after a 500ms timeout, so an
+  # agent that was merely BUSY (mid-turn, or still starting after a reboot)
+  # made every one of those pages wait half a second before rendering. That was
+  # the ~512ms mount the SlowMountLogger kept reporting: not work, a timeout.
+  #
+  # The summary is the canonical read for multiplayer views by design, and it
+  # already has card patches applied — so this is also the MORE correct read,
+  # not just the faster one. The GenServer call remains as the fallback for an
+  # agent with no row yet (booting), where it returns promptly anyway.
   defp safe_state(agent_id) do
-    ChatAgent.get_state(agent_id)
+    case :ets.lookup(:chat_agents, agent_id) do
+      [{^agent_id, summary}] -> summary
+      [] -> ChatAgent.get_state(agent_id)
+    end
   rescue
     _ -> nil
   catch

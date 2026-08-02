@@ -83,6 +83,16 @@ defmodule Loopyard.ChangeCounts do
 
   def handle_info(%Events.ChatAgent.Resumed{}, state), do: {:noreply, state}
 
+  # Same shape, same reason as Resumed above — a newly started agent is a turn
+  # boundary for its workspace, and the catchall was dumping its ENTIRE message
+  # history into the log as a warning on every boot. (Resumed was fixed for
+  # this; Started has the identical signature and was missed.)
+  def handle_info(%Events.ChatAgent.Started{summary: %{id: agent_id}}, state) do
+    {:noreply, maybe_recompute(state, workspace_of(agent_id))}
+  end
+
+  def handle_info(%Events.ChatAgent.Started{}, state), do: {:noreply, state}
+
   def handle_info(:sweep, state) do
     Process.send_after(self(), :sweep, @sweep_ms)
 
