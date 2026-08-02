@@ -238,8 +238,31 @@ defmodule LoopyardWeb.OperatorLive do
          }, socket}
 
       true ->
-        ChatAgent.send_message(socket.assigns.agent_id, message)
-        {:reply, %{ok: true}, socket}
+        # DURABILITY-CONFIRMED, same contract as the workspace composer. This
+        # used to be send_message/2 — a fire-and-forget CAST — so we replied
+        # ok: true and cleared the box before the agent had received anything.
+        # When the agent then crashed handling it, the message was gone with no
+        # ack, no error and no transitional state: from the outside, typing did
+        # NOTHING. A cast is fine for internal/eval callers; a UI send must be
+        # a call, because only a call can tell the person their text landed.
+        case ChatAgent.enqueue_message(socket.assigns.agent_id, message) do
+          :ok ->
+            {:reply, %{ok: true}, socket}
+
+          {:error, :queue_full} ->
+            {:reply,
+             %{
+               ok: false,
+               note: "The operator's queue is full — your text is kept. Try again shortly."
+             }, socket}
+
+          {:error, _} ->
+            {:reply,
+             %{
+               ok: false,
+               note: "The operator didn't take that — your text is kept. Try again in a moment."
+             }, socket}
+        end
     end
   end
 

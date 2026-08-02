@@ -360,15 +360,35 @@ defmodule Loopyard.Harness.Questions do
       # ask/2 never ran, so the entry leaked. Reap it here — and flip the
       # card off "Asking…" — so a dead question can't hijack a chat
       # message (route it to a dead pid = silently lost).
-      if Process.alive?(entry.waiter) do
-        {qid, entry}
-      else
-        :ets.delete(@table, qid)
-        update_msg(entry.agent_id, entry.msg_id, %{status: :timeout})
-        nil
+      cond do
+        waiter_alive?(entry.waiter) ->
+          {qid, entry}
+
+        # A waiter that WAS a process and has died: the receive in ask/2 never
+        # ran, so the entry leaked. Reap it and flip the card off "Asking…".
+        is_pid(entry.waiter) ->
+          :ets.delete(@table, qid)
+          update_msg(entry.agent_id, entry.msg_id, %{status: :timeout})
+          nil
+
+        # NO waiter at all — an entry rebuilt from a durable card (see
+        # with_entry/2, which exists precisely so an orphaned card is still
+        # answerable). Nothing leaked and nothing is blocked on it, so it isn't
+        # "pending" for this purpose; and it must NOT be reaped, or answering
+        # the card it was rebuilt for would break.
+        #
+        # This used to hit Process.alive?(nil), which raises. The crash landed
+        # in ChatAgent.handle_cast — the SEND path — so once any waiterless
+        # card existed, every message to that agent killed the GenServer and
+        # vanished.
+        true ->
+          nil
       end
     end)
   end
+
+  defp waiter_alive?(pid) when is_pid(pid), do: Process.alive?(pid)
+  defp waiter_alive?(_), do: false
 
   @doc "Whether `agent_id` is currently blocked awaiting a question answer."
   @spec pending_for_agent?(String.t()) :: boolean()
