@@ -108,6 +108,71 @@ defmodule Loopyard.Tools.Container.RecallConversationTest do
     assert out =~ "1 match"
   end
 
+  describe "grep (regex)" do
+    test "matches on SHAPE, which plain words can't", %{id: id} do
+      seed(id, [
+        msg(1, "the token is sk-ant-oat01-AbCdEf0123456789xyzQ"),
+        msg(2, "no secrets in this one")
+      ])
+
+      {:ok, out} =
+        RecallConversation.execute(%{agent_id: id, pattern: "sk-[A-Za-z0-9-]{20,}"}, %{})
+
+      assert out =~ "1 match"
+      assert out =~ "sk-ant-oat01"
+      refute out =~ "no secrets in this one"
+    end
+
+    test "is case-insensitive by default and can be made strict", %{id: id} do
+      seed(id, [msg(1, "The DEV Key is here")])
+
+      {:ok, loose} = RecallConversation.execute(%{agent_id: id, pattern: "dev key"}, %{})
+      assert loose =~ "1 match"
+
+      {:ok, strict} =
+        RecallConversation.execute(%{agent_id: id, pattern: "dev key", case_sensitive: true}, %{})
+
+      assert strict =~ "0 match"
+    end
+
+    test "centres the excerpt on the regex match, not the head", %{id: id} do
+      buried = String.duplicate("filler ", 600) <> "PASSWORD=hunter2sekrit"
+      seed(id, [msg(1, buried)])
+
+      {:ok, out} = RecallConversation.execute(%{agent_id: id, pattern: "PASSWORD\\s*="}, %{})
+
+      assert out =~ "hunter2sekrit",
+             "grep found it but truncated it away — the point is to SHOW the match"
+    end
+
+    test "an invalid pattern explains itself instead of crashing", %{id: id} do
+      seed(id, [msg(1, "hello")])
+
+      {:ok, out} = RecallConversation.execute(%{agent_id: id, pattern: "(unclosed"}, %{})
+
+      assert out =~ "Invalid pattern"
+      assert out =~ "query", "it should point at the simpler alternative"
+    end
+
+    test "greps tool names too", %{id: id} do
+      seed(id, [msg(1, "ran it", %{role: :tool, tool: "docker_compose"})])
+
+      {:ok, out} =
+        RecallConversation.execute(%{agent_id: id, pattern: "docker_(compose|build)"}, %{})
+
+      assert out =~ "1 match"
+    end
+
+    test "grep output is bounded like everything else", %{id: id} do
+      seed(id, for(i <- 1..200, do: msg(i, "hit-#{i} " <> String.duplicate("z", 2_000))))
+
+      {:ok, out} =
+        RecallConversation.execute(%{agent_id: id, pattern: "hit-\\d+", limit: 200}, %{})
+
+      assert byte_size(out) < 20_000, "grep returned #{byte_size(out)} bytes"
+    end
+  end
+
   test "every message carries its id, so the agent can page from any of them", %{id: id} do
     seed(id, for(i <- 1..3, do: msg(i, "line #{i}")))
 

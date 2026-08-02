@@ -16,6 +16,10 @@ defmodule Loopyard.ChatAgent.Restart do
 
   @ets_table :chat_agents
 
+  # Mirrors ChatAgent's @max_consecutive_crashes — the point at which the
+  # retry machinery stops trying, which is exactly when a human needs telling.
+  defp max_crashes, do: Application.get_env(:loopyard, :max_consecutive_crashes, 5)
+
   # The chat marker for a session restart, or nil for silence. Only events the
   # user should KNOW about earn a line: a real crash recovery, or their own
   # Restart click (confirmation). Maintenance reasons are EventLog-only.
@@ -240,32 +244,55 @@ defmodule Loopyard.ChatAgent.Restart do
         backoff_ms = Loopyard.Retry.backoff_ms(consecutive, {:exponential, base})
         Process.send_after(self(), {:retry_session, consecutive, state.session}, backoff_ms)
 
-        error_msg = %{
-          role: :error,
-          content:
-            "Failed to restart the agent session: #{inspect(reason)}. " <>
-              "WHY: the agent harness failed to start — usually a transient spawn race, " <>
-              "auth, or the harness missing in the container. " <>
-              "CONSEQUENCE: no turn is running right now; your messages are preserved. " <>
-              "ACTION: none — retrying automatically in #{div(backoff_ms, 1000)}s. " <>
-              "If it keeps failing, check the harness in the container, then click Restart.",
-          timestamp: DateTime.utc_now()
-        }
+        # SILENCE WHILE SELF-HEALING. We just scheduled a retry, so by the
+        # project's own rule (CLAUDE.md → "Errors speak ONLY when the user can
+        # act and the system can't self-fix") this earns no chat line: the
+        # EventLog records it and the harness-status block shows "Reconnecting".
+        #
+        # It used to post a red wall whose own text said "ACTION: none —
+        # retrying automatically", which is the definition of noise — and worse,
+        # a chat message is PERMANENT. The retry would succeed seconds later and
+        # the transcript kept a crash report forever, so a perfectly healthy
+        # agent read as horribly broken every time you scrolled past it.
+        #
+        # The message is earned only when self-healing has actually given up:
+        # at that point no more retries are coming and a human has to act.
+        giving_up? = consecutive >= max_crashes()
 
-        {state, error_msg} = MessageLog.append(state, error_msg)
+        Loopyard.EventLog.warning(
+          "agent:#{state.name}",
+          "Session restart failed (#{inspect(reason)}); retry #{consecutive} in #{div(backoff_ms, 1000)}s"
+        )
 
         state =
           %{state | errors: state.errors + 1, status: :backoff}
           |> Map.put(:consecutive_crashes, consecutive)
           |> Map.put(:retry_from_session, state.session)
 
+        state =
+          if giving_up? do
+            error_msg = %{
+              role: :error,
+              content:
+                "The agent harness won't start (#{inspect(reason)}) after #{consecutive} attempts. " <>
+                  "CONSEQUENCE: no turn can run; every message you've sent is preserved. " <>
+                  "ACTION: check the harness in the container, then click Restart.",
+              timestamp: DateTime.utc_now()
+            }
+
+            {state, error_msg} = MessageLog.append(state, error_msg)
+
+            Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+              agent_id: state.id,
+              msg: error_msg
+            })
+
+            state
+          else
+            state
+          end
+
         :ets.insert(@ets_table, {state.id, Loopyard.ChatAgent.summary(state)})
-
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-          agent_id: state.id,
-          msg: error_msg
-        })
-
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :backoff})
 
         {:noreply, state}

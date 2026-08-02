@@ -23,8 +23,10 @@ defmodule Loopyard.Tools.Container.RecallConversation do
         "earlier (e.g. after a restart or a model/harness switch your context may be " <>
         "empty even though the full history is preserved). Returns messages oldest→" <>
         "newest, and always within a bounded size so it can't flood your context. " <>
-        "SEARCH with query when you're after something specific; page with before_id " <>
-        "(printed next to every message as `id`) to read further back.",
+        "Three ways in: `pattern` GREPS the transcript with a regex (when you know " <>
+        "the SHAPE of what you want), `query` matches plain words (when you just know " <>
+        "some words), and `before_id` pages further back. Prefer searching over " <>
+        "paging — it's far cheaper than reading history back.",
     params: [
       agent_id: {:string, required: true},
       limit: {:integer, description: "How many messages to return (default 30, max 200)."},
@@ -32,6 +34,11 @@ defmodule Loopyard.Tools.Container.RecallConversation do
         {:string,
          description:
            "Return messages BEFORE this message id (for paging further back — use the before_id printed in a previous call's footer)."},
+      pattern:
+        {:string,
+         description:
+           "GREP: a regular expression to match against message text and tool names, e.g. \"(user|pass)word\\s*[:=]\" or \"sk-[A-Za-z0-9_-]{20,}\". Case-insensitive by default. Use this when you know the SHAPE of what you're after; use `query` when you just know some words. An invalid pattern is reported, never guessed at."},
+      case_sensitive: {:boolean, description: "Make `pattern` case-sensitive (default false)."},
       query:
         {:string,
          description:
@@ -69,6 +76,9 @@ defmodule Loopyard.Tools.Container.RecallConversation do
     cond do
       total == 0 ->
         {:ok, "No conversation history yet — this is the start of the conversation."}
+
+      is_binary(params[:pattern]) and String.trim(params[:pattern]) != "" ->
+        grep(all, total, String.trim(params[:pattern]), params[:case_sensitive] == true, limit)
 
       is_binary(query) and String.trim(query) != "" ->
         search(all, total, String.trim(query), limit)
@@ -108,6 +118,55 @@ defmodule Loopyard.Tools.Container.RecallConversation do
     {:ok, header <> "\n\n" <> render(window) <> footer}
   end
 
+  # --- grep (regex, most-recent matches) ---
+  #
+  # Agents reach for grep by reflex, and the transcript is just text — the same
+  # ETS list `search` already walks. Matching on the SHAPE of a thing ("a token
+  # that looks like sk-…", "a line assigning a password") is what substring
+  # search can't do.
+  defp grep(all, total, pattern, case_sensitive?, limit) do
+    opts = if case_sensitive?, do: "", else: "i"
+
+    case Regex.compile(pattern, opts) do
+      {:error, {reason, at}} ->
+        {:ok,
+         "Invalid pattern #{inspect(pattern)}: #{reason} at position #{at}. " <>
+           "It's a regular expression — escape regex metacharacters (. * + ? [ ] ( ) | \\) " <>
+           "if you meant them literally, or use `query` for plain word search."}
+
+      {:ok, re} ->
+        matches = Enum.filter(all, &Regex.match?(re, haystack(&1)))
+        shown = Enum.take(matches, -limit)
+
+        header =
+          "Grep of #{total} message(s) for /#{pattern}/#{opts}: #{length(matches)} match(es)" <>
+            if(length(matches) > length(shown),
+              do: " (showing the #{length(shown)} most recent)",
+              else: ""
+            ) <> if(matches == [], do: ".", else: ", oldest first:")
+
+        # Centre each excerpt on what actually matched IN that message, so a hit
+        # deep inside a long message is shown rather than truncated away.
+        annotated =
+          Enum.map(shown, fn m ->
+            case Regex.run(re, to_string(m[:content])) do
+              [hit | _] when is_binary(hit) and hit != "" ->
+                Map.put(m, :__excerpt_terms, [String.downcase(hit)])
+
+              _ ->
+                m
+            end
+          end)
+
+        body = if annotated == [], do: "", else: "\n\n" <> render(annotated)
+        {:ok, header <> body}
+    end
+  end
+
+  # Message text PLUS the tool name — "which tool did I run" is a question about
+  # the transcript like any other.
+  defp haystack(m), do: to_string(m[:content]) <> " " <> to_string(m[:tool])
+
   # --- search (most-recent matches) ---
   defp search(all, total, query, limit) do
     # Every whitespace-separated term must appear (order-independent), so
@@ -118,8 +177,8 @@ defmodule Loopyard.Tools.Container.RecallConversation do
 
     matches =
       Enum.filter(all, fn m ->
-        haystack = (to_string(m[:content]) <> " " <> to_string(m[:tool])) |> String.downcase()
-        Enum.all?(terms, &String.contains?(haystack, &1))
+        hay = m |> haystack() |> String.downcase()
+        Enum.all?(terms, &String.contains?(hay, &1))
       end)
 
     shown = Enum.take(matches, -limit)
@@ -133,7 +192,8 @@ defmodule Loopyard.Tools.Container.RecallConversation do
         ) <>
         if(match_count == 0, do: ".", else: ", oldest first:")
 
-    body = if shown == [], do: "", else: "\n\n" <> render(shown, terms)
+    annotated = Enum.map(shown, &Map.put(&1, :__excerpt_terms, terms))
+    body = if annotated == [], do: "", else: "\n\n" <> render(annotated)
     {:ok, header <> body}
   end
 
@@ -143,10 +203,10 @@ defmodule Loopyard.Tools.Container.RecallConversation do
   # order for the reader. Dropping from the OLD end is the right trade: the most
   # recent context is what an agent that has lost its memory needs first, and
   # the footer tells it exactly how to page further back.
-  defp render(messages, terms \\ []) do
-    {kept, omitted} = fit_to_budget(messages, terms)
+  defp render(messages) do
+    {kept, omitted} = fit_to_budget(messages)
 
-    body = kept |> Enum.map_join("\n\n", &render_one(&1, terms))
+    body = kept |> Enum.map_join("\n\n", &render_one/1)
 
     if omitted > 0 do
       "(#{omitted} older message(s) in this window omitted to stay within the " <>
@@ -158,12 +218,12 @@ defmodule Loopyard.Tools.Container.RecallConversation do
 
   # Fill newest-first until the budget is spent. Always keeps at least one
   # message, so a single oversized message still returns something.
-  defp fit_to_budget(messages, terms) do
+  defp fit_to_budget(messages) do
     {kept_rev, _spent} =
       messages
       |> Enum.reverse()
       |> Enum.reduce_while({[], 0}, fn m, {acc, spent} ->
-        cost = m |> render_one(terms) |> byte_size()
+        cost = m |> render_one() |> byte_size()
 
         cond do
           acc == [] -> {:cont, {[m], cost}}
@@ -175,7 +235,9 @@ defmodule Loopyard.Tools.Container.RecallConversation do
     {kept_rev, length(messages) - length(kept_rev)}
   end
 
-  defp render_one(m, terms) do
+  defp render_one(m) do
+    terms = Map.get(m, :__excerpt_terms, [])
+
     who =
       case m[:role] do
         :user -> "User"
