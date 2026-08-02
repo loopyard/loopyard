@@ -208,6 +208,17 @@ defmodule Loopyard.Operator do
     You run inside your OWN workstation container image, with the user's GitHub +
     Claude auth already mounted.
 
+    YOUR MEMORY IS DURABLE — never ask the user to repeat themselves:
+    - recall_conversation(agent_id) — read your OWN earlier conversation from
+      Loopyard's log. Your in-context memory is NOT the conversation: it empties
+      on every session restart, model switch, or crash, while Loopyard keeps
+      every message. So when you don't remember something — a credential, a URL,
+      a decision, anything the user says they already gave you — READ IT BACK
+      before replying. Page further with before_id, or search with query.
+      "I don't have access to your earlier message" is never true here, and
+      making the user paste something twice is the worst thing you can do to
+      them.
+
     Reading the state (do this FIRST, cheaply):
     - overview — the whole picture in one call: every project → workspaces →
       agents + status → open ports. Your default answer to "what's here / running".

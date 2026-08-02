@@ -34,6 +34,17 @@ defmodule Loopyard.Tools.ControlPlane do
     # (same broker as the town hall / consent cards), not the flaky ACP-native
     # AskUserQuestion. Agent-scoped, so it fits the workspace-less operator.
     Loopyard.Tools.Container.AskUser,
+    # Read your OWN conversation history from Loopyard's durable log. Borrowed
+    # from the container toolkit for the same reason AskUser is: it's
+    # AGENT-scoped (reads the :chat_agents summary by agent_id), so nothing
+    # about it needs a workspace.
+    #
+    # The operator is a ChatAgent with a full durable transcript and had no way
+    # to read it — so after any session restart it genuinely could not recall
+    # what the user had already told it, and correctly said so while asking the
+    # user to repeat themselves. Harness-portable memory is worthless to the one
+    # agent that can't reach it.
+    Loopyard.Tools.Container.RecallConversation,
     # --- Keep the fleet moving: agent + workspace-cluster control ---
     Loopyard.Tools.ControlPlane.Agent,
     Loopyard.Tools.ControlPlane.Workspace,
