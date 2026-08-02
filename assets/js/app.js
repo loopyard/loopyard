@@ -940,8 +940,23 @@ Hooks.ChatForm = {
     // keystroke into localStorage (keyed per-agent via the path) and restore it
     // on mount. Cleared only on a confirmed send.
     const draftKey = "loopyard:draft:" + location.pathname
+    // A draft carries a TIMESTAMP and only restores inside a freshness window.
+    // Without one it lived forever: a message typed days ago whose send was
+    // never confirmed came back into the box on a later visit, and the next
+    // Send fired it — so an agent acted on an instruction from another day that
+    // the user had no idea was still queued up. The focus key below already had
+    // this guard ("reopening the tab later never steals focus"); the draft is
+    // the one where being stale actually DOES something.
+    //
+    // The window only has to cover the case this exists for: a reload, a code
+    // reload, a server restart. Minutes, not days.
+    const DRAFT_TTL = 30 * 60 * 1000
     const writeDraft = () => {
-      try { ta.value ? localStorage.setItem(draftKey, ta.value) : localStorage.removeItem(draftKey) } catch (_) {}
+      try {
+        ta.value
+          ? localStorage.setItem(draftKey, JSON.stringify({ text: ta.value, t: Date.now() }))
+          : localStorage.removeItem(draftKey)
+      } catch (_) {}
     }
     // Writing localStorage on EVERY keystroke is a synchronous disk hit that
     // shows up as type latency. Debounce to ~300ms after you stop typing; a
@@ -955,7 +970,16 @@ Hooks.ChatForm = {
     // Restore a draft from a prior session, but never clobber text already in the
     // box (e.g. server-restored input that mounted first).
     try {
-      const saved = localStorage.getItem(draftKey)
+      const raw = localStorage.getItem(draftKey)
+      // Tolerate the pre-TTL format (a bare string): treat it as expired rather
+      // than restoring text of unknown age — that's the exact failure this fixes.
+      let saved = null
+      if (raw && raw.startsWith("{")) {
+        const { text, t } = JSON.parse(raw)
+        if (text && Date.now() - t < DRAFT_TTL) saved = text
+      }
+      if (!saved) localStorage.removeItem(draftKey)
+
       if (saved && ta.value.trim() === "") {
         ta.value = saved
         requestAnimationFrame(() => {
