@@ -370,14 +370,22 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   def chat_msg(%{msg: %{role: :build}} = assigns) do
     assigns = assign(assigns, :link, msg_url(assigns))
 
+    # Wrap in a plain <div>, same as :build_done below: this is the ROOT of a
+    # stateful LiveComponent (MessageRowComponent), which requires a single
+    # STATIC root tag. log_inline's own root carries a dynamic id + phx-hook, so
+    # it can't serve as that root. Without the wrapper, the FIRST :build message
+    # to reach the stream raises "Stateful components must have a single static
+    # HTML tag at the root" and takes the whole page down with a 500.
     ~H"""
-    <.log_inline
-      content={@msg.content}
-      status={:building}
-      raw_url={@link}
-      title={@msg[:title]}
-      started={@msg[:timestamp]}
-    />
+    <div>
+      <.log_inline
+        content={@msg.content}
+        status={:building}
+        raw_url={@link}
+        title={@msg[:title]}
+        started={@msg[:timestamp]}
+      />
+    </div>
     """
   end
 
