@@ -105,7 +105,7 @@ defmodule Loopyard.ChatAgent.DeadSessionTest do
   end
 
   describe "send_message_normal dead-session branch (message-survival guarantee)" do
-    test "queues raw text, drops a quiet note, stays idle, and kicks restart", %{id: id} do
+    test "queues raw text, drops a quiet note, reports BOOTING, and kicks restart", %{id: id} do
       pid = agent_pid(id)
 
       # Swap in the always-dead backend AFTER boot, and ensure status is
@@ -125,9 +125,12 @@ defmodule Loopyard.ChatAgent.DeadSessionTest do
       assert text in state.pending_sends,
              "expected raw text queued in pending_sends, got: #{inspect(state.pending_sends)}"
 
-      # (3) Status stays :idle (it never transitions to :thinking because
-      # the session is dead).
-      assert state.status == :idle
+      # (3) Status reports :booting — the harness is being respawned to take
+      # this message. It used to stay :idle, which rendered as "Ready" in the
+      # sidebar while the message sat "Queued" beneath it: a pair that is
+      # indistinguishable from a wedged turn, and got reported as one. It is
+      # not :thinking either — no turn has started.
+      assert state.status == :booting
 
       # (1) SILENCE: the restart auto-fixes and auto-delivers, so there is NO
       # chat narration at all — the queue band + harness status carry it.

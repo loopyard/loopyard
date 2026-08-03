@@ -224,10 +224,26 @@ defmodule Loopyard.ChatAgent.Restart do
         # few seconds of settle time lets the resumed subprocess become
         # writable before the queued send hits it. Reuses the existing
         # :drain_resumed_pending handler (batch-drains only when :idle).
-        if state.pending_sends != [] do
-          settle_ms = Application.get_env(:loopyard, :pending_drain_settle_ms, 4_000)
-          Process.send_after(self(), :drain_resumed_pending, settle_ms)
-        end
+        state =
+          if state.pending_sends != [] do
+            settle_ms = Application.get_env(:loopyard, :pending_drain_settle_ms, 4_000)
+            Process.send_after(self(), :drain_resumed_pending, settle_ms)
+
+            # Stay VISIBLY starting until the queued message is actually
+            # delivered. Reporting :idle here — with a message still queued —
+            # is the "Ready but Queued" pair that reads as a wedged turn.
+            state = %{state | status: :booting}
+            :ets.insert(@ets_table, {state.id, Loopyard.ChatAgent.summary(state)})
+
+            Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{
+              id: state.id,
+              status: :booting
+            })
+
+            state
+          else
+            state
+          end
 
         {:noreply, state}
 

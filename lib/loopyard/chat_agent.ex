@@ -963,6 +963,14 @@ defmodule Loopyard.ChatAgent do
       true ->
         case SendGuards.park_send(state, text) do
           {:ok, state} ->
+            state = %{state | status: :booting}
+            :ets.insert(@ets_table, {state.id, summary(state)})
+
+            Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{
+              id: state.id,
+              status: :booting
+            })
+
             GenServer.cast(self(), :restart_session)
             {:reply, :ok, state}
 
@@ -1384,13 +1392,32 @@ defmodule Loopyard.ChatAgent do
   # once it has resumed with a fresh session. Scheduled from resume_from_summary
   # only when the restored queue is non-empty. pending_sends holds ONLY unsent
   # messages (send_batch clears them before sending), so this can't double-send.
-  def handle_info(:drain_resumed_pending, %{pending_sends: []} = state), do: {:noreply, state}
+  # The DECISION lives in ChatAgent.PendingDrain (pure, tested on its own); this
+  # clause just performs it. Getting it wrong strands a message rather than
+  # losing it — visible as "Queued" forever — which is far harder to spot.
+  def handle_info(:drain_resumed_pending, state) do
+    case Loopyard.ChatAgent.PendingDrain.decide(state) do
+      :done ->
+        {:noreply, Map.delete(state, :drain_attempts)}
 
-  def handle_info(:drain_resumed_pending, %{status: :idle, pending_sends: pending} = state) do
-    send_batch(%{state | pending_sends: []}, pending)
+      :drain ->
+        pending = state.pending_sends
+        send_batch(%{state | pending_sends: []} |> Map.delete(:drain_attempts), pending)
+
+      {:retry, attempt, delay_ms} ->
+        Process.send_after(self(), :drain_resumed_pending, delay_ms)
+        {:noreply, Map.put(state, :drain_attempts, attempt)}
+
+      {:give_up, attempt} ->
+        Loopyard.EventLog.warning(
+          "agent:#{state.name}",
+          "#{length(state.pending_sends)} queued message(s) still undelivered after " <>
+            "#{Loopyard.ChatAgent.PendingDrain.max_retries()} drain attempts (status #{state.status})"
+        )
+
+        {:noreply, Map.put(state, :drain_attempts, attempt)}
+    end
   end
-
-  def handle_info(:drain_resumed_pending, state), do: {:noreply, state}
 
   def handle_info(msg, state) do
     Logger.warning("[ChatAgent] #{state.id} unhandled message: #{inspect(msg, limit: 200)}")
@@ -1484,7 +1511,9 @@ defmodule Loopyard.ChatAgent do
           :full -> SendGuards.queue_full_note(state)
         end
 
-      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
+      state = %{state | status: :booting}
+      :ets.insert(@ets_table, {state.id, summary(state)})
+      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :booting})
       GenServer.cast(self(), :restart_session)
       {:noreply, state}
     else
@@ -1517,8 +1546,9 @@ defmodule Loopyard.ChatAgent do
 
     if not state.backend.session_alive?(state.session) do
       # Dead at drain time — re-queue the whole flurry and restart; never lose it.
-      state = %{state | pending_sends: list}
-      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
+      state = %{state | pending_sends: list, status: :booting}
+      :ets.insert(@ets_table, {state.id, summary(state)})
+      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :booting})
       GenServer.cast(self(), :restart_session)
       {:noreply, state}
     else

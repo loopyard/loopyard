@@ -71,7 +71,22 @@ defmodule Loopyard.ChatAgent.StateMachine do
     # immediately surface a :rate_limit_event :rejected or
     # :auth_expired from the SDK, so :idle can pivot to those
     # degraded states without going through :thinking first.
-    idle: [:thinking, :compacting, :rate_limited, :auth_expired, :stopped, :crashed, :destroying],
+    # :booting — an IDLE agent whose harness subprocess is gone (the idle reaper
+    # stops it after 4h) and is being respawned to take a message that just
+    # arrived. It is not thinking (no turn yet) and not broken (nothing
+    # crashed); it is starting. Without this transition that wait had to be
+    # reported as :idle, so the UI said "Ready" while the message sat "Queued"
+    # — which reads exactly like a stuck turn, and got reported as one.
+    idle: [
+      :booting,
+      :thinking,
+      :compacting,
+      :rate_limited,
+      :auth_expired,
+      :stopped,
+      :crashed,
+      :destroying
+    ],
 
     # A thinking agent finishes the turn (→ :idle), times out / errors
     # (→ :crashed), enters :backoff on a mid-stream task crash, or
