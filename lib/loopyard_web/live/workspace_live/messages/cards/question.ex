@@ -7,6 +7,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
   """
   use Phoenix.Component
 
+  alias LoopyardWeb.Components.StreamCard
+
   @doc """
   The agent asked the user a question (via the `ask_user` tool or the harness's
   native AskUserQuestion over ACP form elicitation). An interactive decision
@@ -193,28 +195,28 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
         <%!-- The question's footer: Skip (quiet, left) — the ONE commit action
     (right). Single-select: Answer submits the form. Multi: Done
     confirms the toggled draft. --%>
-        <%!-- MOBILE: Answer on top, full width — the primary move reads first
-    and is the biggest target. The two ghosts stack in a column beneath
-    it, also full width, so the whole footer is one predictable column
-    rather than three things squeezed onto a 390px line.
+        <%!-- MOBILE: one predictable column of three FULL-WIDTH, EQUAL-HEIGHT
+    buttons — Answer filled on top, Skip and Chat as ghosts beneath.
+    They used to be three sizes in one footer, which read as three
+    unrelated controls; equal size + weight-by-fill is the whole
+    hierarchy now.
     DESKTOP (sm:+): Answer sits LEFT at half width, directly below the
     options it commits — the eye finishes the last option and lands on
-    the button, instead of tracking to the far corner. The two ghosts
-    go right. All targets clear 44px. --%>
+    the button, instead of tracking to the far corner. The ghosts go
+    right. --%>
         <div class={[
           "mt-3 flex flex-col sm:flex-row sm:items-center gap-2",
           (@q[:multi] && "sm:justify-end") || "sm:justify-between"
         ]}>
-          <%!-- Set apart from the primary on mobile (mt-3) and deliberately
-      smaller (min-h-10 vs 52px, text-lead vs text-lead). Skip also sits
-      LAST — furthest from Answer — because it was directly beneath the
-      primary at identical weight, which made discarding a question a
-      plausible mis-tap. Size + distance beats a confirm-tap: requiring a
-      double-tap punishes every correct use to guard a rare wrong one,
-      and nothing on screen would teach it. --%>
+          <%!-- Skip is now the SAME size as Answer, so size can no longer be
+      what stops a mis-tap — DISTANCE has to carry it alone. Hence the
+      generous mt-6 on mobile (24px, 3x the 8px between the ghosts
+      themselves) and Skip sitting LAST, furthest from the primary. A
+      confirm-tap would be the alternative, and it punishes every
+      correct use to guard a rare wrong one. --%>
           <div
             :if={!@q[:multi]}
-            class="flex flex-col sm:flex-row sm:items-center gap-2 mt-3 sm:mt-0 order-last sm:ml-auto"
+            class="flex flex-col sm:flex-row sm:items-center gap-2 mt-6 sm:mt-0 order-last sm:ml-auto"
           >
             <button
               :if={!@q[:multi]}
@@ -222,14 +224,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
               phx-click="skip_question"
               phx-value-question_id={@msg.question_id}
               phx-value-q={@q.id}
-              class="focus-ring text-lead w-full sm:w-auto order-last sm:order-first inline-flex items-center justify-center rounded-sm border border-zinc-300 dark:border-zinc-600 px-4 min-h-10 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              class={["w-full sm:w-auto order-last sm:order-first", StreamCard.action_class()]}
             >
               Skip
             </button>
             <.link
               :if={!@q[:multi] && @chat_path}
               navigate={@chat_path}
-              class="focus-ring text-lead w-full sm:w-auto inline-flex items-center justify-center rounded-sm border border-zinc-300 dark:border-zinc-600 px-4 min-h-10 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              class={["w-full sm:w-auto", StreamCard.action_class()]}
             >
               Chat
             </.link>
@@ -240,9 +242,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
             type="submit"
             class={
               [
-                "focus-ring w-full sm:w-1/2 order-first inline-flex items-center justify-center rounded-sm text-lead font-semibold px-6 min-h-[3.25rem] sm:min-h-12 transition-all",
+                StreamCard.action_class(variant: :primary),
+                "w-full sm:w-1/2 order-first",
                 if(draft_count(@msg, @q) > 0,
-                  do: "bg-orange-600 hover:bg-orange-700 text-white shadow-md shadow-orange-600/30",
+                  do: "",
                   # Lights up the INSTANT you pick, with no server round-trip.
                   # draft_count is a server assign and a radio click is purely
                   # client-side, so the commit button sat dead grey after
@@ -250,7 +253,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
                   # backwards. `group-has-[:checked]` covers the options and the
                   # existing data-qother rule covers free text.
                   else:
-                    "bg-zinc-200 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400 " <>
+                    "!bg-zinc-200 !text-zinc-500 dark:!bg-zinc-800 dark:!text-zinc-400 shadow-none " <>
+                      "group-has-[:checked]/qform:!bg-orange-600 " <>
+                      "group-has-[:checked]/qform:!text-white " <>
+                      "group-has-[[data-qother]:not(:placeholder-shown)]/qform:!bg-orange-600 " <>
+                      "group-has-[[data-qother]:not(:placeholder-shown)]/qform:!text-white " <>
                       "group-has-[:checked]/qform:bg-orange-600 " <>
                       "group-has-[:checked]/qform:text-white " <>
                       "group-has-[:checked]/qform:shadow-md " <>
@@ -271,7 +278,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
             phx-click="confirm_question"
             phx-value-question_id={@msg.question_id}
             phx-value-q={@q.id}
-            class="focus-ring text-lead flex-none inline-flex items-center rounded-sm bg-orange-700 hover:bg-orange-800 text-white font-medium px-4 py-2 transition-colors"
+            class={["w-full sm:w-auto sm:flex-none", StreamCard.action_class(variant: :primary)]}
           >
             {if draft_count(@msg, @q) > 0,
               do: "Done (#{draft_count(@msg, @q)} selected)",

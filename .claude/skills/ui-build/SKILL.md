@@ -132,6 +132,16 @@ Layering is fixed and not negotiable per-component:
 - **`scroll-padding-top` on any scroller with sticky headers.** Otherwise
   `scrollIntoView` lands the target UNDER the pinned band — measured at 116px of
   a message hidden behind its own prompt.
+- **Find the REAL scroll container before styling scroll.** A `min-h-screen`
+  column with `overflow-y-auto` on it does not scroll — it GROWS, and the
+  document scrolls instead. `scroll-snap-type`/`scroll-padding` set on that
+  column apply to no scroll container at all and silently do nothing (measured:
+  a 10,724px-tall "scroller" inside an 874px window). Check `window.scrollY`
+  vs the element's `scrollTop` to see which one actually moved. Snap for such
+  pages belongs on `html` — key it off markup with `html:has([data-…])` rather
+  than reaching for JS.
+- **Snap decks are PROXIMITY, never mandatory.** An item taller than the
+  viewport must stay freely scrollable, because its actions are at the bottom.
 
 ---
 
@@ -142,9 +152,18 @@ Layering is fixed and not negotiable per-component:
   drawn — use it when the visual must stay compact (icon buttons in a bar).
 - Prefer real padding for list rows: a 44px row in a list you scan wants ~60px
   and generous horizontal padding, or adjacent rows become mis-taps.
-- **Legitimate exceptions, stated deliberately:** inline links inside prose (44px
-  breaks the paragraph) and controls sized DOWN on purpose to prevent mis-taps
-  (question card Skip/Chat at 40px against a 52px Answer).
+- **Actions in the same row are the SAME size.** Weight is carried by FILL —
+  one filled primary, the rest ghost — never by making the alternatives
+  smaller. Shrinking Skip/Chat to 40px against a 52px Answer read as three
+  unrelated controls, and a stack of matching outlines made Deny look exactly
+  as important as Approve. Build them from `StreamCard.action_class/1`.
+- **Uniform size means DISTANCE is the only mis-tap guard**, so it has to be
+  real: ~4x the within-group gap between the primary and the discard (32px vs
+  8px in the question footer), with the discard placed furthest away. A
+  confirm-tap is the wrong trade — it punishes every correct use to guard a
+  rare wrong one.
+- **Legitimate exception, stated deliberately:** inline links inside prose
+  (44px breaks the paragraph).
 - **A hover-only affordance doesn't exist on a phone.** `group-hover:opacity-100`
   as the only route to an action means the action is unreachable — that's how a
   clamped prompt had no way to expand.

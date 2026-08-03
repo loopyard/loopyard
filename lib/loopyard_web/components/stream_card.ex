@@ -11,7 +11,8 @@ defmodule LoopyardWeb.Components.StreamCard do
   chip TOP-LEFT (when the card knows its subject), the card's label
   TOP-RIGHT opposite it (uppercase, inheriting the card's size). Without a
   chip the label holds the left edge.
-  * Actions/links belong at the BOTTOM of the card (convention, not markup).
+  * Actions/links belong at the BOTTOM of the card, built with
+  `action_class/1` — the ONE geometry every decision button shares.
 
   Using these instead of hand-rolling containers/headers is what keeps every
   card aligned to the same gutter, size, and rhythm — see the question,
@@ -94,4 +95,48 @@ defmodule LoopyardWeb.Components.StreamCard do
     </div>
     """
   end
+
+  @doc """
+  The class list for a decision button — Answer, Skip, Chat, Approve, Deny.
+
+  ONE geometry, because every one of these is the same act: a thing you tap to
+  resolve a card. They were hand-rolled per card and drifted, so on a phone the
+  primary stood 52px tall while the secondaries sat at 40px in a stack of
+  matching outlines — three targets, three sizes, one row.
+
+  Same height everywhere; `variant` carries the only difference that means
+  anything, which is WEIGHT:
+
+    * `:primary` — the move the card exists for. Filled, `tone` picks the fill.
+    * `:ghost` — the alternatives. No border, no fill; they read as available
+      without competing. (Outlines at matching size read as equal weight, which
+      is how Deny came to look exactly as important as Approve.)
+
+  Uniform size means SIZE no longer separates a commit from a discard, so the
+  footer that uses these has to buy that back with DISTANCE — see the question
+  card's footer.
+  """
+  @spec action_class(keyword()) :: list()
+  def action_class(opts \\ []) do
+    variant = Keyword.get(opts, :variant, :ghost)
+    tone = Keyword.get(opts, :tone, :flame)
+
+    [
+      # min-h on the PHONE is the real floor (a 52px row is comfortable for a
+      # thumb); desktop steps down to 44 because a pointer needs less.
+      "focus-ring inline-flex items-center justify-center gap-1.5 rounded-sm",
+      "px-5 min-h-[3.25rem] sm:min-h-11 text-lead transition-colors",
+      case variant do
+        :primary ->
+          ["font-semibold text-white shadow-sm ", primary_fill(tone)]
+
+        :ghost ->
+          "font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+      end
+    ]
+  end
+
+  defp primary_fill(:flame), do: "bg-orange-600 hover:bg-orange-700 shadow-orange-600/30"
+  defp primary_fill(:confirm), do: "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-900/20"
+  defp primary_fill(:danger), do: "bg-red-600 hover:bg-red-700 shadow-red-900/20"
 end

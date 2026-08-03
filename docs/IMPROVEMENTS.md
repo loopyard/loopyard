@@ -207,3 +207,14 @@ of staff hunts so the human doesn't.
    rare actions (Console, Close Port) behind a "⋯" overflow so frequency sets
    the hierarchy. The workspace agent already covers these ops via
    docker_compose/ports, so the buttons are the fast path, not the only path.
+
+7. **The Reviewer deck prints identity twice on whole-card decisions.** Each
+   deck section renders a `FocusedView.subject` naming project · workspace,
+   and an approval / secret / settled-question card renders its OWN identity
+   chip inside its band — so "gbrain · main" appears twice, ~40px apart, at
+   two different sizes. Only the `question_block` branch avoids it (it's a
+   bare block, so the deck supplies its chrome). Wanted: a way for a whole
+   card to suppress its chip when its container already named the subject —
+   the same `chrome={:desktop}` idea applied to identity. Not done here
+   because `question_card`/`approval_card`/`secret_card` render into the chat
+   stream too, where the chip is the ONLY identity and must stay.

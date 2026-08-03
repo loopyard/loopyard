@@ -26,13 +26,29 @@ defmodule LoopyardWeb.Components.FocusedView do
     doc:
       "breadcrumb trail for the top-left anchor, e.g. [{\"loopyard\", \"/\"}, {\"Operator\", \"/operator\"}]"
 
+  attr :snap, :boolean,
+    default: false,
+    doc: """
+    Mark this shell as a snap DECK — stacked items whose tops land at the
+    viewport edge (see `html:has([data-snap-deck])` in app.css).
+
+    The snap lives on `html`, not on the inner column, because this shell is
+    `min-h-screen`: the column GROWS to its content and the document does the
+    scrolling. `overflow-y-auto` on it never engages, so snap properties set
+    there apply to no scroll container at all — measured with a 10,724px-tall
+    "scroller" inside an 874px window.
+    """
+
   slot :nav, doc: "optional controls (prev/next) in the top bar"
   slot :subject, doc: "the prominent subject header (use subject/1)"
   slot :inner_block, required: true
 
   def layout(assigns) do
     ~H"""
-    <div class="min-h-screen flex flex-col bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x safe-area-top">
+    <div
+      data-snap-deck={@snap && "true"}
+      class="min-h-screen flex flex-col bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x safe-area-top"
+    >
       <%!-- Three zones: an anchor UP on the left, where every other page in the
            app puts it; the label + position CENTERED (it describes the deck,
            not the app); nav + modes right. Focused views used to lead with

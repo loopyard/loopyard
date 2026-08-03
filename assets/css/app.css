@@ -73,6 +73,34 @@ body {
   @apply sticky top-14 z-20 bg-brand-paper dark:bg-brand-ink;
 }
 
+/* Anything scrolled INTO view has to clear the pinned bar above it. Without
+ * this, scrollIntoView and #anchor links land the target's first line
+ * underneath .app-bar — measured at a heading sitting 40px behind an opaque
+ * bar, which reads as "the link went to the wrong place".
+ *
+ * It goes on `html` because on several shells (/, /system, /review) the
+ * DOCUMENT is the scroller — the inner `min-h-screen` column grows rather
+ * than scrolling, so a scroll-padding set on it would apply to nothing.
+ * Pages carrying a secondary row need to clear both. */
+html {
+  scroll-padding-top: 3.5rem;
+}
+
+html:has(.app-bar-secondary) {
+  scroll-padding-top: 7rem;
+}
+
+/* SNAP DECKS. A page of stacked items whose TOPS should land at the viewport
+ * edge — the Reviewer's decisions. PROXIMITY, never mandatory: a decision can
+ * easily be taller than the screen, and mandatory snap fights every scroll
+ * down it, which is exactly when you're reaching for the buttons at its
+ * bottom. Proximity stays out of the way mid-item and takes over at the
+ * boundaries. Keyed off the deck's own markup so it applies to the real
+ * scroll container without any JS. */
+html:has([data-snap-deck]) {
+  scroll-snap-type: y proximity;
+}
+
 
 /* Accessibility — design tokens
  *

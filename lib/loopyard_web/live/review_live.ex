@@ -23,7 +23,6 @@ defmodule LoopyardWeb.ReviewLive do
   alias LoopyardWeb.Live.WorkspaceLive.Messages.Cards
 
   @tick_ms 3_000
-  @advance_ms 900
 
   @impl true
   def mount(params, _session, socket) do
@@ -39,19 +38,23 @@ defmodule LoopyardWeb.ReviewLive do
     socket = socket |> assign(:scope, scope) |> assign(:history?, history?)
     slides = if history?, do: history_slides(), else: slides(scope)
 
-    current =
+    # A permalink names ONE decision, and that stays a single focused screen —
+    # each card is a mini app you can hand someone. Bare /review is the DECK:
+    # every decision on one scrollable page.
+    focused =
       with aid when is_binary(aid) <- params["agent_id"],
            mid when is_binary(mid) <- params["msg_id"],
            %{} = slide <- Enum.find(slides, &(&1.agent_id == aid and &1.msg_id == mid)) do
         slide.key
       else
-        _ -> first_key(slides)
+        _ -> nil
       end
 
     {:ok,
      socket
+     |> assign(:focused?, not is_nil(focused))
      |> assign(:slides, slides)
-     |> assign(:current, current)
+     |> assign(:current, focused || first_key(slides))
      |> assign(:subscribed, MapSet.new())
      |> assign(:last_path, nil)
      |> LoopyardWeb.Live.ConsentUI.attach(secret_scope: scope)
@@ -64,22 +67,27 @@ defmodule LoopyardWeb.ReviewLive do
   # the settle renders the instant the update lands (no 3s tick latency). Also
   # remember the slide's chat path — it's where "done reviewing" returns to.
   defp track_current(socket) do
+    # EVERY agent in the deck, not just one: all the cards are on screen at
+    # once now, so a card whose agent we hadn't subscribed to would sit stale
+    # until the 3s tick — visibly slower than the one you happened to be on.
+    socket = Enum.reduce(socket.assigns.slides, socket, &subscribe_slide/2)
+
     case current_slide(socket) do
-      %{agent_id: aid} = slide when is_binary(aid) ->
-        socket =
-          if connected?(socket) and not MapSet.member?(socket.assigns.subscribed, aid) do
-            Events.ChatAgentMessage.subscribe(aid)
-            assign(socket, :subscribed, MapSet.put(socket.assigns.subscribed, aid))
-          else
-            socket
-          end
-
-        assign(socket, :last_path, slide[:path] || socket.assigns.last_path)
-
-      _ ->
-        socket
+      %{} = slide -> assign(socket, :last_path, slide[:path] || socket.assigns.last_path)
+      _ -> socket
     end
   end
+
+  defp subscribe_slide(%{agent_id: aid}, socket) when is_binary(aid) do
+    if connected?(socket) and not MapSet.member?(socket.assigns.subscribed, aid) do
+      Events.ChatAgentMessage.subscribe(aid)
+      assign(socket, :subscribed, MapSet.put(socket.assigns.subscribed, aid))
+    else
+      socket
+    end
+  end
+
+  defp subscribe_slide(_, socket), do: socket
 
   # ── the slide deck ────────────────────────────────────────────────────────
   #
@@ -200,55 +208,31 @@ defmodule LoopyardWeb.ReviewLive do
 
   def handle_info(%Events.ChatAgentMessage.Message{}, socket), do: {:noreply, refresh(socket)}
 
-  # The settled beat is over — advance to the next pending slide.
-  def handle_info(:advance, socket) do
-    slides = slides(socket.assigns.scope)
-
-    if slides == [] do
-      # Line cleared — reviewing is DONE. Return to the work instead of
-      # dead-ending on an empty screen: the last item's chat, else the operator.
-      {:noreply, push_navigate(socket, to: socket.assigns.last_path || "/operator")}
-    else
-      {:noreply,
-       socket
-       |> assign(:slides, slides)
-       |> assign(:current, first_key(slides))
-       |> sync_secret_scope()
-       |> track_current()}
-    end
-  end
-
   def handle_info(_msg, socket), do: {:noreply, socket}
 
-  # If the CURRENT slide just settled (left the deck), hold it for a beat so
-  # the answer visibly takes, then advance.
+  # The deck is STICKY: a decision that settles STAYS in the list, rendered as
+  # its own receipt, and new ones append. Dropping it the instant it resolved
+  # would delete a section from the middle of a page the user is scrolling —
+  # everything below jumps up under their thumb, which is how you mis-tap the
+  # next decision. Answering should change a card, not the page.
   defp refresh(socket) do
-    slides =
+    fresh =
       if socket.assigns.history?,
         do: history_slides(),
         else: slides(socket.assigns.scope)
 
-    cur = socket.assigns.current
+    socket
+    |> assign(:slides, merge_deck(socket.assigns.slides, fresh))
+    |> assign(:current, socket.assigns.current || first_key(fresh))
+    |> sync_secret_scope()
+    |> track_current()
+  end
 
-    cond do
-      is_nil(cur) ->
-        socket
-        |> assign(:slides, slides)
-        |> assign(:current, first_key(slides))
-        |> sync_secret_scope()
-
-      Enum.any?(slides, &(&1.key == cur)) ->
-        assign(socket, :slides, slides)
-
-      socket.assigns.history? ->
-        # The time machine never auto-advances — a settled card staying put
-        # IS the point.
-        assign(socket, :slides, slides)
-
-      true ->
-        Process.send_after(self(), :advance, @advance_ms)
-        assign(socket, :slides, slides)
-    end
+  # Everything already on screen, in the order it was already in, plus whatever
+  # is new. Order is the contract — the deck must not reshuffle while read.
+  defp merge_deck(shown, fresh) do
+    seen = MapSet.new(shown, & &1.key)
+    shown ++ Enum.reject(fresh, &MapSet.member?(seen, &1.key))
   end
 
   # ── navigation + decisions ───────────────────────────────────────────────
@@ -322,24 +306,28 @@ defmodule LoopyardWeb.ReviewLive do
 
   @impl true
   def render(assigns) do
-    slide = Enum.find(assigns.slides, &(&1.key == assigns.current)) || rehydrate(assigns.current)
-    msg = live_msg(slide)
-    idx = Enum.find_index(assigns.slides, &(&1.key == assigns.current))
-    q = slide && slide.q_id && msg && Enum.find(msg[:questions] || [], &(&1.id == slide.q_id))
+    # FOCUSED (a permalink) renders exactly one decision. The DECK renders them
+    # all, stacked, each resolved to its live message at render time.
+    deck =
+      if assigns.focused? do
+        [Enum.find(assigns.slides, &(&1.key == assigns.current)) || rehydrate(assigns.current)]
+      else
+        assigns.slides
+      end
+
+    cards = deck |> Enum.reject(&is_nil/1) |> Enum.map(&resolve_card/1) |> Enum.reject(&is_nil/1)
 
     assigns =
       assigns
-      |> assign(:slide, slide)
-      |> assign(:msg, msg)
-      |> assign(:q, q)
-      |> assign(:idx, idx)
-      |> assign(:count, length(assigns.slides))
+      |> assign(:cards, cards)
+      |> assign(:pending_count, Enum.count(cards, &(&1.msg.status == :pending)))
 
     ~H"""
     <FocusedView.layout
       label={(@history? && "Time machine") || "Review"}
-      position={@count > 0 && "#{(@idx || 0) + 1} of #{@count}"}
+      position={@pending_count > 0 && "#{@pending_count} waiting"}
       mode={:operator}
+      snap={!@focused?}
       crumbs={[{"Operator", "/operator"}]}
     >
       <:nav>
@@ -359,89 +347,92 @@ defmodule LoopyardWeb.ReviewLive do
             />
           </svg>
         </.link>
-        <button
-          :if={@count > 1}
-          type="button"
-          phx-click="nav"
-          phx-value-dir="prev"
-          class="focus-ring tap-target inline-flex items-center justify-center w-9 h-9 rounded-sm text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30"
-          disabled={@idx == 0}
-          aria-label="Previous"
-        >
-          ←
-        </button>
-        <button
-          :if={@count > 1}
-          type="button"
-          phx-click="nav"
-          phx-value-dir="next"
-          class="focus-ring tap-target inline-flex items-center justify-center w-9 h-9 rounded-sm text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30"
-          disabled={@idx == @count - 1}
-          aria-label="Next"
-        >
-          →
-        </button>
       </:nav>
 
-      <:subject :if={@slide && @msg}>
-        <FocusedView.subject
-          project={@slide.project_name || "Operator"}
-          workspace={@slide.workspace_name}
-          state={:needs_you}
-          context={subject_context(@slide, @msg)}
-        />
-      </:subject>
+      <%!-- THE DECK. One continuously scrollable page: every decision stacked,
+      each snapping its TOP to the viewport so you land on a question's
+      opening line rather than its middle. Snap is PROXIMITY, never
+      mandatory — a long question is taller than the screen, and mandatory
+      snap fights you the whole way down it, which is exactly when you're
+      trying to reach the buttons at the bottom. Proximity gets out of the
+      way mid-card and takes over at the boundaries. --%>
+      <div class="space-y-10 md:space-y-16">
+        <section :for={card <- @cards} id={"decision-" <> card.dom_id} class="snap-start scroll-mt-4">
+          <FocusedView.subject
+            project={card.slide.project_name || "Operator"}
+            workspace={card.slide.workspace_name}
+            state={(card.msg.status == :pending && :needs_you) || :asleep}
+            context={subject_context(card.slide, card.msg)}
+          />
 
-      <%!-- ONE decision per slide, unboxed — the FocusedView already names the
-           subject, so the content is just the question itself. --%>
-      <div :if={@q}>
-        <LoopyardWeb.Components.StreamCard.band
-          tone={(@msg.status == :pending && :needs_you) || :neutral}
-          chrome={:desktop}
-        >
-          <%!-- No identity chip here: the FocusedView subject right above
-    already names project · workspace large — once is enough. --%>
-          <LoopyardWeb.Components.StreamCard.header
-            state={:needs_you}
-            label_class={
-              (@msg.status == :pending && "text-orange-700 dark:text-orange-400") ||
-                "text-zinc-500 dark:text-zinc-400"
-            }
+          <%!-- ONE question of a multi-question ask is a bare block, so it needs
+      the band + label around it. A whole card (approval, secret, a
+      settled question receipt) already IS a band — wrapping it in
+      another one nested two cards and printed the identity twice. --%>
+          <LoopyardWeb.Components.StreamCard.band
+            :if={card.q}
+            tone={(card.msg.status == :pending && :needs_you) || :neutral}
+            chrome={:desktop}
           >
-            <:label>
-              {(@msg.status == :pending && "Decision") || "Answered"}
-            </:label>
-          </LoopyardWeb.Components.StreamCard.header>
-          <Cards.question_block msg={@msg} q={@q} chat_path={@slide.path} />
-        </LoopyardWeb.Components.StreamCard.band>
+            <%!-- No identity chip here: the subject right above already names
+      project · workspace large — once is enough. --%>
+            <LoopyardWeb.Components.StreamCard.header
+              state={:needs_you}
+              label_class={
+                (card.msg.status == :pending && "text-orange-700 dark:text-orange-400") ||
+                  "text-zinc-500 dark:text-zinc-400"
+              }
+            >
+              <:label>
+                {(card.msg.status == :pending && "Decision") || "Answered"}
+              </:label>
+            </LoopyardWeb.Components.StreamCard.header>
 
-        <%!-- The "open the chat" escape is now a BUTTON in the card's action
-    row (question_block's chat_path), so the three moves — Skip, Chat,
-    Answer — sit together instead of two buttons plus a sentence
-    floating underneath. --%>
-        <p
-          :if={@slide.path && @msg.status == :pending}
-          class="text-meta text-zinc-400 dark:text-zinc-500 mt-4"
-        >
-          Options and "Other…" answer just this question.
-        </p>
+            <Cards.question_block msg={card.msg} q={card.q} chat_path={card.slide.path} />
+          </LoopyardWeb.Components.StreamCard.band>
+
+          <Cards.question_card
+            :if={is_nil(card.q) && card.msg.role == :question}
+            msg={card.msg}
+          />
+          <Cards.approval_card :if={card.msg.role == :approval} msg={card.msg} />
+          <Cards.secret_card :if={card.msg.role == :secret_request} msg={card.msg} />
+
+          <%!-- The per-decision permalink. It stays a real URL because each card
+      is its own mini app — the deck is the backlog, the link is the
+      thing itself. --%>
+          <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+            <.link
+              :if={!@focused?}
+              navigate={"/review/#{card.slide.agent_id}/#{card.slide.msg_id}"}
+              class="text-meta text-zinc-400 dark:text-zinc-500 hover:text-violet-600 dark:hover:text-violet-400"
+            >
+              Open this decision →
+            </.link>
+            <.link
+              :if={card.slide.path}
+              navigate={card.slide.path}
+              class="text-meta text-zinc-400 dark:text-zinc-500 hover:text-violet-600 dark:hover:text-violet-400"
+            >
+              Open in chat for context →
+            </.link>
+          </div>
+        </section>
       </div>
 
-      <div :if={is_nil(@q) && @msg && @msg.role == :question}>
-        <Cards.question_card msg={@msg} />
-      </div>
-
-      <div :if={is_nil(@q) && @msg && @msg.role == :approval}>
-        <Cards.approval_card msg={@msg} />
-      </div>
-
-      <div :if={is_nil(@q) && @msg && @msg.role == :secret_request}>
-        <Cards.secret_card msg={@msg} />
-      </div>
-
-      <div :if={is_nil(@msg)} class="flex flex-col items-center justify-center gap-4 py-24">
+      <%!-- The END of the deck, not a dead end: when everything is settled this
+      is the "you're done" beat. It replaced an automatic push_navigate that
+      yanked the page away mid-scroll. --%>
+      <div
+        :if={@cards == [] || (@pending_count == 0 && !@history?)}
+        class="flex flex-col items-center justify-center gap-4 py-24"
+      >
         <p class="text-body text-zinc-400 dark:text-zinc-500">
-          {(@history? && "No questions asked yet.") || "Nothing waiting on you."}
+          {cond do
+            @history? -> "No questions asked yet."
+            @cards == [] -> "Nothing waiting on you."
+            true -> "All caught up."
+          end}
         </p>
         <.link
           :if={!@history?}
@@ -457,18 +448,30 @@ defmodule LoopyardWeb.ReviewLive do
           ← Back to the operator
         </.link>
       </div>
-
-      <div :if={@slide && @slide.path && is_nil(@q) && @msg} class="mt-4">
-        <.link
-          navigate={@slide.path}
-          class="text-meta text-violet-600 dark:text-violet-400 hover:underline"
-        >
-          Open in chat for context →
-        </.link>
-      </div>
     </FocusedView.layout>
     """
   end
+
+  # A slide plus its LIVE message and (for a multi-question ask) the one
+  # question this card is. Nil when the message has gone — a deleted agent
+  # shouldn't leave a hole that crashes the deck.
+  defp resolve_card(slide) do
+    case live_msg(slide) do
+      %{} = msg ->
+        %{
+          slide: slide,
+          msg: msg,
+          q: slide.q_id && Enum.find(msg[:questions] || [], &(&1.id == slide.q_id)),
+          dom_id: dom_id(slide)
+        }
+
+      _ ->
+        nil
+    end
+  end
+
+  defp dom_id(%{agent_id: aid, msg_id: mid, q_id: q_id}),
+    do: Enum.join([aid, mid, q_id || "all"], "-")
 
   defp subject_context(%{agent_name: name, asked_at: %DateTime{} = at} = slide, _msg)
        when is_binary(name) do

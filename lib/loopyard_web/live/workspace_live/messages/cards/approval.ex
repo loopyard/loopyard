@@ -7,6 +7,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Approval do
   """
   use Phoenix.Component
 
+  alias LoopyardWeb.Components.StreamCard
+
   import LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Shared, only: [embed_project: 1]
 
   @doc """
@@ -163,17 +165,21 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Approval do
 
         <%= case @msg.status do %>
           <% :pending -> %>
-            <div class="flex items-center gap-2">
+            <div class="flex flex-col sm:flex-row sm:items-center gap-2">
               <button
                 type="button"
                 phx-click="decide_approval"
                 phx-value-approval_id={@msg.approval_id}
                 phx-value-decision="approve"
                 class={[
-                  "focus-ring text-lead inline-flex items-center gap-1.5 rounded-sm px-5 py-2 font-semibold text-white shadow-sm transition-colors",
-                  if(@action.verb in [:delete_workspace, :delete_project],
-                    do: "bg-red-600 hover:bg-red-700 shadow-red-900/20",
-                    else: "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-900/20"
+                  "w-full sm:w-auto",
+                  StreamCard.action_class(
+                    variant: :primary,
+                    tone:
+                      if(@action.verb in [:delete_workspace, :delete_project],
+                        do: :danger,
+                        else: :confirm
+                      )
                   )
                 ]}
               >
@@ -188,7 +194,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Approval do
                 phx-click="decide_approval"
                 phx-value-approval_id={@msg.approval_id}
                 phx-value-decision="deny"
-                class="focus-ring text-lead inline-flex items-center rounded-sm border border-zinc-300 dark:border-zinc-600 px-5 py-2 font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                class={["w-full sm:w-auto", StreamCard.action_class()]}
               >
                 Deny
               </button>
