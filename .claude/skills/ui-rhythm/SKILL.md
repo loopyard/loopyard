@@ -5,6 +5,11 @@ description: Loopyard's spacing/grouping + gutter rules for ANY UI (sidebars, ch
 
 # UI rhythm: grouping by proximity + shared gutters
 
+> Spacing and grouping live HERE. The type scale, component-first composition,
+> Tailwind token policy, sticky/z-index layering, tap targets and the
+> measure-don't-eyeball verification loop live in **ui-build** — load that too
+> when you're building or changing a screen rather than only adjusting spacing.
+
 The single most-repeated visual bug in this codebase: **items that belong
 together are spaced the same as items that don't**, so the eye can't see the
 groups. It happened in the sidebars; it happened in the question card. This skill

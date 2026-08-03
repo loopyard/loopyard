@@ -425,6 +425,14 @@ answer). `LoopyardWeb.Components.FocusedView` is the shared full-screen shell
   Send is OPTIMISTIC (instant clear + `#send-echo` band; ack swaps in the real
   queue band; failure restores the box). The composer DOM persists across
   reconnects — hooks must wire-once.
+- **Building any screen**: load the `ui-build` skill FIRST (type scale,
+  component-first composition, Tailwind token policy, sticky/z-index layering,
+  tap targets, DOM budget, and the measure-don't-eyeball verification loop), and
+  `ui-rhythm` for spacing/grouping. Both encode bugs that shipped more than once.
+- **Type scale**: five sizes — meta/body/lead/title/hero — whose px values live
+  in CSS custom properties so the whole scale shifts at ONE breakpoint (phone
+  LARGER than desktop; on a phone `meta` IS `body`). Tailwind's default scale is
+  REPLACED, so `text-sm` generates nothing.
 - **Guardrails**: `test/loopyard_web/design_system_test.exs` fails the build on
   drift (radii, indigo, amber-in-needs-you, type-scale bypass, missing hooks,
   old Brand path). Extend it when a new rule earns enforcement.
