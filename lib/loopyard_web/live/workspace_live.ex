@@ -1781,7 +1781,7 @@ defmodule LoopyardWeb.WorkspaceLive do
     NO status word here: the dot already carries the state, and "Ready" beside
     a green light is the same fact twice in the most valuable strip of the
     app. --%>
-        <div class="min-w-0 flex items-center justify-center gap-2">
+        <div class="min-w-0 flex items-center justify-center gap-2 text-lead">
           <LoopyardWeb.Components.Common.workspace_identity
             project={@project.name}
             workspace={(@workspace_entry || %{})[:name] || @workspace.id}

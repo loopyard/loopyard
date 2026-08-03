@@ -67,7 +67,7 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
 
     ~H"""
     <div :if={@label} class={["flex items-center gap-2 min-w-0", @class]}>
-      <span class="text-body font-medium text-zinc-900 dark:text-zinc-100 truncate">
+      <span class="text-lead font-medium text-zinc-900 dark:text-zinc-100 truncate">
         {@label}
       </span>
       {render_slot(@status)}
@@ -148,20 +148,20 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
                 >
                   <Brand.logo
                     mark_class="w-5 h-5 flex-none"
-                    wordmark_class="text-lead text-body tracking-tight"
+                    wordmark_class="text-lead tracking-tight"
                   />
                 </.link>
               <% path -> %>
                 <.link
                   navigate={path}
-                  class="focus-ring text-body font-medium text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors truncate rounded-sm"
+                  class="focus-ring text-lead font-medium text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors truncate rounded-sm"
                 >
                   {label}
                 </.link>
               <% true -> %>
                 <span
                   aria-current={if idx == length(@crumbs) - 1, do: "page"}
-                  class="text-body font-medium text-zinc-900 dark:text-zinc-100 truncate"
+                  class="text-lead font-medium text-zinc-900 dark:text-zinc-100 truncate"
                 >
                   {label}
                 </span>

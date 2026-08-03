@@ -527,7 +527,7 @@ defmodule LoopyardWeb.Components.Nav do
   """
   def sheet_row_class(active?) do
     [
-      "focus-ring flex items-center gap-3 min-h-[3.25rem] px-3  text-body transition-colors",
+      "focus-ring flex items-center gap-3 min-h-[3.75rem] md:min-h-[3.25rem] px-4 py-2 text-lead transition-colors",
       if(active?,
         do: "bg-violet-100 dark:bg-violet-500/15 text-zinc-900 dark:text-zinc-100 font-semibold",
         else:

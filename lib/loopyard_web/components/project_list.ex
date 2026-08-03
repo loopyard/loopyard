@@ -117,14 +117,20 @@ defmodule LoopyardWeb.Components.ProjectList do
               # :xs = the mobile switcher — this heading is a LINK to the project,
               # so it needs a finger-sized target like the rows beneath it. It
               # measured 24px. min-h-11 = 44px.
-              (@size == :xs && "min-h-11 py-2") || "pb-1"
+              (@size == :xs && "min-h-[3.25rem] py-3") || "pb-1"
             ]
           }
         >
-          <h2 class={[
-            "font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors",
-            "text-body"
-          ]}>
+          <h2 class={
+            [
+              "font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors",
+              # :xs is the full-screen mobile switcher — it drops out of the
+              # header, so it reads at the header's size. text-body left it a step
+              # smaller than the bar it came from, which looks like a mistake
+              # because it is one.
+              (@size == :xs && "text-lead") || "text-body"
+            ]
+          }>
             {project.name}
           </h2>
         </.link>
@@ -177,7 +183,9 @@ defmodule LoopyardWeb.Components.ProjectList do
         "group/ws relative flex items-center gap-2.5 -mx-2 px-2 rounded-sm transition-colors",
         # :xs = the mobile switcher sheet — finger-sized rows (≥44px), same as the
         # operator rail's mobile rows. :sm = the desktop rail — compact.
-        (@size == :xs && "py-3") || "py-1",
+        # A list you TAP: rows want room, not just the 44px floor. py-3 put
+        # adjacent workspaces close enough that picking the wrong one is easy.
+        (@size == :xs && "py-4 min-h-[3.5rem] text-lead") || "py-1",
         @current && "bg-violet-100 dark:bg-violet-500/15"
       ]
     }>

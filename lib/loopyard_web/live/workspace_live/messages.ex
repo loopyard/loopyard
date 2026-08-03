@@ -107,7 +107,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     assigns =
       assign(assigns,
         show_user_label: first?,
-        sticky_class: if(first?, do: "sticky top-0 z-20", else: ""),
+        # LAYERING: the prompt band is IN-CONTENT sticky; the nav is CHROME.
+        # At z-20 it TIED with .app-bar-secondary, and a tie resolves by DOM
+        # order — so a scrolling turn could ride over the Chat/Decisions tabs.
+        # Content sticks below chrome, always: bar 30 > secondary 20 > this 10.
+        sticky_class: if(first?, do: "sticky top-0 z-10", else: ""),
         # Keep the chapter-break air TIGHT: a large top margin on the next prompt
         # meant the previous (sticky) prompt hung over a big empty gap before the
         # next one pushed it up. Small, even spacing → prompts hand off flush.

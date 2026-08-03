@@ -16,7 +16,18 @@
  * responsive flips stay banned — that's how an element ends up two sizes for
  * no reason — and design_system_test enforces it. */
 :root {
-  --t-meta: 14px;
+  /* ON A PHONE, META IS BODY. Not "nearly body" — the same.
+   *
+   * meta exists for density on a desktop, where a label can afford to be 13px
+   * beside a pointer at reading distance. On a phone there is no such
+   * affordance: 14px labels landed on things people actually READ — workspace
+   * rows, question options, the Chat/Decisions tabs, the services rail — and
+   * every one of them came back as "too small". Chasing them site by site
+   * failed repeatedly because the token, not the call site, was the problem.
+   *
+   * A label is still obviously a label: uppercase, tracked, heavier, muted.
+   * None of that needs it to be smaller than the words around it. */
+  --t-meta: 17px;
   --t-body: 17px;
   --t-lead: 20px;
   --t-title: 22px;

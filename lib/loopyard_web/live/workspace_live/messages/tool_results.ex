@@ -291,7 +291,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
     the header one quiet line. In lazy mode the server drives open
     (body renders on demand) — see result_expanded?/1. --%>
       <summary
-        class="flex items-center gap-2 px-3 py-1.5 cursor-pointer select-none list-none bg-brand-paper-shade dark:bg-brand-ink/60 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+        class="flex items-center gap-2 px-3 py-1.5 min-h-11 md:min-h-0 cursor-pointer select-none list-none bg-brand-paper-shade dark:bg-brand-ink/60 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
         phx-click={@lazy? && "toggle_result"}
         phx-value-msgid={@lazy? && @msg[:id]}
         onclick={@lazy? && "event.preventDefault()"}

@@ -217,7 +217,7 @@ defmodule LoopyardWeb.Components.LogViewer do
             href={@raw_url}
             target="_blank"
             rel="noopener"
-            class="p-1 text-zinc-400 hover:text-zinc-300 transition-colors"
+            class="tap-target p-1 text-zinc-400 hover:text-zinc-300 transition-colors"
             title="Open"
           >
             <svg
