@@ -40,7 +40,7 @@ defmodule LoopyardWeb.Components.AppHeader do
          AND reserves real space for it, so it can never overlap the actions.
          Absolute centring did exactly that on a 390px phone — the title sat on
          top of the mode icons. --%>
-    <div class="flex-none grid grid-cols-[auto_1fr_auto] sm:grid-cols-[1fr_auto_1fr] items-center gap-3 h-14 px-4 md:px-5 border-b border-zinc-200 dark:border-zinc-700/80">
+    <div class="app-bar flex-none grid grid-cols-[auto_1fr_auto] sm:grid-cols-[1fr_auto_1fr] items-center gap-3 h-14 px-4 md:px-5 border-b border-zinc-200 dark:border-zinc-700/80">
       <div class="min-w-0 flex items-center gap-3">
         {render_slot(@back)}
         <LoopyardWeb.Components.Breadcrumbs.trail crumbs={@breadcrumbs} />

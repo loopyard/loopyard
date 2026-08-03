@@ -162,6 +162,35 @@ defmodule LoopyardWeb.DesignSystemTest do
            "body must inherit from the scale, not the browser default"
   end
 
+  test "the top chrome is PINNED, from one owner" do
+    # This reads like a native app: primary and secondary nav stay put while
+    # content scrolls, so you can switch modes without scrolling back up.
+    #
+    # It used to only LOOK pinned. The chat and operator shells scroll an inner
+    # container, so their static bar never moved; on the pages where the
+    # DOCUMENT scrolls (/ and /system) the same component slid away. Identical
+    # markup, opposite behaviour depending on the shell — the kind of thing
+    # nobody notices until they're on the page that's wrong.
+    css = File.read!("assets/css/app.css")
+
+    assert css =~ ~r/\.app-bar\s*\{[^}]*sticky/, "the primary bar must pin"
+    assert css =~ ~r/\.app-bar-secondary\s*\{[^}]*sticky/, "so must the secondary row"
+
+    # Sticky content scrolls UNDER, not around — without its own background the
+    # bar is transparent and the text runs through it.
+    assert css =~ ~r/\.app-bar\s*\{[^}]*bg-brand-paper/,
+           "a sticky bar needs an opaque background"
+
+    # Every top bar takes it from the class, not by hand-rolling sticky.
+    bars =
+      web_sources()
+      |> Enum.filter(fn {_p, src} -> src =~ ~r/h-14[^"]*border-b/ end)
+      |> Enum.reject(fn {_p, src} -> src =~ "app-bar" end)
+      |> Enum.map(fn {p, _} -> Path.relative_to_cwd(p) end)
+
+    assert bars == [], "these top bars don't use the shared pinned class: #{inspect(bars)}"
+  end
+
   test "no element changes size between breakpoints" do
     # A responsive size flip (text-lead md:text-body) means the same element is
     # two sizes depending on the window — the page's own title changing size

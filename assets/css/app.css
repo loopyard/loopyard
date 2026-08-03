@@ -42,6 +42,26 @@ body {
   font-size: var(--t-body);
 }
 
+/* PINNED CHROME. This reads like a native app, so the nav stays put while
+ * content scrolls — you can always switch modes without scrolling back up.
+ *
+ * It only LOOKED pinned before: the chat and operator shells scroll an inner
+ * container, so their static bar never moved. On the pages where the document
+ * itself scrolls (/, /system) the bar slid away — same component, opposite
+ * behaviour depending on the shell, which is exactly the kind of thing nobody
+ * notices until they're on the page that's wrong.
+ *
+ * Sticky needs its OWN opaque background: content scrolls underneath, not
+ * around. The secondary row pins directly below the primary (h-14 = 3.5rem),
+ * so both stay reachable. */
+.app-bar {
+  @apply sticky top-0 z-30 bg-brand-paper dark:bg-brand-ink;
+}
+
+.app-bar-secondary {
+  @apply sticky top-14 z-20 bg-brand-paper dark:bg-brand-ink;
+}
+
 
 /* Accessibility — design tokens
  *

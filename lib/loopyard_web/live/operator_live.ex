@@ -674,7 +674,7 @@ defmodule LoopyardWeb.OperatorLive do
     share a phone screen, so show one at a time. Hidden on lg+ (both show). --%>
       <%!-- Finger-sized tabs: this bar is mobile-only, so padding is sized for
     touch (py-4, text-body ≈ 48px target), not for a pointer. --%>
-      <div class="lg:hidden flex-none flex border-b border-zinc-200 dark:border-zinc-800 text-body">
+      <div class="app-bar-secondary lg:hidden flex-none flex border-b border-zinc-200 dark:border-zinc-800 text-body">
         <button
           type="button"
           phx-click="mobile_view"

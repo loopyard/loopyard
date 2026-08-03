@@ -1763,7 +1763,7 @@ defmodule LoopyardWeb.WorkspaceLive do
     left (loopyard > project > workspace, with the workspace's status),
     modes right. Phones keep the two-row chat_header above (md:hidden) —
     this bar is desktop-only so mobile is untouched. --%>
-      <div class="hidden md:grid grid-cols-[1fr_auto_1fr] items-center gap-3 flex-none h-14 px-4 md:px-5 border-b border-zinc-200 dark:border-zinc-800">
+      <div class="app-bar hidden md:grid grid-cols-[1fr_auto_1fr] items-center gap-3 flex-none h-14 px-4 md:px-5 border-b border-zinc-200 dark:border-zinc-800">
         <%!-- Left is just the brand: the project/workspace PAIR is the current
     thing on this surface (the switcher moves between them as a unit), so it
     lives whole in the centre rather than being split across zones. --%>

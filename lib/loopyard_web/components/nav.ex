@@ -56,7 +56,7 @@ defmodule LoopyardWeb.Components.Nav do
     ~H"""
     <div
       class={[
-        "flex-none flex items-center justify-between gap-2",
+        "app-bar flex-none flex items-center justify-between gap-2",
         @height,
         @pad,
         @border && "border-b border-zinc-200 dark:border-zinc-700/80",
@@ -254,7 +254,7 @@ defmodule LoopyardWeb.Components.Nav do
 
   def section_switcher(assigns) do
     ~H"""
-    <div class="flex items-center gap-2 px-2 h-16 border-t border-zinc-200/70 dark:border-zinc-700/50">
+    <div class="app-bar-secondary flex items-center gap-2 px-2 h-16 border-t border-zinc-200/70 dark:border-zinc-700/50">
       <%!-- The current item, minimalist: a status dot (colour IS the state, no
     "Running" text), the name, and a chevron as the sole "tap to switch"
     affordance. No purple Switch pill — the chevron carries it. --%>
