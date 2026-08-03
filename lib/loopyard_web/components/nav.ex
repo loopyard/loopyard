@@ -308,7 +308,7 @@ defmodule LoopyardWeb.Components.Nav do
         </span>
       </:current>
       <div :for={group <- @groups} class="pt-4 first:pt-0">
-        <div class="section-label px-3 pb-1">{group.title}</div>
+        <div class="section-label pb-1">{group.title}</div>
         <.link
           :for={item <- group.items}
           patch={item.href}
@@ -455,7 +455,7 @@ defmodule LoopyardWeb.Components.Nav do
           </h2>
           <.chevron_down class="w-4 h-4 flex-none text-zinc-500 dark:text-zinc-400 rotate-180" />
         </button>
-        <div class="flex-1 overflow-y-auto overscroll-contain p-2 space-y-0.5">
+        <div class="flex-1 overflow-y-auto overscroll-contain px-4 py-2 space-y-0.5">
           {render_slot(@inner_block)}
         </div>
       </div>
@@ -527,7 +527,7 @@ defmodule LoopyardWeb.Components.Nav do
   """
   def sheet_row_class(active?) do
     [
-      "focus-ring flex items-center gap-3 min-h-[3.75rem] md:min-h-[3.25rem] px-4 py-2 text-lead transition-colors",
+      "focus-ring flex items-center gap-3 min-h-[3.75rem] md:min-h-[3.25rem] -mx-2 px-2 py-2 text-lead transition-colors",
       if(active?,
         do: "bg-violet-100 dark:bg-violet-500/15 text-zinc-900 dark:text-zinc-100 font-semibold",
         else:

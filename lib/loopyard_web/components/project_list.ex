@@ -1,15 +1,19 @@
 defmodule LoopyardWeb.Components.ProjectList do
   @moduledoc """
-  The ONE grouped project → workspace overview, rendered at three sizes so the
-  gesture is learned once and the SAME status model shows everywhere:
+  The ONE grouped project → workspace overview.
 
-  * `size={:xs}` — the mobile switcher sheet: dot + name, needs-you badge
-  only. Picking fast; no port/status noise.
+  * `size={:full}` — /workspaces AND the mobile switcher sheet: responsive.
+  Small screens get two-line rows; md+ gets a GRID OF CARDS per project with
+  the full story (agent + activity, port, last active), needs-you/broken
+  tinting the card.
   * `size={:sm}` — the desktop rail: one aligned line per workspace —
-  dot + name … headline word + port chip.
-  * `size={:full}` — /workspaces: responsive. Small screens get two-line
-  rows; md+ gets a GRID OF CARDS per project with the full story (agent +
-  activity, port, last active), needs-you/broken tinting the card.
+  dot + name … headline word + port chip. A genuinely different affordance
+  (a 288px column beside the content), not a smaller copy of the list.
+
+  There used to be a third size for the mobile switcher, and it was a mistake:
+  the switcher shows the SAME list as /workspaces, one screen apart, so every
+  time either was tuned they drifted — different row heights, different type,
+  a different left edge. One rendering means they cannot.
 
   All sizes derive from `Birdseye.ws_dot/1` + `Birdseye.headline/1` — the
   priority-ordered status model (needs-you > broken > working > quiet). The dot
@@ -32,12 +36,12 @@ defmodule LoopyardWeb.Components.ProjectList do
   * `projects` — `WorkspaceTree.global` list.
   * `current_workspace_id` — highlight this workspace's row (switcher/rail).
   * `row_click` — optional `JS` run when a row is tapped (e.g. close sheet).
-  * `size` — `:xs` | `:sm` | `:full` (see moduledoc).
+  * `size` — `:sm` | `:full` (see moduledoc).
   """
   attr :projects, :list, required: true
   attr :current_workspace_id, :string, default: nil
   attr :row_click, :any, default: nil
-  attr :size, :atom, default: :full, values: [:xs, :sm, :full]
+  attr :size, :atom, default: :full, values: [:sm, :full]
 
   def project_groups(%{size: :full} = assigns) do
     ~H"""
@@ -96,7 +100,7 @@ defmodule LoopyardWeb.Components.ProjectList do
     """
   end
 
-  # Compact rail / switcher (:xs, :sm): projects are GROUPS. The project name is
+  # Compact rail (:sm): projects are GROUPS. The project name is
   # the group heading — WHITE, readable (a real heading, not a muted label) —
   # and its branches sit indented below it, each a status light + branch name.
   # Generous space BETWEEN projects so the groups read as distinct.
@@ -111,26 +115,15 @@ defmodule LoopyardWeb.Components.ProjectList do
           navigate={"/projects/#{project.id}"}
           phx-click={@row_click}
           data-sticky-header
-          class={
-            [
-              "group sticky top-0 z-10 flex items-center bg-brand-paper-shade dark:bg-brand-ink transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]",
-              # :xs = the mobile switcher — this heading is a LINK to the project,
-              # so it needs a finger-sized target like the rows beneath it. It
-              # measured 24px. min-h-11 = 44px.
-              (@size == :xs && "min-h-[3.25rem] py-3") || "pb-1"
-            ]
-          }
+          class={[
+            "group sticky top-0 z-10 flex items-center bg-brand-paper-shade dark:bg-brand-ink transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]",
+            "pb-1"
+          ]}
         >
-          <h2 class={
-            [
-              "font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors",
-              # :xs is the full-screen mobile switcher — it drops out of the
-              # header, so it reads at the header's size. text-body left it a step
-              # smaller than the bar it came from, which looks like a mistake
-              # because it is one.
-              (@size == :xs && "text-lead") || "text-body"
-            ]
-          }>
+          <h2 class={[
+            "font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors",
+            "text-body"
+          ]}>
             {project.name}
           </h2>
         </.link>
@@ -178,17 +171,11 @@ defmodule LoopyardWeb.Components.ProjectList do
     absolute overlay link, so the port chip can sit ABOVE it (z-10) as its
     OWN link — one tap opens the running dev server in a new tab without
     first opening the workspace and hunting for it. --%>
-    <div class={
-      [
-        "group/ws relative flex items-center gap-2.5 -mx-2 px-2 rounded-sm transition-colors",
-        # :xs = the mobile switcher sheet — finger-sized rows (≥44px), same as the
-        # operator rail's mobile rows. :sm = the desktop rail — compact.
-        # A list you TAP: rows want room, not just the 44px floor. py-3 put
-        # adjacent workspaces close enough that picking the wrong one is easy.
-        (@size == :xs && "py-4 min-h-[3.5rem] text-lead") || "py-1",
-        @current && "bg-violet-100 dark:bg-violet-500/15"
-      ]
-    }>
+    <div class={[
+      "group/ws relative flex items-center gap-2.5 -mx-2 px-2 rounded-sm transition-colors",
+      "py-1",
+      @current && "bg-violet-100 dark:bg-violet-500/15"
+    ]}>
       <.link
         navigate={workspace_href(@project_id, @ws)}
         phx-click={@row_click}

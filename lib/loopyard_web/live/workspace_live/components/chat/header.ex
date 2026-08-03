@@ -188,7 +188,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
           projects={@global_tree}
           current_workspace_id={@workspace.id}
           row_click={JS.hide(to: "#nav-switcher")}
-          size={:xs}
         />
       </Nav.switcher_sheet>
 
