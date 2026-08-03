@@ -455,8 +455,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             phx-update="ignore"
             class="hidden -mx-3 md:-mx-6 wide:-mx-4 wide:mt-2 bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 pt-3 pb-3"
           >
-            <div class="text-body font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300 mb-1.5">
-              Queued
+            <div
+              data-echo-label
+              class="text-body font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300 mb-1.5"
+            >
+              Sending…
             </div>
             <div
               data-echo-text

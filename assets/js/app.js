@@ -1058,9 +1058,25 @@ Hooks.ChatForm = {
 
       const echo = document.getElementById("send-echo")
       const echoText = echo && echo.querySelector("[data-echo-text]")
+      const echoLabel = echo && echo.querySelector("[data-echo-label]")
       if (echoText) echoText.textContent = text
+      if (echoLabel) echoLabel.textContent = "Sending…"
       if (echo) echo.classList.remove("hidden")
-      const hideEcho = () => { if (echo) echo.classList.add("hidden") }
+
+      // If the ack is slow, SAY WHY rather than leaving a static label. The
+      // common cause is the idle reaper: after 4h the harness subprocess is
+      // stopped, so the first message has to respawn it (docker exec + an ACP
+      // handshake — seconds). Sitting on "Queued" through that reads as stuck,
+      // which is exactly how it got reported: "turn is queued and it should be
+      // running". It was running; nothing said so.
+      const slowLabel = setTimeout(() => {
+        if (echoLabel) echoLabel.textContent = "Waking the agent…"
+      }, 1200)
+
+      const hideEcho = () => {
+        clearTimeout(slowLabel)
+        if (echo) echo.classList.add("hidden")
+      }
 
       const status = document.getElementById("send-status")
       const setStatus = (text2, tone) => {
