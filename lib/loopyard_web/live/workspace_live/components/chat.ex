@@ -343,6 +343,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                 mode={live_status_mode(@agent)}
                 streaming_text={@streaming_text}
                 active_tool={@agent[:active_tool]}
+                tool_calls={@agent[:tool_calls_this_turn] || 0}
                 tokens={(@agent[:total_input_tokens] || 0) + (@agent[:total_output_tokens] || 0)}
                 context_utilization={@agent[:context_utilization] || 0.0}
               />

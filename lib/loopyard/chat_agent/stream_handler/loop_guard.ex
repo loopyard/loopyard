@@ -92,22 +92,20 @@ defmodule Loopyard.ChatAgent.StreamHandler.LoopGuard do
       "Tool-call runaway — #{n} tool calls in a single turn"
     )
 
-    warn_msg = %{
-      role: :system,
-      content:
-        "⚠ Agent has made #{n} tool calls in this single turn. " <>
-          "WHY: that's far past the usual 5–20 — either it's stuck exploring or it's " <>
-          "looping with slightly-different inputs each time. " <>
-          "CONSEQUENCE: every tool call costs tokens and time. If the agent isn't making " <>
-          "visible progress, it's wasting both. " <>
-          "ACTION: click Stop to interrupt. Give the agent a more specific hint " <>
-          "(e.g. 'the file is in lib/foo.ex') and restart.",
-      timestamp: DateTime.utc_now()
-    }
-
-    {state, warn_msg} = MessageLog.append(state, warn_msg)
-    Persistence.persist_message(state, warn_msg)
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: warn_msg})
+    # NO chat message. A COUNT is not evidence of a problem: a codebase-wide
+    # refactor legitimately runs well past 50 tool calls, so this fired on
+    # perfectly healthy turns and left a permanent "⚠ … either it's stuck or
+    # it's looping … click Stop" in the transcript. It made working agents read
+    # as broken ones — reported as "WTF is that? Why is everything fucked?"
+    #
+    # It also broke the house rule: a message is earned when the user must act
+    # AND the system can't self-fix. Here there is nothing to fix; the agent is
+    # working. The honest version of this signal is the live tool COUNT next to
+    # the elapsed timer (chat_status), which says what's happening without
+    # claiming something is wrong. Telemetry + EventLog keep it observable.
+    #
+    # The same-tool-same-input guard above is different and stays: five
+    # identical calls in a row IS evidence, not a count.
     %{state | tool_runaway_warned: true}
   end
 

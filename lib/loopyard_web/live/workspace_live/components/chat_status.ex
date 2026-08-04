@@ -94,6 +94,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
       |> assign(:turn_since, turn_started_unix_ms(assigns.messages))
       |> assign_new(:streaming_text, fn -> "" end)
       |> assign_new(:active_tool, fn -> nil end)
+      |> assign_new(:tool_calls, fn -> 0 end)
       |> assign_status_styles()
 
     # Fuel gauge, NOT odometer. The live footer shows how full the CONTEXT
@@ -138,6 +139,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
         title="context window filled this turn — compaction kicks in near full; lifetime token cost is in the sidebar"
       >
         · {@ctx_pct}% ctx
+      </span>
+      <%!-- How much WORK this turn has done. This is the honest half of what
+    used to be a runaway warning: a permanent "⚠ 50 tool calls — it may
+    be stuck, click Stop" that fired on any turn big enough to matter and
+    made healthy agents read as broken. A count belongs next to the
+    elapsed timer as a fact, not in the transcript as an accusation.
+    Shown from 10 up, so a short turn stays quiet. --%>
+      <span
+        :if={(@tool_calls || 0) >= 10}
+        class="text-body flex-none tabular-nums text-zinc-400"
+        title="tool calls in this turn"
+      >
+        · {@tool_calls} tools
       </span>
       <span
         :if={@active_tool && @streaming_text == ""}

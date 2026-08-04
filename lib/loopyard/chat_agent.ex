@@ -1653,6 +1653,7 @@ defmodule Loopyard.ChatAgent do
       total_cache_read_tokens: state.total_cache_read_tokens,
       total_cost_usd: state.total_cost_usd,
       active_tool: state.active_tool,
+      tool_calls_this_turn: state.tool_calls_this_turn,
       turns: state.turns,
       claude_session_id: state.claude_session_id,
       rate_limit_status: state.rate_limit_status,
