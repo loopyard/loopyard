@@ -179,6 +179,11 @@ defmodule Loopyard.ChatAgent.ToolLoopTest do
   end
 
   describe "per-turn tool-call runaway detection" do
+    # A runaway is TELEMETRY, never a chat message. The count used to write a
+    # permanent "⚠ … it may be stuck … click Stop" into the transcript, which
+    # fired on any turn big enough to matter (a codebase-wide refactor runs well
+    # past 50 tool calls) and left healthy agents reading as broken forever.
+    # What the guard must still do is fire ONCE and stay observable.
     defp runaway_warn_count(state) do
       Enum.count(state.messages, fn m ->
         m.role == :system and String.contains?(m.content || "", "tool calls in this single turn")
@@ -216,8 +221,12 @@ defmodule Loopyard.ChatAgent.ToolLoopTest do
       assert meta.agent_id == id
 
       state = :sys.get_state(pid)
-      assert runaway_warn_count(state) == 1
-      assert state.tool_runaway_warned == true
+
+      assert runaway_warn_count(state) == 0,
+             "a tool COUNT must not write a permanent chat message"
+
+      assert state.tool_runaway_warned == true,
+             "it still latches, so the telemetry fires once per turn"
     end
 
     test "49 tool calls → no warning (under threshold)", %{id: id} do
@@ -258,7 +267,8 @@ defmodule Loopyard.ChatAgent.ToolLoopTest do
       _ = :sys.get_state(pid)
       state = :sys.get_state(pid)
 
-      assert runaway_warn_count(state) == 1
+      assert runaway_warn_count(state) == 0
+      assert state.tool_runaway_warned == true
     end
   end
 end
