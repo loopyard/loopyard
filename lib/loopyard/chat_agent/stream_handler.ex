@@ -78,46 +78,24 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     state
   end
 
-  def process_event(%Event.ToolCall{name: tool_name, input: tool_input} = ev, state) do
-    now = DateTime.utc_now()
-    id = state.id
-    # Neutral tool kind travels ON the message so the UI classifies by kind,
-    # never by matching raw tool names. A backend may set ev.kind itself; else
-    # we derive it from the name via the single ToolKind seam.
-    tool_kind = ev.kind || Loopyard.Agent.ToolKind.classify(tool_name)
-
-    tool_msg = %{
-      role: :tool,
-      tool: tool_name,
-      tool_kind: tool_kind,
-      tool_id: ev.id,
-      input: tool_input,
-      timestamp: now
-    }
-
-    {state, tool_msg} = append_message(state, tool_msg)
-
-    state = %{
-      state
-      | last_activity_at: now,
-        tool_calls: state.tool_calls + 1,
-        active_tool: tool_name,
-        tool_calls_this_turn: state.tool_calls_this_turn + 1
-    }
-
-    # Loop detection: same tool + same input N times in a row
-    state = LoopGuard.maybe_detect_tool_loop(state, id, tool_name, tool_input)
-
-    # Runaway cap: even if individual calls differ, a 50+ tool-call
-    # turn is almost always the agent flailing. Warn once.
-    state = LoopGuard.maybe_detect_tool_runaway(state, id)
-
-    Persistence.persist_message(state, tool_msg)
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: tool_msg})
-    # Feed the global/per-project activity stream (#54): this is the "latest
-    # tool call" the god-mode sidebar surfaces across all projects.
-    Loopyard.Events.Activity.record(id, :tool, tool_name)
-    state
+  # A ToolCall for an id we've ALREADY recorded is not a new call — it's the
+  # same call arriving with more of its arguments. ACP streams `rawInput` in
+  # fragments, so an Edit can be announced with `%{"replace_all" => false}` and
+  # only later reveal which file it edits. Refine the message in place.
+  #
+  # This must NOT re-run the counters or the loop guard: it is one call, and
+  # counting it twice is how five edits to five different files came to look
+  # like a retry loop.
+  def process_event(%Event.ToolCall{id: tool_id} = ev, state) do
+    # No id (backends that don't supply one) → nothing to refine AGAINST, so
+    # it can only be a new call. Falling through to a catchall here dropped
+    # the call entirely.
+    if is_binary(tool_id) and
+         Enum.any?(state.messages, &(&1[:role] == :tool and &1[:tool_id] == tool_id)) do
+      refine_tool_call(state, ev)
+    else
+      record_tool_call(state, ev)
+    end
   end
 
   def process_event(%Event.ToolResult{id: tool_id, content: content, is_error: is_error}, state) do
@@ -687,6 +665,74 @@ defmodule Loopyard.ChatAgent.StreamHandler do
       })
     end)
 
+    state
+  end
+
+  defp refine_tool_call(state, %Event.ToolCall{id: tool_id, input: input}) do
+    {messages, updated} =
+      Enum.map_reduce(state.messages, nil, fn msg, acc ->
+        if msg[:role] == :tool and msg[:tool_id] == tool_id do
+          merged = Map.merge(msg[:input] || %{}, input || %{})
+          msg = Map.put(msg, :input, merged)
+          {msg, msg}
+        else
+          {msg, acc}
+        end
+      end)
+
+    state = %{state | messages: messages}
+
+    if updated do
+      Persistence.persist_message_update(state, updated.id, %{input: updated[:input]})
+
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.MessageUpdated{
+        agent_id: state.id,
+        msg: updated
+      })
+    end
+
+    state
+  end
+
+  defp record_tool_call(state, %Event.ToolCall{name: tool_name, input: tool_input} = ev) do
+    now = DateTime.utc_now()
+    id = state.id
+    # Neutral tool kind travels ON the message so the UI classifies by kind,
+    # never by matching raw tool names. A backend may set ev.kind itself; else
+    # we derive it from the name via the single ToolKind seam.
+    tool_kind = ev.kind || Loopyard.Agent.ToolKind.classify(tool_name)
+
+    tool_msg = %{
+      role: :tool,
+      tool: tool_name,
+      tool_kind: tool_kind,
+      tool_id: ev.id,
+      input: tool_input,
+      timestamp: now
+    }
+
+    {state, tool_msg} = append_message(state, tool_msg)
+
+    state = %{
+      state
+      | last_activity_at: now,
+        tool_calls: state.tool_calls + 1,
+        active_tool: tool_name,
+        tool_calls_this_turn: state.tool_calls_this_turn + 1
+    }
+
+    # Loop detection: same tool + same input N times in a row
+    state = LoopGuard.maybe_detect_tool_loop(state, id, tool_name, tool_input)
+
+    # Runaway cap: even if individual calls differ, a 50+ tool-call
+    # turn is almost always the agent flailing. Warn once.
+    state = LoopGuard.maybe_detect_tool_runaway(state, id)
+
+    Persistence.persist_message(state, tool_msg)
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: tool_msg})
+    # Feed the global/per-project activity stream (#54): this is the "latest
+    # tool call" the god-mode sidebar surfaces across all projects.
+    Loopyard.Events.Activity.record(id, :tool, tool_name)
     state
   end
 end

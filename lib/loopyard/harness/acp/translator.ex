@@ -108,11 +108,23 @@ defmodule Loopyard.Harness.ACP.Translator do
     {state, entry} = buffer_tool(state, id, update)
 
     # Ensure the call is emitted before its result (force it out if needed).
+    # If it's ALREADY out and this update brought more of its arguments, emit
+    # it again with the fuller input — StreamHandler refines the existing tool
+    # message by id rather than recording a second call. Without this, a call
+    # announced from its first fragment keeps the husk forever: the transcript
+    # shows an Edit with no file and no diff.
     {state, call_events} =
       if entry.emitted_call do
-        {state, []}
+        if input_grew?(state, id, entry) do
+          {put_tool(state, id, %{entry | emitted_input: entry.input}),
+           [%Event.ToolCall{id: id, name: entry.name || "tool", input: entry.input}]}
+        else
+          {state, []}
+        end
       else
         entry = %{entry | emitted_call: true}
+
+        entry = %{entry | emitted_input: entry.input}
 
         {put_tool(state, id, entry),
          [%Event.ToolCall{id: id, name: entry.name || "tool", input: entry.input}]}
@@ -268,15 +280,33 @@ defmodule Loopyard.Harness.ACP.Translator do
     end
   end
 
-  # Merge the latest name/input for a tool id, preferring non-empty input.
+  # Accumulate name/input for a tool id across updates.
+  #
+  # ACP delivers `rawInput` in FRAGMENTS as the harness streams the call, and
+  # this used to REPLACE the buffered input with whichever fragment arrived
+  # last. So an `Edit` whose arguments came as {"file_path"} then
+  # {"old_string"} then {"replace_all"} ended up recorded as just
+  # `%{"replace_all" => false}` — the identifying arguments dropped on the
+  # floor. Measured on a live agent: five consecutive Edit calls, every one
+  # stored with the identical one-key input.
+  #
+  # That fed two visible failures: tool cards showed a call with no file and no
+  # diff, and the same-tool-same-input loop guard hashed those identical husks
+  # and declared a retry loop over five edits to five DIFFERENT files.
+  #
+  # Fragments MERGE. A later fragment refines the call; it never was a
+  # replacement for it.
   defp buffer_tool(state, id, update) do
-    entry = state.tools[id] || %{emitted_call: false, result: false, name: nil, input: %{}}
+    entry =
+      state.tools[id] ||
+        %{emitted_call: false, result: false, name: nil, input: %{}, emitted_input: %{}}
+
     input = update["rawInput"] || %{}
 
     entry = %{
       entry
       | name: tool_name(update) || entry.name,
-        input: if(map_size(input) > 0, do: input, else: entry.input)
+        input: Map.merge(entry.input, input)
     }
 
     {put_tool(state, id, entry), entry}
@@ -287,7 +317,7 @@ defmodule Loopyard.Harness.ACP.Translator do
 
   defp maybe_emit_call(state, id, entry) do
     if map_size(entry.input) > 0 do
-      entry = %{entry | emitted_call: true}
+      entry = %{entry | emitted_call: true, emitted_input: entry.input}
 
       {put_tool(state, id, entry),
        [%Event.ToolCall{id: id, name: entry.name || "tool", input: entry.input}]}
@@ -295,6 +325,10 @@ defmodule Loopyard.Harness.ACP.Translator do
       {state, []}
     end
   end
+
+  # Did this update reveal arguments we hadn't emitted yet?
+  defp input_grew?(_state, _id, entry),
+    do: entry.input != Map.get(entry, :emitted_input, %{})
 
   defp put_tool(state, id, entry), do: %{state | tools: Map.put(state.tools, id, entry)}
 
