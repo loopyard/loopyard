@@ -402,17 +402,30 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             <ul class="space-y-1.5">
               <li
                 :for={{text, i} <- Enum.with_index(@agent[:pending_messages] || [])}
-                class="group/q flex items-start justify-between gap-2.5"
+                class="group/q flex items-start justify-between gap-2"
               >
+                <%!-- The text is TEXT. It used to be a full-width button wired to
+    edit_pending, which DEQUEUES the message and dumps it into the
+    composer — so tapping a queued line to read it silently pulled a
+    message the agent was about to run out of the queue and left a wall
+    of raw prompt sitting in the input box. On a phone, tapping a block
+    of text is how you read it, not how you edit it. Nothing about the
+    row said it was a button, because it shouldn't have been one. --%>
+                <p class="flex-1 min-w-0 text-lead leading-relaxed text-zinc-800 dark:text-zinc-100 line-clamp-3">
+                  {text}
+                </p>
+                <%!-- Edit is now its OWN control, named and deliberate — the only
+    thing allowed to put text in the composer is a human asking for it. --%>
                 <button
                   type="button"
                   phx-click="edit_pending"
                   phx-value-id={@agent.id}
                   phx-value-index={i}
+                  aria-label="Edit this queued message"
                   title="Edit — pull back into the message box"
-                  class="focus-ring flex-1 min-w-0 text-left text-lead leading-relaxed text-zinc-800 dark:text-zinc-100 line-clamp-3"
+                  class="focus-ring tap-target flex-none w-9 h-9 -my-1.5 rounded-sm flex items-center justify-center text-violet-500/50 dark:text-violet-300/40 hover:text-violet-600 dark:hover:text-violet-300 hover:bg-violet-500/10 transition-colors"
                 >
-                  {text}
+                  <.icon name={:pencil} class="w-4 h-4" />
                 </button>
                 <%!-- Cancel just THIS line — always visible (hover-only was invisible
     on touch). --%>
@@ -423,7 +436,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                   phx-value-index={i}
                   aria-label="Cancel this queued message"
                   title="Cancel — remove from the queue"
-                  class="focus-ring tap-target flex-none w-6 h-6 rounded-sm flex items-center justify-center text-violet-500/50 dark:text-violet-300/40 hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                  class="focus-ring tap-target flex-none w-9 h-9 -my-1.5 rounded-sm flex items-center justify-center text-violet-500/50 dark:text-violet-300/40 hover:text-red-500 hover:bg-red-500/10 transition-colors"
                 >
                   <.icon name={:x_mark} class="w-4 h-4" />
                 </button>
