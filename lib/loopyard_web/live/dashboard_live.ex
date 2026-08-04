@@ -66,6 +66,7 @@ defmodule LoopyardWeb.DashboardLive do
     |> assign(:inference_ready?, safe(&inference_ready?/0, true))
     |> assign(:digest, safe(fn -> Loopyard.Operator.Digest.recent(6) end, []))
     |> assign(:health_map, safe(&Loopyard.Health.overall/0, %{}))
+    |> assign(:connections, safe(fn -> connections(socket.assigns.host) end, []))
     |> then(&assign(&1, :first_run_step, first_run_step(&1.assigns)))
   end
 
@@ -437,6 +438,41 @@ defmodule LoopyardWeb.DashboardLive do
               >
                 Secrets
               </.link>
+              <%!-- Each service, with its state, each row its OWN link to the
+                   page that fixes it. A count alone would tell you something
+                   is missing without telling you WHICH — the whole failure was
+                   not knowing GitHub was the unset one. The heading is the link
+                   to all of them, so this is ONE thing on the card rather than
+                   a nav row and a list that both say "Connections". --%>
+              <div
+                :if={@connections != []}
+                class="pt-3 mt-2 border-t border-zinc-200/70 dark:border-zinc-800"
+              >
+                <.link
+                  navigate={"/workstations/#{@operator}"}
+                  class="flex items-center gap-2 text-body text-zinc-400 dark:text-zinc-500 mb-1 -mx-2 px-2 py-1 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+                >
+                  Connections
+                  <span :if={Enum.any?(@connections, &(!&1.connected?))} class="ml-auto">
+                    {Enum.count(@connections, & &1.connected?)}/{length(@connections)}
+                  </span>
+                </.link>
+                <.link
+                  :for={c <- @connections}
+                  navigate={c.path}
+                  class="flex items-center gap-2 text-body -mx-2 px-2 py-2.5 md:py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+                >
+                  <span class={[
+                    "w-1.5 h-1.5 rounded-full flex-none",
+                    (c.connected? && "bg-emerald-500") || "bg-zinc-300 dark:bg-zinc-600"
+                  ]}></span>
+                  <span class="text-zinc-600 dark:text-zinc-400">{c.label}</span>
+                  <span class="ml-auto text-zinc-400 dark:text-zinc-500 truncate">
+                    {(c.connected? && "Connected") || "Not connected"}
+                  </span>
+                </.link>
+              </div>
+
               <%!-- Per-component health. "All 3 subsystems healthy" is a summary
                    of exactly this; showing the components themselves is what
                    makes the card worth looking at when one of them ISN'T
@@ -465,6 +501,27 @@ defmodule LoopyardWeb.DashboardLive do
       </div>
     </.page_shell>
     """
+  end
+
+  # Which outside services this workstation can actually authenticate to.
+  #
+  # This is on the dashboard because the pages that OWN it (/workstations/:id)
+  # became unreachable: they're only linked from the first-run bands, which
+  # vanish the moment Claude is connected and a project exists. So the state of
+  # your credentials went invisible exactly once you were past setup — and the
+  # way you found out a token was missing was an agent failing mid-task with
+  # "no GitHub credentials in this sandbox".
+  defp connections(_host) do
+    id = Loopyard.Workstation.current()
+
+    for ig <- Loopyard.Workstation.Env.integrations() do
+      %{
+        label: ig.label,
+        key: ig.key,
+        connected?: Loopyard.Workstation.Env.set?(ig.key, id),
+        path: "/workstations/#{id}/#{String.downcase(ig.label)}"
+      }
+    end
   end
 
   # ── derived values ────────────────────────────────────────────────────────
