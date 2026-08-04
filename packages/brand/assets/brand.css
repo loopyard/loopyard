@@ -8,10 +8,21 @@
    while slowly swirling. Two eased animations at different durations (dash
    3.4s, swirl 11s): their phase drift makes each cycle land slightly
    differently, so the motion breathes instead of ticking. Single small svg,
-   transform + dash only — compositor-cheap, no JS, no DOM churn. */
+   no JS, no DOM churn.
+
+   The swirl is a transform (compositor). The DASH IS NOT — stroke-dashoffset
+   animates on the raster path, so it repaints every frame for as long as an
+   agent is thinking, which is exactly when someone is also typing. This used
+   to claim "compositor-cheap"; only half of it ever was.
+
+   So give it its own layer and contain the paint: the per-frame repaint is
+   then bounded to the ~20px mark instead of whatever ancestor box the engine
+   decides to invalidate. */
 .loop-thinking {
   transform-origin: 50% 50%;
   animation: loop-swirl 11s ease-in-out infinite;
+  will-change: transform;
+  contain: paint;
 }
 .loop-thinking path {
   stroke-dasharray: 24 76;
