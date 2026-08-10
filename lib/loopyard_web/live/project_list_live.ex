@@ -243,8 +243,8 @@ defmodule LoopyardWeb.ProjectListLive do
   # All agents under a project, across its workspaces — for rollup dot + counts.
   defp project_agents(project), do: Enum.flat_map(project.workspaces, & &1.agents)
 
-  defp home_subtitle([]), do: "Nothing here yet — create your first project below."
-
+  # Only ever called with a non-empty list — the empty case renders `empty_home`
+  # instead of this header line.
   defp home_subtitle(projects) do
     n = length(projects)
     agents = projects |> Enum.flat_map(&project_agents/1)
@@ -275,33 +275,40 @@ defmodule LoopyardWeb.ProjectListLive do
     >
       <%= case @live_action do %>
         <% :index -> %>
-          <%!-- The birdseye: every project → workspace → agent, expanded, with
+          <%!-- First run (no projects) is an ON-RAMP, not a dead end: the three
+    creation paths inline, one click each — not an empty void plus a
+    "New project" button that only opens a menu of these same three. --%>
+          <.empty_home :if={@projects == []} />
+
+          <div :if={@projects != []}>
+            <%!-- The birdseye: every project → workspace → agent, expanded, with
     live status + what each agent is doing + openable ports. The big
     mission-control twin of the sidebar. --%>
-          <header class="mb-8 flex items-end justify-between gap-4">
-            <p class="text-body text-zinc-500 dark:text-zinc-400">
-              {home_subtitle(@projects)}
-            </p>
-            <.link
-              navigate="/projects/new"
-              class="hidden sm:inline-flex items-center gap-1.5 rounded-sm border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-body font-medium text-zinc-600 dark:text-zinc-300 hover:border-violet-300 dark:hover:border-violet-500/40 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
-            >
-              <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" /></svg>
-              New project
-            </.link>
-          </header>
+            <header class="mb-8 flex items-end justify-between gap-4">
+              <p class="text-body text-zinc-500 dark:text-zinc-400">
+                {home_subtitle(@projects)}
+              </p>
+              <.link
+                navigate="/projects/new"
+                class="hidden sm:inline-flex items-center gap-1.5 rounded-sm border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-body font-medium text-zinc-600 dark:text-zinc-300 hover:border-violet-300 dark:hover:border-violet-500/40 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+              >
+                <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" /></svg>
+                New project
+              </.link>
+            </header>
 
-          <%!-- The ONE grouped project → workspace list (also loaded by the mobile
+            <%!-- The ONE grouped project → workspace list (also loaded by the mobile
     switcher, so there's a single visual language). --%>
-          <ProjectList.project_groups projects={@projects} />
-          <div class="mt-6 sm:hidden">
-            <.link
-              navigate="/projects/new"
-              class="flex items-center justify-center gap-1.5 w-full  border border-dashed border-zinc-300 dark:border-zinc-700 px-3 py-3 text-body font-medium text-zinc-500 dark:text-zinc-400 active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors"
-            >
-              <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" /></svg>
-              New project
-            </.link>
+            <ProjectList.project_groups projects={@projects} />
+            <div class="mt-6 sm:hidden">
+              <.link
+                navigate="/projects/new"
+                class="flex items-center justify-center gap-1.5 w-full  border border-dashed border-zinc-300 dark:border-zinc-700 px-3 py-3 text-body font-medium text-zinc-500 dark:text-zinc-400 active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors"
+              >
+                <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" /></svg>
+                New project
+              </.link>
+            </div>
           </div>
         <% :new -> %>
           <div class="max-w-2xl">
@@ -485,6 +492,45 @@ defmodule LoopyardWeb.ProjectListLive do
           </div>
       <% end %>
     </.page_shell>
+    """
+  end
+
+  # First-run on-ramp: the whole screen when there are no projects. The three
+  # creation paths are the CONTENT, not a link to a menu of them — a first-time
+  # visitor lands one tap from a running agent instead of on "No projects yet."
+  # in a black void. Populates live the moment a project appears (an agent the
+  # operator spun up, another window creating one).
+  defp empty_home(assigns) do
+    ~H"""
+    <div class="mx-auto max-w-xl pt-6 sm:pt-14">
+      <div class="flex flex-col items-center text-center">
+        <Brand.mark class="w-10 h-10 text-violet-500/80 dark:text-violet-400/70" />
+        <h1 class="mt-5 text-hero font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+          Start your first project
+        </h1>
+        <p class="mt-2 text-body text-zinc-500 dark:text-zinc-400">
+          Loopyard runs your code in Docker and puts an agent on it. Pick a way in.
+        </p>
+      </div>
+
+      <div class="mt-8 space-y-2.5 text-left">
+        <.method_card
+          navigate="/projects/new/github"
+          title="From GitHub"
+          desc="Clone a repo — works from anywhere, including a phone."
+        />
+        <.method_card
+          navigate="/projects/new/scratch"
+          title="From scratch"
+          desc="Name it and start building — a fresh repo, ready instantly."
+        />
+        <.method_card
+          navigate="/projects/new/folder"
+          title="From a folder on the Loopyard machine"
+          desc="Code already on the disk where Loopyard itself is running."
+        />
+      </div>
+    </div>
     """
   end
 

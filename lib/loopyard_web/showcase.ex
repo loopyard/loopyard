@@ -25,6 +25,7 @@ defmodule LoopyardWeb.Showcase do
     LoopyardWeb.Showcase.Scenes.MultiAgent,
     LoopyardWeb.Showcase.Scenes.SshConsole,
     LoopyardWeb.Showcase.Scenes.Operator,
+    LoopyardWeb.Showcase.Scenes.WorkspacesEmpty,
     LoopyardWeb.Showcase.Scenes.Aural
   ]
 
