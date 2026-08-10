@@ -64,6 +64,9 @@ defmodule LoopyardWeb.Router do
       live "/projects/:project_id/settings", ProjectLive, :settings
       live "/projects/:project_id/workspaces/:workspace_id", WorkspaceLive, :index
       live "/projects/:project_id/workspaces/:workspace_id/new", WorkspaceLive, :new
+      # Bare "…/agents" (no id) lands on the workspace, which picks an agent —
+      # an agent linking "open the workspace's agents" shouldn't hit a hard 404.
+      live "/projects/:project_id/workspaces/:workspace_id/agents", WorkspaceLive, :index
       live "/projects/:project_id/workspaces/:workspace_id/agents/:id", WorkspaceLive, :chat
 
       live "/projects/:project_id/workspaces/:workspace_id/agents/:id/container",

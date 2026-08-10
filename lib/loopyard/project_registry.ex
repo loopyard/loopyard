@@ -421,11 +421,27 @@ defmodule Loopyard.ProjectRegistry do
     |> Enum.sort_by(& &1.name)
   end
 
-  @doc "Get a project by ID."
+  @doc """
+  Get a project by ID, falling back to a UNIQUE name match.
+
+  The id is the canonical identity, but `/projects/gbrain/...` reads far better
+  than `/projects/727ad852/...` — and agents (and humans) reasonably link by the
+  name they see. When the id lookup misses, resolve a project whose NAME equals
+  the given string, but only when exactly one matches (an ambiguous name stays a
+  miss — the caller redirects home rather than guessing wrong). This is what
+  keeps a name-based URL from 404ing.
+  """
   def get_project(id) do
     case :ets.lookup(@projects_table, id) do
       [{^id, project}] -> project
-      [] -> nil
+      [] -> get_project_by_name(id)
+    end
+  end
+
+  defp get_project_by_name(name) do
+    case Enum.filter(list_projects(), &(&1.name == name)) do
+      [project] -> project
+      _ -> nil
     end
   end
 
