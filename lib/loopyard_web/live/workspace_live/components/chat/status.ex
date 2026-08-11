@@ -57,6 +57,33 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Status do
   end
 
   @doc """
+  The most recent still-pending question card, or nil. `awaiting_answer?/1` is
+  the boolean; this returns the card itself so the composer can repeat the ask
+  right where you type (a pending question that scrolled off screen is what made
+  a typed reply look like it vanished into nothing).
+  """
+  def pending_question(messages) do
+    messages
+    |> Enum.reverse()
+    |> Enum.find(&(&1.role == :question))
+    |> case do
+      %{status: :pending} = msg -> msg
+      _ -> nil
+    end
+  end
+
+  @doc """
+  Short human preview of a question card's prompt(s) for the composer band. One
+  sub-question → its prompt; several → the first prompt plus a "+N more" count.
+  """
+  def question_prompt_preview(%{questions: [%{prompt: p}]}) when is_binary(p), do: p
+
+  def question_prompt_preview(%{questions: [%{prompt: p} | rest]}) when is_binary(p),
+    do: "#{p}  (+#{length(rest)} more)"
+
+  def question_prompt_preview(_), do: "The agent asked you a question."
+
+  @doc """
   True when the most recent approval card is still pending. Like the question
   case, the agent's turn is parked inside propose_* waiting on the human, so the
   "Awaiting approval…" dots are redundant with the Approve/Deny card itself.
