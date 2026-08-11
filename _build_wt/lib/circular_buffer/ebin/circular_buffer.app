@@ -1,0 +1,1 @@
+{application,circular_buffer,[{modules,['Elixir.CircularBuffer','Elixir.Collectable.CircularBuffer','Elixir.Enumerable.CircularBuffer','Elixir.Inspect.CircularBuffer']},{optional_applications,[]},{applications,[kernel,stdlib,elixir]},{description,"General purpose circular buffer"},{registered,[]},{vsn,"1.0.1"}]}.

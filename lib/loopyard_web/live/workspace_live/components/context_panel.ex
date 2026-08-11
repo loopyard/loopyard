@@ -83,13 +83,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       toggle_event="toggle_agent_details"
     >
       <:facts>
-        <%!-- Curated glance line: model + tokens always earn their place; cost
-        appears only once there's real spend to show (a fresh agent's $0.00 is
-        noise, not context). Cost is DERIVED from tokens × model price — the ACP
-        harness reports no dollar figure, so an un-derived cost would sit at $0. --%>
+        <%!-- Model + tokens. NO cost: the ACP harness reports no dollar figure,
+        and deriving one meant multiplying an ESTIMATED output count by a price
+        while cache reads (invisible here) are billed at ~10% — a fabricated
+        number wearing a currency symbol. A wrong figure is worse than none. --%>
         {short_model(@agent[:model]) || "default"} · {if @estimating?, do: "~"}{compact_number(
           @total_tokens
-        )} tok{cost_suffix(@agent[:total_cost_usd])}
+        )} tok
       </:facts>
     </.detail_hero>
 
@@ -453,18 +453,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       <.info_row label="Output" value={compact_number(@agent[:total_output_tokens] || 0)} />
       <%!-- Only render what we can actually MEASURE. A metric the harness never
       reports (ACP sends no cache-read counts) rendered a permanent "0", which
-      reads as a real measurement of zero rather than "unknown" — worse than
-      showing nothing. Same rule for cost: it appears once there's real spend.
-      A harness that does report these gets the rows back automatically. --%>
+      reads as a real measurement of zero rather than "unknown". A harness that
+      does report it gets the row back automatically.
+      NO Cost row: see the hero comment — a derived dollar figure here multiplies
+      an ESTIMATED output count by list price and prices cache reads (invisible
+      under ACP) at full rate. That's a guess wearing a currency symbol; it stays
+      out until a harness reports real cost. --%>
       <.info_row
         :if={(@agent[:total_cache_read_tokens] || 0) > 0}
         label="Cache hits"
         value={compact_number(@agent[:total_cache_read_tokens])}
-      />
-      <.info_row
-        :if={(@agent[:total_cost_usd] || 0.0) > 0}
-        label="Cost"
-        value={"$#{:erlang.float_to_binary((@agent[:total_cost_usd] || 0.0) * 1.0, decimals: 2)}"}
       />
     </.section>
     """
@@ -479,15 +477,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   end
 
   def short_tool(name), do: name
-
-  # " · $0.72" once there's real spend, "" otherwise — cost only shows when it's
-  # context, not when it's a zero placeholder. Sub-cent-but-nonzero reads as
-  # "<$0.01" rather than rounding down to a misleading $0.00.
-  defp cost_suffix(cost) when is_number(cost) and cost > 0 do
-    if cost < 0.005, do: " · <$0.01", else: " · $#{:erlang.float_to_binary(cost * 1.0, decimals: 2)}"
-  end
-
-  defp cost_suffix(_), do: ""
 
   @doc "Human display name for a model id/name."
   def short_model(nil), do: nil

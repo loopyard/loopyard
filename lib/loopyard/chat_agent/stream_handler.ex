@@ -189,30 +189,19 @@ defmodule Loopyard.ChatAgent.StreamHandler do
         state.context_utilization
       end
 
-    # The ACP harness reports token usage but no dollar cost (cost_usd is always
-    # 0.0), so a cost fed straight from the harness would sit at $0 forever.
-    # Derive it from this turn's tokens when the harness didn't provide one —
-    # Loopyard knows the model and the counts. Prefer a real harness figure if a
-    # future backend ever reports one.
-    turn_cost =
-      if result.cost_usd > 0 do
-        result.cost_usd
-      else
-        Loopyard.Pricing.cost(
-          result.model || state.model,
-          result.input_tokens,
-          result.output_tokens,
-          result.cache_read_tokens
-        )
-      end
-
+    # Cost comes ONLY from a harness that actually reports it. We briefly derived
+    # it (tokens × list price) to escape a permanent $0 — but the ACP harness
+    # gives no output-token count (it's estimated at ~4 chars/token) and no
+    # cache-read count, so repeated context priced at the full input rate
+    # overstated spend. That produced a confident, wrong dollar figure, which is
+    # worse than showing none. Under ACP this stays 0 and the UI omits it.
     state = %{
       state
       | model: result.model || state.model,
         total_input_tokens: state.total_input_tokens + result.input_tokens,
         total_output_tokens: state.total_output_tokens + result.output_tokens,
         total_cache_read_tokens: state.total_cache_read_tokens + result.cache_read_tokens,
-        total_cost_usd: state.total_cost_usd + turn_cost,
+        total_cost_usd: state.total_cost_usd + result.cost_usd,
         claude_session_id: claude_sid,
         context_utilization: utilization
     }
