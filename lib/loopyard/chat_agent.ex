@@ -249,6 +249,12 @@ defmodule Loopyard.ChatAgent do
   # text the whole way through and must never be killed for taking its time.
   @stream_stall_ms 600_000
 
+  # Grace before the idle sweep self-heals a ghost :thinking turn (dead session).
+  # Long enough that a legitimate session-swap window during a restart is never
+  # mistaken for a wedge; short enough that a real strand recovers in well under
+  # the old "wait for the 10-min stall watchdog (that never fired)" failure.
+  @ghost_sweep_grace_ms 45_000
+
   # --- Public API ---
   #
   # The thin client wrappers (call/cast via the Registry, ETS read
@@ -1340,6 +1346,25 @@ defmodule Loopyard.ChatAgent do
   # idle for 4h wakes up and continues the exact same conversation.
   # See agent-sanity #20.
   def handle_info(:idle_check, state) do
+    # SELF-HEAL a stranded turn. A turn stuck in :thinking with no live session
+    # can never finish — nothing streams, and its stall-watchdog ref may have
+    # gone stale during a failed recovery — so without this it spins forever
+    # until the user pokes it (a user hit exactly this: 9 minutes wedged). Route
+    # through the normal recovery restart (fresh session + resume + drain of
+    # pending sends). Time-guarded (@ghost_sweep_grace_ms) so a brief
+    # session-swap window during a legit restart isn't mistaken for a wedge.
+    if TurnHelpers.ghost_thinking?(state) and TurnHelpers.ghost_stalled?(state, @ghost_sweep_grace_ms) do
+      Logger.warning("[#{state.id}] self-healing stranded :thinking turn (idle sweep)")
+
+      :telemetry.execute(
+        [:loopyard, :agent, :ghost_turn_recovered],
+        %{},
+        %{agent_id: state.id, via: :idle_sweep}
+      )
+
+      GenServer.cast(self(), :restart_session)
+    end
+
     state =
       if IdleReaper.eligible?(state) do
         Loopyard.EventLog.info(

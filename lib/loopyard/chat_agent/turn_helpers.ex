@@ -13,14 +13,27 @@ defmodule Loopyard.ChatAgent.TurnHelpers do
   # Keep it well under that 5s so we always win the race.
   @interrupt_deadline_ms 1_500
 
-  # A turn is only genuinely in flight if its stream is live. A real
-  # :thinking turn always carries a stream_ref (set with the status flip in
-  # start_turn) backed by a live session. :thinking with NO stream_ref AND
-  # NO live session is a ghost — the turn died without resetting to idle.
-  def ghost_thinking?(%{status: :thinking, stream_ref: nil} = state),
-    do: not live_session?(state)
+  # A real :thinking turn is backed by a LIVE session. :thinking with NO live
+  # session is a ghost — the turn died without resetting to idle and can never
+  # complete (a dead session produces no stream events). This covers BOTH
+  # shapes: a nil stream_ref, AND a STALE stream_ref left pointing at a session
+  # that has since died (recovery swapped the stream but the replacement died,
+  # so the old stall-watchdog ref no longer matches and nothing reaps it). The
+  # earlier guard checked only `stream_ref: nil` and missed the stale-ref wedge,
+  # which stranded an agent in :thinking with a dead session for minutes.
+  def ghost_thinking?(%{status: :thinking} = state), do: not live_session?(state)
 
   def ghost_thinking?(_), do: false
+
+  @doc """
+  True when a ghost turn has been stranded past `grace_ms` (or carries no
+  activity timestamp at all — then it's definitely stale). Guards the periodic
+  self-heal sweep against acting during a sub-second legitimate session swap.
+  """
+  def ghost_stalled?(%{last_activity_at: %DateTime{} = la}, grace_ms),
+    do: DateTime.diff(DateTime.utc_now(), la, :millisecond) >= grace_ms
+
+  def ghost_stalled?(_, _), do: true
 
   defp live_session?(%{session: nil}), do: false
 
