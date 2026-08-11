@@ -31,6 +31,9 @@ defmodule LoopyardWeb.Showcase.Scenes.WorkspaceFull do
         alive?: true,
         # Pins the rail's rotating busy word (time-seeded otherwise).
         thinking_word: "Reasoning",
+        # A turn mid-flight has already done some work — the live status shows
+        # the count from the first call so progress is visible, not silent.
+        tool_calls_this_turn: 3,
         messages: messages,
         last_activity_at: Mock.at(310),
         total_input_tokens: 2_310_000,

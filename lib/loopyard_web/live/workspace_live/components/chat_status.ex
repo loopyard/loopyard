@@ -140,18 +140,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
       >
         · {@ctx_pct}% ctx
       </span>
-      <%!-- How much WORK this turn has done. This is the honest half of what
-    used to be a runaway warning: a permanent "⚠ 50 tool calls — it may
-    be stuck, click Stop" that fired on any turn big enough to matter and
-    made healthy agents read as broken. A count belongs next to the
-    elapsed timer as a fact, not in the transcript as an accusation.
-    Shown from 10 up, so a short turn stays quiet. --%>
+      <%!-- How much WORK this turn has done — shown from the FIRST call so the
+    count ticks up as it works and long turns visibly show progress instead of
+    a silent word + timer (the "I can't tell it's doing anything" gap). It's a
+    neutral fact next to the timer (quiet zinc, no ⚠), NOT the old "⚠ 50 tool
+    calls — it may be stuck" accusation that made healthy agents read as broken.
+    Singular/plural so a fresh turn reads cleanly ("1 tool", "3 tools"). --%>
       <span
-        :if={(@tool_calls || 0) >= 10}
+        :if={(@tool_calls || 0) >= 1}
         class="text-body flex-none tabular-nums text-zinc-400"
         title="tool calls in this turn"
       >
-        · {@tool_calls} tools
+        · {@tool_calls} {if @tool_calls == 1, do: "tool", else: "tools"}
       </span>
       <span
         :if={@active_tool && @streaming_text == ""}
