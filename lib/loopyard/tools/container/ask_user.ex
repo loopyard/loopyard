@@ -13,7 +13,12 @@ defmodule Loopyard.Tools.Container.AskUser do
         "header: short 1-3 word label, multiSelect: false, options: [{label: short " <>
         "choice, description: what it means}]}. Set `source` to the project/" <>
         "workspace this memo is about so the human knows where it's from.",
-    busy_words: ["waiting on you", "asking"],
+    # Busy words fill the WORKING slot (elapsed timer + Stop button), so they
+    # must describe what the agent is DOING, not the state it's about to enter.
+    # "waiting on you" read as blocked-on-a-human while the working chrome said
+    # otherwise — a contradiction. That meaning belongs to the pending-question
+    # card/composer band, never the busy rotation. Keep it to the busy act.
+    busy_words: ["asking", "drafting a question"],
     params: [
       agent_id: {:string, required: true},
       questions: {:list, required: true, description: "List of question objects (usually one)."},
