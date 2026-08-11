@@ -1820,7 +1820,11 @@ defmodule LoopyardWeb.WorkspaceLive do
           />
         </div>
 
-        <div class="flex items-center justify-end min-w-0">
+        <div class="flex items-center justify-end gap-2 min-w-0">
+          <%!-- How much of the agent's inner work to show: All (reasoning + tool
+          calls + full output) / Actions / Chat. The control existed but was
+          never rendered — so there was no way to turn detail up. --%>
+          <LoopyardWeb.Live.WorkspaceLive.Components.Chat.detail_level_control level={@detail_level} />
           <LoopyardWeb.Components.Common.mode_nav id="mode-ws-desktop" active={:workspaces} />
         </div>
       </div>
