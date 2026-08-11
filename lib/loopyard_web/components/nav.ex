@@ -170,8 +170,7 @@ defmodule LoopyardWeb.Components.Nav do
   />
 
   For a button-based control (a `phx-click` toggle rather than navigation) use
-  `seg_item_class/1` on your own `<button>`s inside a matching container — see
-  `LoopyardWeb.Live.WorkspaceLive.Components.Chat.detail_level_control/1`.
+  `seg_item_class/1` on your own `<button>`s inside a matching container.
   """
   attr :items, :list, required: true
   attr :label, :string, default: nil

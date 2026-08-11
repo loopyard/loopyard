@@ -171,9 +171,10 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:expanded_results, MapSet.new())
      |> assign(:thinking_word, nil)
      |> assign(:tab, :chat)
-     # Activity disclosure level. Starts at :trace (everything visible) for
-     # maximum trust; the DetailLevel JS hook restores the user's saved
-     # preference from localStorage on connect.
+     # Activity disclosure level — FIXED at :trace (everything visible: reasoning,
+     # tool calls, full output). There is no UI control: the All|Actions|Chat
+     # toggle was deliberately removed (see chat/header.ex). Tool output is
+     # collapsible per row, which is the disclosure that actually earns its place.
      |> assign(:detail_level, :trace)
      |> assign(:container_logs, "")
      |> assign(:container_env, nil)
@@ -1013,14 +1014,6 @@ defmodule LoopyardWeb.WorkspaceLive do
     end
   end
 
-  @impl true
-  def handle_event("set_detail_level", %{"level" => level}, socket)
-      when level in ~w(trace actions chat) do
-    {:noreply, assign(socket, :detail_level, String.to_existing_atom(level))}
-  end
-
-  def handle_event("set_detail_level", _params, socket), do: {:noreply, socket}
-
   # Expand/collapse a tool-result card. The body only renders while expanded
   # (see :expanded_results on mount) — the summary line always shows.
   # Message ids are opaque string tokens — store them as-is.
@@ -1820,11 +1813,7 @@ defmodule LoopyardWeb.WorkspaceLive do
           />
         </div>
 
-        <div class="flex items-center justify-end gap-2 min-w-0">
-          <%!-- How much of the agent's inner work to show: All (reasoning + tool
-          calls + full output) / Actions / Chat. The control existed but was
-          never rendered — so there was no way to turn detail up. --%>
-          <LoopyardWeb.Live.WorkspaceLive.Components.Chat.detail_level_control level={@detail_level} />
+        <div class="flex items-center justify-end min-w-0">
           <LoopyardWeb.Components.Common.mode_nav id="mode-ws-desktop" active={:workspaces} />
         </div>
       </div>

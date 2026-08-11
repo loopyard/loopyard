@@ -860,23 +860,9 @@ Hooks.Elapsed = {
   destroyed() { if (this._timer) clearInterval(this._timer) }
 }
 
-// Persist the activity detail level (All / Actions / Chat) across reloads.
-// The server starts everyone at :trace (max visibility); on connect we restore
-// the user's saved choice, and we save whenever it changes. localStorage, so
-// the preference is per-device and survives reconnects.
-Hooks.DetailLevel = {
-  mounted() {
-    const saved = localStorage.getItem("loopyard:detail_level")
-    if (saved && saved !== this.el.dataset.level) {
-      this.pushEvent("set_detail_level", { level: saved })
-    }
-  },
-  updated() {
-    if (this.el.dataset.level) {
-      localStorage.setItem("loopyard:detail_level", this.el.dataset.level)
-    }
-  }
-}
+// DetailLevel hook deleted with the All | Actions | Chat control it served —
+// see the note in chat/header.ex. Nothing persists a detail level now; the
+// transcript always renders at :trace (full reasoning + tool calls + output).
 
 // ShareSheet — the native share affordance for focused/share views. Click:
 // data-share="sheet" opens the OS share sheet (navigator.share — iOS/macOS pass

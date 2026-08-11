@@ -318,43 +318,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
     """
   end
 
-  @detail_levels [
-    {:trace, "All", "Reasoning + tool calls + full output"},
-    {:actions, "Actions", "Reasoning + tool calls; output one click away"},
-    {:chat, "Chat", "Just the conversation"}
-  ]
-
-  @doc """
-  Segmented control for how much of the agent's inner work to show. Starts at
-  :trace (maximum visibility / trust); lower levels collapse a layer at a time,
-  and you can always switch back up to drill into history. The `DetailLevel`
-  hook persists the choice to localStorage and restores it on connect.
-  """
-  attr :level, :atom, required: true
-
-  def detail_level_control(assigns) do
-    assigns = assign(assigns, :levels, @detail_levels)
-
-    ~H"""
-    <div
-      id="detail-level"
-      phx-hook="DetailLevel"
-      data-level={@level}
-      class="hidden sm:inline-flex items-center rounded-sm bg-zinc-100 dark:bg-zinc-800 p-1"
-      role="group"
-      aria-label="Activity detail level"
-    >
-      <button
-        :for={{value, label, hint} <- @levels}
-        phx-click="set_detail_level"
-        phx-value-level={value}
-        title={hint}
-        aria-pressed={@level == value}
-        class={Nav.seg_item_class(@level == value)}
-      >
-        {label}
-      </button>
-    </div>
-    """
-  end
+  # DELETED: the All | Actions | Chat detail-level control.
+  #
+  # Removed deliberately (see ab605d9f, "it's just the executive view") and then
+  # re-added by mistake because the component sat here unrendered and read like
+  # an oversight rather than a decision. Deleting the component — not just its
+  # render — so dead code can't invite a third resurrection.
+  #
+  # The transcript renders at :trace (everything: reasoning + tool calls + full
+  # output); tool output is collapsible per row. Anything deeper is an rpc away,
+  # not a header button.
 end

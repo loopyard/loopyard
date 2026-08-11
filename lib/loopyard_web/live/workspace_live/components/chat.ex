@@ -2,7 +2,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   @moduledoc """
   Chat panel components: agent_view, chat_panel, container_panel.
 
-  The header component group (chat_header, agent_header, detail_level_control)
+  The header component group (chat_header, agent_header)
   lives in the `Chat.Header` sub-module and the pure status predicates in
   `Chat.Status` — both split out to keep this file under its size cap. The
   public components are re-exposed here via `defdelegate` so callers keep
@@ -46,7 +46,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   # call sites) keeps working unchanged.
   defdelegate chat_header(assigns), to: Header
   defdelegate agent_header(assigns), to: Header
-  defdelegate detail_level_control(assigns), to: Header
 
   # --- Agent View ---
 
