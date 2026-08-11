@@ -402,10 +402,6 @@ html:has([data-snap-deck]) {
 }
 
 /* User message markdown (white text on purple bg) */
-.markdown-body-user { color: white; }
-.markdown-body-user code { background: rgba(255, 255, 255, 0.2); color: white; }
-.markdown-body-user a { color: #e9d5ff; }
-.markdown-body-user blockquote { border-left-color: rgba(255, 255, 255, 0.4); color: rgba(255, 255, 255, 0.8); }
 
 /* The live turn's left rail is JUST the solid violet border (set in markup) —
    a clean, calm line marking the current turn. The old glow/breathing box-shadow
@@ -457,7 +453,6 @@ html:has([data-snap-deck]) {
 }
 
 /* Safe area for notched/dynamic island devices */
-.safe-area-bottom { padding-bottom: var(--safe-bottom); }
 .safe-area-top { padding-top: var(--safe-top); }
 .safe-area-x {
   padding-left: var(--safe-left);
@@ -469,11 +464,10 @@ html:has([data-snap-deck]) {
 .safe-pl { padding-left: var(--safe-left); }
 .safe-pr { padding-right: var(--safe-right); }
 .safe-pt { padding-top: var(--safe-top); }
-.safe-pb { padding-bottom: var(--safe-bottom); }
 /* Bottom padding that's AT LEAST the given base and grows for the home
    indicator — for the composer / any fixed-ish bottom bar. Base is 0.75rem
    (mobile); md bumps to 1rem. Combines instead of overriding, unlike
-   .safe-pb, so content never loses its normal breathing room. */
+   the old .safe-pb did, so content never loses its normal breathing room. */
 .pb-safe { padding-bottom: max(0.75rem, var(--safe-bottom)); }
 @media (min-width: 768px) {
   .pb-safe { padding-bottom: max(1rem, var(--safe-bottom)); }
