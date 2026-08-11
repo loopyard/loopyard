@@ -451,8 +451,21 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       />
       <.info_row label="Input" value={compact_number(@agent[:total_input_tokens] || 0)} />
       <.info_row label="Output" value={compact_number(@agent[:total_output_tokens] || 0)} />
-      <.info_row label="Cache hits" value={compact_number(@agent[:total_cache_read_tokens] || 0)} />
-      <.info_row label="Cost" value={"$#{Float.round((@agent[:total_cost_usd] || 0.0) * 1.0, 4)}"} />
+      <%!-- Only render what we can actually MEASURE. A metric the harness never
+      reports (ACP sends no cache-read counts) rendered a permanent "0", which
+      reads as a real measurement of zero rather than "unknown" — worse than
+      showing nothing. Same rule for cost: it appears once there's real spend.
+      A harness that does report these gets the rows back automatically. --%>
+      <.info_row
+        :if={(@agent[:total_cache_read_tokens] || 0) > 0}
+        label="Cache hits"
+        value={compact_number(@agent[:total_cache_read_tokens])}
+      />
+      <.info_row
+        :if={(@agent[:total_cost_usd] || 0.0) > 0}
+        label="Cost"
+        value={"$#{:erlang.float_to_binary((@agent[:total_cost_usd] || 0.0) * 1.0, decimals: 2)}"}
+      />
     </.section>
     """
   end
