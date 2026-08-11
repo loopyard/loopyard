@@ -1353,7 +1353,7 @@ defmodule Loopyard.ChatAgent do
     # through the normal recovery restart (fresh session + resume + drain of
     # pending sends). Time-guarded (@ghost_sweep_grace_ms) so a brief
     # session-swap window during a legit restart isn't mistaken for a wedge.
-    if TurnHelpers.ghost_thinking?(state) and TurnHelpers.ghost_stalled?(state, @ghost_sweep_grace_ms) do
+    if TurnHelpers.stranded_turn?(state, @ghost_sweep_grace_ms) do
       Logger.warning("[#{state.id}] self-healing stranded :thinking turn (idle sweep)")
 
       :telemetry.execute(

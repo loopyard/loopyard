@@ -13,27 +13,46 @@ defmodule Loopyard.ChatAgent.TurnHelpers do
   # Keep it well under that 5s so we always win the race.
   @interrupt_deadline_ms 1_500
 
-  # A real :thinking turn is backed by a LIVE session. :thinking with NO live
-  # session is a ghost — the turn died without resetting to idle and can never
-  # complete (a dead session produces no stream events). This covers BOTH
-  # shapes: a nil stream_ref, AND a STALE stream_ref left pointing at a session
-  # that has since died (recovery swapped the stream but the replacement died,
-  # so the old stall-watchdog ref no longer matches and nothing reaps it). The
-  # earlier guard checked only `stream_ref: nil` and missed the stale-ref wedge,
-  # which stranded an agent in :thinking with a dead session for minutes.
-  def ghost_thinking?(%{status: :thinking} = state), do: not live_session?(state)
+  # A turn is only genuinely in flight if its stream is live. A real
+  # :thinking turn always carries a stream_ref (set with the status flip in
+  # start_turn) backed by a live session. :thinking with NO stream_ref AND
+  # NO live session is a ghost — the turn died without resetting to idle.
+  #
+  # DELIBERATELY NARROW (`stream_ref: nil`), because this runs on the HOT SEND
+  # PATH. `live_session?` costs an ACP `Connection.ping` — a JSON-RPC round-trip
+  # with a 2s timeout — so it must only run when a stream_ref is already absent
+  # (rare). Widening it to every `:thinking` would ping on every send during a
+  # turn, and a ping queued behind a streaming firehose can time out and report
+  # a HEALTHY session as dead — killing the user's in-flight turn. The
+  # stale-ref-over-dead-session wedge is caught by `stranded_turn?/2` instead,
+  # which only runs off the hot path and checks the cheap time guard first.
+  def ghost_thinking?(%{status: :thinking, stream_ref: nil} = state),
+    do: not live_session?(state)
 
   def ghost_thinking?(_), do: false
 
   @doc """
-  True when a ghost turn has been stranded past `grace_ms` (or carries no
-  activity timestamp at all — then it's definitely stale). Guards the periodic
-  self-heal sweep against acting during a sub-second legitimate session swap.
+  True when a turn is STRANDED: `:thinking`, silent past `grace_ms`, and backed
+  by no live session — so it can never complete and nothing else will reap it
+  (a stale `stream_ref` left by a failed recovery no longer matches the stall
+  watchdog). For the periodic self-heal sweep ONLY — never the send path.
+
+  Order matters: the cheap timestamp guard runs FIRST and short-circuits, so the
+  expensive `live_session?` ping only happens on a turn that has already been
+  silent for `grace_ms` — never against an actively-streaming connection, where
+  a queued ping could time out and misreport a healthy session as dead.
   """
-  def ghost_stalled?(%{last_activity_at: %DateTime{} = la}, grace_ms),
+  def stranded_turn?(%{status: :thinking} = state, grace_ms) do
+    silent_for?(state, grace_ms) and not live_session?(state)
+  end
+
+  def stranded_turn?(_, _), do: false
+
+  defp silent_for?(%{last_activity_at: %DateTime{} = la}, grace_ms),
     do: DateTime.diff(DateTime.utc_now(), la, :millisecond) >= grace_ms
 
-  def ghost_stalled?(_, _), do: true
+  # No activity timestamp at all → treat as silent (nothing to prove it's live).
+  defp silent_for?(_, _), do: true
 
   defp live_session?(%{session: nil}), do: false
 
