@@ -119,6 +119,16 @@ defmodule Loopyard.ChatAgent.Initializer do
     # → [] → rebuild falls back to default tools (correct for a workspace agent).
     opts = Map.get(state, :init_opts) || []
 
+    # Carry a LIVE model switch through the rebuild. set_model persists the user's
+    # choice into session_opts[:model]; without re-applying it here, a full reload
+    # rebuilds from the frozen boot opts and silently reverts the model to the
+    # config default (e.g. Fable 5 → Opus 4.8, which a user hit directly).
+    opts =
+      case Keyword.get(state.session_opts || [], :model) do
+        model when is_binary(model) -> Keyword.put(opts, :model, model)
+        _ -> opts
+      end
+
     params = [
       working_dir: state.working_dir,
       bind_mount: state.bind_mount,
