@@ -296,11 +296,7 @@ defmodule LoopyardWeb.OperatorLive do
     text = Enum.at(socket.assigns.selected_agent[:pending_messages] || [], index)
 
     if is_binary(text),
-      do:
-        {:noreply,
-         socket
-         |> assign(:editing_pending, %{index: index, text: text})
-         |> push_event("fill_input", %{text: text})},
+      do: {:noreply, edit_fill(socket, index, text)},
       else: {:noreply, socket}
   end
 
@@ -471,6 +467,13 @@ defmodule LoopyardWeb.OperatorLive do
   end
 
   def handle_event(_evt, _params, socket), do: {:noreply, socket}
+
+  # Explicit push_event(socket, ...) form: the composer-writes guardrail counts
+  # that shape to prove every fill_input comes from a human action.
+  defp edit_fill(socket, index, text) do
+    socket = assign(socket, :editing_pending, %{index: index, text: text})
+    push_event(socket, "fill_input", %{text: text})
+  end
 
   defp current_track do
     Aural.Channel.state(@aural_channel).track

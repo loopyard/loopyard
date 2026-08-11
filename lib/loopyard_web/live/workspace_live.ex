@@ -13,7 +13,6 @@ defmodule LoopyardWeb.WorkspaceLive do
     AgentEvents,
     AgentLifecycle,
     DataLoader,
-    DiffLoader,
     DockerEvents,
     Navigation,
     ServiceLogs,
@@ -652,15 +651,6 @@ defmodule LoopyardWeb.WorkspaceLive do
     AgentLifecycle.do_spawn_agent(socket, opts)
   end
 
-  def handle_event("spawn_agent", _params, socket) do
-    AgentLifecycle.do_spawn_agent(socket)
-  end
-
-  @impl true
-  def handle_event("spawn_service_agent", %{"service_name" => service_name}, socket) do
-    AgentLifecycle.do_spawn_agent(socket, service_name: service_name)
-  end
-
   @impl true
   def handle_event("send_message", %{"message" => message}, socket) do
     message = String.trim(message)
@@ -914,10 +904,8 @@ defmodule LoopyardWeb.WorkspaceLive do
     text = Enum.at(socket.assigns.selected_agent[:pending_messages] || [], index)
 
     if is_binary(text) do
-      {:noreply,
-       socket
-       |> assign(:editing_pending, %{index: index, text: text})
-       |> push_event("fill_input", %{text: text})}
+      socket = assign(socket, :editing_pending, %{index: index, text: text})
+      {:noreply, push_event(socket, "fill_input", %{text: text})}
     else
       {:noreply, socket}
     end
@@ -1057,16 +1045,6 @@ defmodule LoopyardWeb.WorkspaceLive do
     )
 
     {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("start_rename", _params, socket) do
-    {:noreply, assign(socket, :editing_name, true)}
-  end
-
-  @impl true
-  def handle_event("cancel_rename", _params, socket) do
-    {:noreply, assign(socket, :editing_name, false)}
   end
 
   # Sidebar inline rename — double-click on agent name
@@ -1258,28 +1236,6 @@ defmodule LoopyardWeb.WorkspaceLive do
   end
 
   # --- Git diff viewer events ---
-
-  def handle_event("view_diff", %{"path" => path}, socket) do
-    %{project: project, workspace_entry: workspace_entry} = socket.assigns
-
-    {:noreply,
-     start_async(socket, :diff_content, fn ->
-       DiffLoader.working_file_diff(project, workspace_entry, path)
-     end)}
-  end
-
-  def handle_event("view_commit", %{"sha" => sha}, socket) do
-    %{project: project, workspace_entry: workspace_entry} = socket.assigns
-
-    {:noreply,
-     start_async(socket, :diff_content, fn ->
-       DiffLoader.commit_diff(project, workspace_entry, sha)
-     end)}
-  end
-
-  def handle_event("close_diff", _params, socket) do
-    {:noreply, assign(socket, :diff_content, nil)}
-  end
 
   # --- Container view events ---
 

@@ -30,8 +30,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.ToolCountTest do
     assert row(50) =~ "50 tools"
   end
 
-  test "a short turn stays quiet" do
-    refute row(3) =~ "tools"
+  # Progress must be VISIBLE from the first call: a long turn showing only a
+  # word + timer reads as "nothing is happening". The count used to hide under
+  # 10 to avoid looking like a runaway; the runaway ACCUSATION is what was
+  # wrong (see the test below), not the fact itself.
+  test "a short turn still shows its progress" do
+    assert row(3) =~ "3 tools"
+    assert row(1) =~ "1 tool"
+  end
+
+  test "a turn with no tool calls yet stays quiet" do
+    refute row(0) =~ "tool"
   end
 
   test "the runaway ACCUSATION is gone from the transcript" do

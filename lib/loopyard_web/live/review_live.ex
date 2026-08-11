@@ -238,23 +238,6 @@ defmodule LoopyardWeb.ReviewLive do
   # ── navigation + decisions ───────────────────────────────────────────────
 
   @impl true
-  def handle_event("nav", %{"dir" => dir}, socket) do
-    slides = socket.assigns.slides
-    idx = Enum.find_index(slides, &(&1.key == socket.assigns.current)) || 0
-
-    next =
-      case dir do
-        "next" -> min(idx + 1, length(slides) - 1)
-        _ -> max(idx - 1, 0)
-      end
-
-    {:noreply,
-     socket
-     |> assign(:current, slides |> Enum.at(next) |> then(&(&1 && &1.key)))
-     |> sync_secret_scope()
-     |> track_current()}
-  end
-
   def handle_event("decide_approval", %{"approval_id" => id, "decision" => decision}, socket) do
     decision = if decision == "approve", do: :approve, else: :deny
 

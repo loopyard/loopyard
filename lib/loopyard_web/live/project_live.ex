@@ -74,50 +74,6 @@ defmodule LoopyardWeb.ProjectLive do
   end
 
   @impl true
-  def handle_event("start_workspace", %{"id" => workspace_id}, socket) do
-    workspace = ProjectRegistry.get_workspace(workspace_id)
-
-    cond do
-      is_nil(workspace) ->
-        {:noreply, socket}
-
-      not Loopyard.Workspace.ready?(workspace) ->
-        # Setup saga is still running. Mutagen + seed rsync would race
-        # if we let the cluster start now.
-        {:noreply,
-         put_flash(
-           socket,
-           :error,
-           "Workspace is still being set up — wait for the volume seed to finish before starting the cluster."
-         )}
-
-      true ->
-        Loopyard.WorkspaceSupervisor.start_workspace(workspace_id, workspace.path)
-        ProjectRegistry.update_workspace_status(workspace_id, :running)
-
-        {:noreply,
-         assign(
-           socket,
-           :workspaces,
-           SectionLoader.load_workspaces(socket.assigns.project, [:agents, :services, :volumes])
-         )}
-    end
-  end
-
-  @impl true
-  def handle_event("stop_workspace", %{"id" => workspace_id}, socket) do
-    Loopyard.WorkspaceSupervisor.stop_workspace(workspace_id)
-    ProjectRegistry.update_workspace_status(workspace_id, :stopped)
-
-    {:noreply,
-     assign(
-       socket,
-       :workspaces,
-       SectionLoader.load_workspaces(socket.assigns.project, [:agents, :services, :volumes])
-     )}
-  end
-
-  @impl true
   def handle_event("add_workspace", params, socket) do
     name = String.trim(params["name"] || "")
     _from = String.trim(params["from"] || "main")
@@ -137,16 +93,6 @@ defmodule LoopyardWeb.ProjectLive do
     else
       {:noreply, socket}
     end
-  end
-
-  @impl true
-  def handle_event("start_rename", _params, socket) do
-    {:noreply, assign(socket, :editing_name, true)}
-  end
-
-  @impl true
-  def handle_event("cancel_rename", _params, socket) do
-    {:noreply, assign(socket, :editing_name, false)}
   end
 
   @impl true
@@ -191,24 +137,6 @@ defmodule LoopyardWeb.ProjectLive do
       end)
 
     {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("remove_workspace", %{"id" => id}, socket) do
-    Loopyard.WorkspaceSupervisor.stop_workspace(id)
-
-    case ProjectRegistry.remove_workspace(id) do
-      :ok ->
-        {:noreply,
-         assign(
-           socket,
-           :workspaces,
-           SectionLoader.load_workspaces(socket.assigns.project, [:agents, :services, :volumes])
-         )}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, reason)}
-    end
   end
 
   # --- PubSub dispatch + non-PubSub internals ---

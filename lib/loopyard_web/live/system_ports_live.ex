@@ -86,22 +86,6 @@ defmodule LoopyardWeb.SystemPortsLive do
     end
   end
 
-  def handle_event("remove", %{"ws" => ws, "svc" => svc, "cport" => cport}, socket) do
-    cport = String.to_integer(cport)
-    # Releasing the workspace would nuke ALL its entries — too coarse.
-    # We need a single-entry release path. For now, close exposure and
-    # warn the operator that container restart will re-assign.
-    PortRegistry.set_exposure(ws, svc, cport, false)
-
-    {:noreply,
-     put_flash(
-       socket,
-       :info,
-       "Closed exposure. To reclaim the host port, destroy the workspace " <>
-         "or stop using the service."
-     )}
-  end
-
   @impl true
   def render(assigns) do
     ~H"""
