@@ -1,1 +1,0 @@
-{application,web_push_ex,[{modules,['Elixir.Mix.Tasks.WebPushEx.Vapid','Elixir.WebPushEx','Elixir.WebPushEx.JOSEjson','Elixir.WebPushEx.Request','Elixir.WebPushEx.Subscription']},{optional_applications,[]},{applications,[kernel,stdlib,elixir,jose]},{description,"Web Push notifications for Elixir"},{registered,[]},{vsn,"0.2.0"}]}.
