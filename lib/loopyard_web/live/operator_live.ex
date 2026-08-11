@@ -223,8 +223,19 @@ defmodule LoopyardWeb.OperatorLive do
     # (which makes it reply "your message came through empty"). Still ack so the
     # ChatForm hook clears the box.
     message = String.trim(message)
+    editing = socket.assigns[:editing_pending]
 
     cond do
+      # EDIT-IN-PLACE: save an edited queued message at its position instead of
+      # re-appending (which reordered the queue). Empty box = cancel, untouched.
+      match?(%{index: _}, editing) and socket.assigns.agent_id ->
+        %{index: idx, text: old} = editing
+
+        if message != "",
+          do: ChatAgent.update_pending(socket.assigns.agent_id, idx, old, message)
+
+        {:reply, %{ok: true}, assign(socket, :editing_pending, nil)}
+
       message == "" ->
         {:reply, %{ok: true}, socket}
 
@@ -269,7 +280,7 @@ defmodule LoopyardWeb.OperatorLive do
   # Composer/queue controls (chat_panel emits these) — wired so no button is dead.
   def handle_event("clear_pending", _p, socket) do
     ChatAgent.clear_pending(socket.assigns.agent_id)
-    {:noreply, socket}
+    {:noreply, assign(socket, :editing_pending, nil)}
   end
 
   def handle_event("remove_pending", %{"id" => id, "index" => index}, socket) do
@@ -277,13 +288,19 @@ defmodule LoopyardWeb.OperatorLive do
     {:noreply, socket}
   end
 
-  def handle_event("edit_pending", %{"id" => id, "index" => index}, socket) do
+  def handle_event("edit_pending", %{"id" => _id, "index" => index}, socket) do
+    # Edit-in-place: remember position (index + original text) and fill the box;
+    # saving replaces it there instead of re-appending. Not removed here, so
+    # cancelling leaves the queue untouched.
     index = String.to_integer(index)
     text = Enum.at(socket.assigns.selected_agent[:pending_messages] || [], index)
-    ChatAgent.remove_pending(id, index)
 
     if is_binary(text),
-      do: {:noreply, push_event(socket, "fill_input", %{text: text})},
+      do:
+        {:noreply,
+         socket
+         |> assign(:editing_pending, %{index: index, text: text})
+         |> push_event("fill_input", %{text: text})},
       else: {:noreply, socket}
   end
 

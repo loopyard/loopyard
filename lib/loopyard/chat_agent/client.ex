@@ -161,5 +161,15 @@ defmodule Loopyard.ChatAgent.Client do
   def remove_pending(id, index) when is_integer(index),
     do: GenServer.cast(via(id), {:remove_pending, index})
 
+  @doc """
+  Edit a queued message IN PLACE — replace it with `new_text` at its position,
+  never re-appending to the end (which reordered the queue on every edit). Guarded
+  by `old_text` so a queue that shifted under the edit (another line removed, or a
+  drain) can't clobber the wrong message.
+  """
+  def update_pending(id, index, old_text, new_text)
+      when is_integer(index) and is_binary(old_text) and is_binary(new_text),
+      do: GenServer.cast(via(id), {:update_pending, index, old_text, new_text})
+
   defp via(id), do: {:via, Registry, {Loopyard.ChatAgentRegistry, id}}
 end

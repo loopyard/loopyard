@@ -663,8 +663,29 @@ defmodule LoopyardWeb.WorkspaceLive do
   @impl true
   def handle_event("send_message", %{"message" => message}, socket) do
     message = String.trim(message)
+    editing = socket.assigns[:editing_pending]
 
-    if message != "" && socket.assigns.selected_id do
+    cond do
+      # EDIT-IN-PLACE: saving an edited queued message updates it AT its
+      # position instead of re-sending (which appended to the end and reordered
+      # the whole queue — painful with a deep queue). Guarded by the original
+      # text so a queue that shifted mid-edit can't clobber the wrong line. An
+      # empty box while editing = cancel; the queue is left untouched.
+      match?(%{index: _}, editing) and socket.assigns.selected_id ->
+        %{index: idx, text: old} = editing
+        id = socket.assigns.selected_id
+
+        socket =
+          if message != "" do
+            ChatAgent.update_pending(id, idx, old, message)
+            AgentEvents.refresh_selected_from_agents(socket, id, socket.assigns.agents)
+          else
+            socket
+          end
+
+        {:reply, %{ok: true}, assign(socket, :editing_pending, nil)}
+
+      message != "" && socket.assigns.selected_id ->
       # Don't add optimistically — let PubSub broadcast handle it for ALL viewers.
       # This ensures multiplayer: every viewer (including the sender) sees the
       # message via the same path.
@@ -715,8 +736,9 @@ defmodule LoopyardWeb.WorkspaceLive do
            %{ok: false, note: "⚠ Couldn't wake the agent — your text is kept; try Send again."},
            socket}
       end
-    else
-      {:reply, %{ok: false}, socket}
+
+      true ->
+        {:reply, %{ok: false}, socket}
     end
   end
 
@@ -871,7 +893,7 @@ defmodule LoopyardWeb.WorkspaceLive do
   @impl true
   def handle_event("clear_pending", %{"id" => id}, socket) do
     ChatAgent.clear_pending(id)
-    {:noreply, socket}
+    {:noreply, assign(socket, :editing_pending, nil)}
   end
 
   @impl true
@@ -881,15 +903,20 @@ defmodule LoopyardWeb.WorkspaceLive do
   end
 
   @impl true
-  def handle_event("edit_pending", %{"id" => id, "index" => index}, socket) do
-    # Pull a queued message back into the box to edit it: remove it from the
-    # queue and fill the input with its text. You can always edit the queue.
+  def handle_event("edit_pending", %{"id" => _id, "index" => index}, socket) do
+    # Pull a queued message into the box to edit it: fill the input and REMEMBER
+    # its position (index + original text). Saving replaces it in place (see
+    # send_message's edit branch) rather than re-appending — which is what
+    # reordered the queue on every edit. We do NOT remove it here, so cancelling
+    # (clearing the box) leaves the queue exactly as it was — no lost message.
     index = String.to_integer(index)
     text = Enum.at(socket.assigns.selected_agent[:pending_messages] || [], index)
-    ChatAgent.remove_pending(id, index)
 
     if is_binary(text) do
-      {:noreply, push_event(socket, "fill_input", %{text: text})}
+      {:noreply,
+       socket
+       |> assign(:editing_pending, %{index: index, text: text})
+       |> push_event("fill_input", %{text: text})}
     else
       {:noreply, socket}
     end

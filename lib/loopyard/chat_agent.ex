@@ -897,6 +897,29 @@ defmodule Loopyard.ChatAgent do
     {:noreply, set_pending(state, List.delete_at(state.pending_sends, index))}
   end
 
+  # Edit a queued message IN PLACE, preserving its position. `old_text` guards
+  # against a queue that shifted since the edit opened: replace at `index` only
+  # if it still holds the original; else replace wherever the original now sits;
+  # else (it drained/was removed) append the edit as a fresh queued line so the
+  # text is never silently dropped.
+  def handle_cast({:update_pending, index, old_text, new_text}, state) do
+    pending = state.pending_sends
+
+    updated =
+      cond do
+        Enum.at(pending, index) == old_text ->
+          List.replace_at(pending, index, new_text)
+
+        old_text in pending ->
+          List.replace_at(pending, Enum.find_index(pending, &(&1 == old_text)), new_text)
+
+        true ->
+          pending ++ [new_text]
+      end
+
+    {:noreply, set_pending(state, updated)}
+  end
+
   # Catchall for unknown casts. Without this, any bogus cast would
   # crash the GenServer (FunctionClauseError propagates from a
   # non-matching handle_cast/2). audit-2 already closed this gap for
@@ -1679,6 +1702,9 @@ defmodule Loopyard.ChatAgent do
 
   @doc "Remove a single queued message by its index in the pending queue."
   defdelegate remove_pending(id, index), to: Client
+
+  @doc "Edit a queued message in place (preserves position; guarded by old_text)."
+  defdelegate update_pending(id, index, old_text, new_text), to: Client
 
   # All broadcast from ChatAgent is done through the typed publisher
   # modules `Loopyard.Events.ChatAgent` (topic `"chat_agents"`) and
