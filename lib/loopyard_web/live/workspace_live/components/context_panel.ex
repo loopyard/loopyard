@@ -83,10 +83,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       toggle_event="toggle_agent_details"
     >
       <:facts>
+        <%!-- Curated glance line: model + tokens always earn their place; cost
+        appears only once there's real spend to show (a fresh agent's $0.00 is
+        noise, not context). Cost is DERIVED from tokens × model price — the ACP
+        harness reports no dollar figure, so an un-derived cost would sit at $0. --%>
         {short_model(@agent[:model]) || "default"} · {if @estimating?, do: "~"}{compact_number(
           @total_tokens
-        )} tok
-        · ${Float.round((@agent[:total_cost_usd] || 0.0) * 1.0, 2)}
+        )} tok{cost_suffix(@agent[:total_cost_usd])}
       </:facts>
     </.detail_hero>
 
@@ -463,6 +466,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   end
 
   def short_tool(name), do: name
+
+  # " · $0.72" once there's real spend, "" otherwise — cost only shows when it's
+  # context, not when it's a zero placeholder. Sub-cent-but-nonzero reads as
+  # "<$0.01" rather than rounding down to a misleading $0.00.
+  defp cost_suffix(cost) when is_number(cost) and cost > 0 do
+    if cost < 0.005, do: " · <$0.01", else: " · $#{:erlang.float_to_binary(cost * 1.0, decimals: 2)}"
+  end
+
+  defp cost_suffix(_), do: ""
 
   @doc "Human display name for a model id/name."
   def short_model(nil), do: nil
