@@ -221,9 +221,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
 
   # All projects, for the project crumb switcher (tap the project name). Sourced
   # from the same @global_tree the left rail uses, so it's already in the socket.
-  # The bottom-sheet id whose "details" the switcher's details button expands,
-  # per active section. Each has a matching bottom_sheet in workspace_live's
-  # render — the ONE consistent detail affordance for agents / services / files.
+  # The id whose "details" the switcher's details button expands, per active
+  # section — the ONE consistent detail affordance for agents / services / files.
   defp details_sheet_for(:agents), do: "agent-context"
   defp details_sheet_for(:services), do: "service-context"
   defp details_sheet_for(:volumes), do: "volume-context"

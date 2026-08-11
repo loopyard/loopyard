@@ -485,68 +485,6 @@ Hooks.StickyEdge = {
   }
 }
 
-// BottomSheet — a mobile "share sheet". The server renders it hidden with the
-// panel translated fully down; opening (a `sheet:open` event, via Nav.open_sheet)
-// un-hides the container and slides the panel up, closing reverses it. Swiping
-// DOWN on the grab handle drags the panel with your finger and dismisses past a
-// threshold (snaps back otherwise) — the body scrolls independently.
-Hooks.BottomSheet = {
-  mounted() {
-    this.panel = this.el
-    this.container = document.querySelector(this.panel.dataset.sheet)
-    this.dragZone = this.panel.querySelector("[data-sheet-drag]")
-
-    this._open = () => this.show()
-    this._close = () => this.hide()
-    this.panel.addEventListener("sheet:open", this._open)
-    this.panel.addEventListener("sheet:close", this._close)
-
-    let startY = 0, dy = 0, dragging = false
-    this._onStart = (e) => {
-      startY = e.touches[0].clientY; dy = 0; dragging = true
-      this.panel.style.transition = "none"
-    }
-    this._onMove = (e) => {
-      if (!dragging) return
-      dy = Math.max(0, e.touches[0].clientY - startY)
-      this.panel.style.transform = `translateY(${dy}px)`
-    }
-    this._onEnd = () => {
-      if (!dragging) return
-      dragging = false
-      this.panel.style.transition = ""
-      if (dy > 90) this.hide()
-      else this.panel.style.transform = ""
-    }
-    if (this.dragZone) {
-      this.dragZone.addEventListener("touchstart", this._onStart, {passive: true})
-      this.dragZone.addEventListener("touchmove", this._onMove, {passive: true})
-      this.dragZone.addEventListener("touchend", this._onEnd)
-    }
-  },
-  destroyed() {
-    this.panel.removeEventListener("sheet:open", this._open)
-    this.panel.removeEventListener("sheet:close", this._close)
-  },
-  show() {
-    if (!this.container) return
-    this.container.classList.remove("hidden")
-    this.panel.style.transform = ""
-    void this.panel.offsetHeight // reflow so the slide runs from translate-y-full
-    requestAnimationFrame(() => this.panel.classList.remove("translate-y-full"))
-  },
-  hide() {
-    if (!this.container) return
-    this.panel.style.transform = ""
-    this.panel.classList.add("translate-y-full")
-    const done = () => {
-      this.container.classList.add("hidden")
-      this.panel.removeEventListener("transitionend", done)
-    }
-    this.panel.addEventListener("transitionend", done)
-    setTimeout(() => this.container && this.container.classList.add("hidden"), 350)
-  }
-}
 
 // Clip: copy this element's data-copy to the clipboard, with a brief
 // "Copied — paste on your Mac" confirmation. Used by the per-tool "Copy for Mac".

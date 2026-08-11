@@ -463,64 +463,6 @@ defmodule LoopyardWeb.Components.Nav do
   end
 
   @doc """
-  A bottom SHEET — the mobile "share-sheet" pattern. Slides up from the bottom to
-  a content-sized height and is dismissed by a swipe-down on the grab handle, a tap
-  on the backdrop, or picking an action. Use it for actions/details on mobile where
-  a full-screen switcher is overkill. Open from a trigger with
-  `phx-click={Nav.open_sheet("id")}`; the `BottomSheet` JS hook owns the slide +
-  swipe. `:current` is an optional header row (name/status); rows go in the body.
-  """
-  attr :id, :string, required: true
-  attr :title, :string, default: nil
-  slot :current
-  slot :inner_block, required: true
-
-  def bottom_sheet(assigns) do
-    ~H"""
-    <div
-      id={@id}
-      class="hidden fixed inset-0 z-[60]"
-      role="dialog"
-      aria-modal="true"
-      aria-label={@title}
-    >
-      <div
-        class="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm"
-        phx-click={close_sheet(@id)}
-        aria-hidden="true"
-      >
-      </div>
-      <div
-        id={"#{@id}-panel"}
-        phx-hook="BottomSheet"
-        data-sheet={"##{@id}"}
-        class="absolute inset-x-0 bottom-0 translate-y-full flex flex-col max-h-[85dvh]  bg-brand-paper dark:bg-brand-ink shadow-2xl shadow-black/30 safe-area-x transition-transform duration-300 ease-out motion-reduce:transition-none"
-      >
-        <%!-- Grab handle + optional header = the DRAG ZONE: swipe it down to
-    dismiss. The body below scrolls independently. --%>
-        <div data-sheet-drag class="flex-none touch-none select-none">
-          <div class="flex justify-center pt-2.5 pb-1">
-            <div class="w-10 h-1.5 rounded-full bg-zinc-300 dark:bg-zinc-600"></div>
-          </div>
-          <div :if={@current != []} class="flex items-center gap-2 px-4 pb-2">
-            {render_slot(@current)}
-          </div>
-        </div>
-        <div class="overflow-y-auto overscroll-contain px-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
-          {render_slot(@inner_block)}
-        </div>
-      </div>
-    </div>
-    """
-  end
-
-  @doc "Open a `bottom_sheet/1` (the BottomSheet hook slides it up)."
-  def open_sheet(id), do: JS.dispatch("sheet:open", to: "##{id}-panel")
-
-  @doc "Close a `bottom_sheet/1` (slide it down, then hide)."
-  def close_sheet(id), do: JS.dispatch("sheet:close", to: "##{id}-panel")
-
-  @doc """
   Classes for a big-tap-target row inside a `switcher_sheet/1`. Active row is a
   violet highlight; comfortable 3.25rem height for a thumb.
   """
