@@ -90,11 +90,28 @@ the same class of bug as swallowing a message.
   rule from `ui-build`: snap must be **proximity, never mandatory** — a decision
   taller than the viewport has to stay freely scrollable or its buttons become
   unreachable.
-### 4. A decision is a conversation, not a form
+### 4. A decision is a conversation, not a form — but only when it needs to be
 
-The biggest idea here, and the one that reframes the rest: **you should be able
-to talk to a decision.** Three things a human wants that a radio group can't
-express:
+**The executive model.** Think of what an executive does when handed a decision:
+sometimes they just decide — it's obvious, one beat, done. Sometimes they want
+to understand the options before choosing. Sometimes they reject the menu and
+ask for better options. Sometimes they want to know more about the answer *after*
+choosing. All four are normal; the interface has to make the first one free and
+the others available.
+
+So the conversation affordance **must not tax the easy case**. A cheap, obvious
+decision stays exactly what it is today: read it, tap it, gone. Discussion is a
+door you can open, never a step you walk through. If adding depth makes the
+one-tap decision feel heavier, the feature is wrong.
+
+**A decision is a SIDEBAR, not part of the stream.** This is the structural
+point and it settles where the thread lives: talking about a decision is a
+branch off the main conversation, not more trunk. Sidebar discussion must not
+push the agent's actual work down the chat, and must not be replayed into the
+main stream as if it were the task. The decision owns its thread; the stream
+just shows that a decision happened and how it landed.
+
+Three things a human wants that a radio group can't express:
 
 * **Clarify** — "what does option 2 actually change?" The agent answers; the
   card stays pending; you decide better.
@@ -120,6 +137,37 @@ This is also what makes the phone story cohere: swipe to move between decisions,
 talk to the one in front of you, and it either resolves or becomes a better
 question.
 
+### 5. The operator is the chief of staff — fewer, better questions
+
+An executive isn't just given depth on each decision; they're given **fewer
+decisions**. That's the operator's existing job (`CLAUDE.md`: "a chief of staff
+— it reads status, dispatches work, and pulls detail on demand"), and it's the
+half of the overwhelm problem that no amount of UI fixes.
+
+Two jobs, in order of value:
+
+* **Triage before it reaches you.** Not every agent question needs a human. Some
+  are answerable from context the operator already has, some are duplicates
+  across workspaces, some are moot by the time you look (see Decay). The
+  operator should be able to answer, merge, or hold — and escalate only what
+  genuinely needs a person. That is the difference between nine cards and two.
+* **Question quality improves over time.** How a decision *resolves* is a signal
+  about whether it was worth asking:
+  - always answered with the recommended option → the agent should have decided
+    it and told you
+  - frequently **reframed** → the framing is bad; the options weren't the real
+    choice
+  - frequently **skipped** or left to rot → it shouldn't have been a question
+  - answered fast, first time → good question, more like this
+
+  None of that requires ML — it's counting outcomes per question shape and
+  feeding it back into the agent prompt. The point is that the system gets
+  quieter and sharper with use instead of accumulating.
+
+**Careful:** an operator that silently answers on your behalf is the same
+category of surprise as a message being swallowed. Anything it answers for you
+must be visible after the fact and reversible, and "held" is not "hidden."
+
 ## Open questions
 
 1. **Does the rail keep any list at all**, or just a count? A count is calmer;
@@ -127,10 +175,11 @@ question.
 2. **What is "moot" exactly** — agent gone, workspace gone, N later turns
    completed, or a harness recycle? Each is detectable; they don't all mean the
    same thing.
-3. **Thread placement.** The clarification exchange hangs off the decision — but
-   does it *also* echo into the main chat? Both places risks the swallowed-
-   message bug in reverse; neither risks a conversation the rest of the team
-   can't see. This is a multiplayer question, not just a layout one.
+3. ~~Thread placement.~~ **Settled: the sidebar model.** Decision discussion is
+   a branch, not trunk — it lives on the decision, and the stream shows only
+   that a decision happened and how it landed. Remaining sub-question: what do
+   *other viewers* see while someone is mid-sidebar? Silence is calm but hides
+   an in-flight negotiation from the team.
 4. **Who can reframe?** A reframe rewrites the agent's question. If two people
    are watching the same decision, one reframing it out from under the other is
    the same class of surprise as the queue reordering itself.
