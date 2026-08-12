@@ -160,17 +160,29 @@ defmodule LoopyardWeb.Components.Birdseye do
   defp broken_text(:service_crashed), do: "service crashed"
   defp broken_text(_), do: "broken"
 
-  # What the working agent is doing — its tool (server prefix stripped) or a
-  # generic verb. Mirrors agent_activity/1 but names the agent's ACT, short.
+  # What the working agent is doing, in the READER's words — never the raw tool
+  # name. Printing the name put a bare "logs" / "exec" in a column of "working…",
+  # which reads as a stray label rather than a status. It also hard-coded ONE
+  # harness's vocabulary into the UI: the in-container harness calls a shell act
+  # `Bash`, the in-process one `mcp__loopyard-container__exec` — the same act
+  # would read differently per backend. Classify by neutral KIND and render a
+  # calm verb (the harness-agnostic rule — see `Loopyard.Agent.ToolKind`).
   defp working_text(agent) do
     case Map.get(agent, :active_tool) do
       tool when is_binary(tool) and tool != "" ->
-        LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel.short_tool(tool)
+        tool |> Loopyard.Agent.ToolKind.classify() |> working_verb()
 
       _ ->
         "working…"
     end
   end
+
+  defp working_verb(:command), do: "running…"
+  defp working_verb(:read), do: "reading…"
+  defp working_verb(:grep), do: "searching…"
+  defp working_verb(:edit), do: "editing…"
+  defp working_verb(:write), do: "writing…"
+  defp working_verb(_), do: "working…"
 
   @doc """
   A live status dot. `class` nil → an aligned blank (holds the slot so names
