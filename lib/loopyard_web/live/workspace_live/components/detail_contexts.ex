@@ -193,7 +193,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
               href={"http://#{@host}:#{@first_port}"}
               target="_blank"
               rel="noopener"
-              class="w-full justify-center"
+              class="w-full justify-center whitespace-nowrap"
             >
               Open ↗
             </.control_btn>
@@ -204,7 +204,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
               phx-value-service={@service_name}
               phx-value-container_port={@container_port}
               phx-value-expose="true"
-              class="w-full justify-center"
+              class="w-full justify-center whitespace-nowrap"
             >
               Open Port
             </.control_btn>
@@ -213,33 +213,37 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
               variant={:primary}
               phx-click="start_service"
               phx-value-service_name={@service_name}
-              class="w-full justify-center"
+              class="w-full justify-center whitespace-nowrap"
             >
               Start
             </.control_btn>
 
             <%!-- SECONDARY: full-width single column on mobile (big tap targets),
     2-up grid on the desktop rail where space is tight. --%>
-            <%!-- All three on ONE row: two-up left Console orphaned on a second
-        line, which read as a separate group rather than one action set. --%>
-            <div :if={@running?} class="grid grid-cols-3 gap-1.5">
+            <%!-- TWO-up, never three. At three columns a rail-width cell is too
+        narrow for a two-word label: "Close Port" wrapped onto a second LINE
+        inside its button (and onto a second row on its own), which read as a
+        broken layout rather than an action set. Two columns give every label
+        room to sit on one line; `whitespace-nowrap` on the buttons makes that
+        a guarantee rather than a hope as labels change. --%>
+            <div :if={@running?} class="grid grid-cols-2 gap-1.5">
               <.control_btn
                 phx-click="restart_service"
                 phx-value-service_name={@service_name}
-                class="w-full justify-center"
+                class="w-full justify-center whitespace-nowrap"
               >
                 Restart
               </.control_btn>
               <.control_btn
                 phx-click="stop_service"
                 phx-value-service_name={@service_name}
-                class="w-full justify-center"
+                class="w-full justify-center whitespace-nowrap"
               >
                 Stop
               </.control_btn>
               <.control_btn
                 patch={"#{@base_path}/services/#{@service_name}/console"}
-                class="w-full justify-center"
+                class="w-full justify-center whitespace-nowrap"
               >
                 Console
               </.control_btn>
@@ -249,7 +253,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
                 phx-value-service={@service_name}
                 phx-value-container_port={@container_port}
                 phx-value-expose="false"
-                class="w-full justify-center"
+                class="w-full justify-center whitespace-nowrap"
               >
                 Close Port
               </.control_btn>
@@ -380,7 +384,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
           phx-click="delete_volume"
           phx-value-volume_name={@volume_name}
           data-confirm="Delete this volume? All data will be lost."
-          class="w-full justify-center"
+          class="w-full justify-center whitespace-nowrap"
         >
           Delete volume
         </.control_btn>
