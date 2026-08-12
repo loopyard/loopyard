@@ -82,6 +82,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
         service_name={@selected_service}
         base_path={@base_path}
         host={@host}
+        expanded={@agent_details_expanded}
       />
       <.volume_context
         :if={@selected_volume && @volume_route?}
@@ -104,6 +105,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
   attr :service_name, :string, required: true
   attr :base_path, :string, required: true
   attr :host, :string, default: nil
+  attr :expanded, :boolean, default: false
 
   def service_context(assigns) do
     svc = assigns.svc
@@ -126,116 +128,136 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
       dot={@svc && service_dot(@svc)}
       status={svc_status_label(@svc)}
       status_class={svc_status_pill(@svc)}
+      expandable
+      expanded={@expanded}
+      toggle_event="toggle_agent_details"
     >
       <:facts :if={service_facts(@svc, @first_port, @exposed?)}>
         {service_facts(@svc, @first_port, @exposed?)}
       </:facts>
     </.detail_hero>
 
-    <%!-- Connection details only when there ARE any (a port or container port).
+    <%!-- Everything below the hero is REFERENCE + CONTROLS, folded away by
+    default: the hero already answers "is it up, on what port, exposed how".
+    A permanent Restart/Stop/Console/Close Port row under a healthy service
+    read as a control panel rather than a calm status card. Same slide as the
+    agent panel, driven by the one shared sidebar flag. --%>
+    <div
+      class={[
+        "grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
+        (@expanded && "grid-rows-[1fr]") || "grid-rows-[0fr]"
+      ]}
+      aria-hidden={to_string(!@expanded)}
+      inert={!@expanded}
+    >
+      <div class="overflow-hidden min-h-0">
+        <%!-- Connection details only when there ARE any (a port or container port).
     A portless service (e.g. `work`) has none — status lives in the hero —
     so we skip the section entirely rather than render an empty header. --%>
-    <.section :if={@first_port || @container_port} label="Connection">
-      <div
-        :if={@first_port}
-        class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-6 text-body"
-      >
-        <span class="text-zinc-500 dark:text-zinc-400 flex-none">URL</span>
-        <a
-          href={"http://#{@host}:#{@first_port}"}
-          target="_blank"
-          rel="noopener"
-          class="truncate font-mono text-violet-500 hover:text-violet-400 transition-colors"
-        >
-          {@host}:{@first_port}
-        </a>
-      </div>
-      <.info_row
-        :if={@container_port}
-        label="Container port"
-        value={@container_port}
-        monospace
-      />
-      <.info_row
-        :if={@first_port}
-        label="Exposure"
-        value={if @exposed?, do: "Network", else: "Local only"}
-      />
-    </.section>
+        <.section :if={@first_port || @container_port} label="Connection">
+          <div
+            :if={@first_port}
+            class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-6 text-body"
+          >
+            <span class="text-zinc-500 dark:text-zinc-400 flex-none">URL</span>
+            <a
+              href={"http://#{@host}:#{@first_port}"}
+              target="_blank"
+              rel="noopener"
+              class="truncate font-mono text-violet-500 hover:text-violet-400 transition-colors"
+            >
+              {@host}:{@first_port}
+            </a>
+          </div>
+          <.info_row
+            :if={@container_port}
+            label="Container port"
+            value={@container_port}
+            monospace
+          />
+          <.info_row
+            :if={@first_port}
+            label="Exposure"
+            value={if @exposed?, do: "Network", else: "Local only"}
+          />
+        </.section>
 
-    <%!-- STICKY FOOTER: every service action, one consistent home. --%>
-    <.action_bar>
-      <:main>
-        <%!-- PRIMARY: open the running app, expose a port, or start it. --%>
-        <.control_btn
-          :if={@first_port}
-          variant={:primary}
-          href={"http://#{@host}:#{@first_port}"}
-          target="_blank"
-          rel="noopener"
-          class="w-full justify-center"
-        >
-          Open ↗
-        </.control_btn>
-        <.control_btn
-          :if={!@first_port && !@exposed? && @container_port && @running?}
-          variant={:primary}
-          phx-click="toggle_port_exposure"
-          phx-value-service={@service_name}
-          phx-value-container_port={@container_port}
-          phx-value-expose="true"
-          class="w-full justify-center"
-        >
-          Open Port
-        </.control_btn>
-        <.control_btn
-          :if={!@running?}
-          variant={:primary}
-          phx-click="start_service"
-          phx-value-service_name={@service_name}
-          class="w-full justify-center"
-        >
-          Start
-        </.control_btn>
+        <%!-- Every service action, one consistent home — inside the fold (see above).
+    sticky={false}: pinning is inert under the fold's overflow-hidden. --%>
+        <.action_bar sticky={false}>
+          <:main>
+            <%!-- PRIMARY: open the running app, expose a port, or start it. --%>
+            <.control_btn
+              :if={@first_port}
+              variant={:primary}
+              href={"http://#{@host}:#{@first_port}"}
+              target="_blank"
+              rel="noopener"
+              class="w-full justify-center"
+            >
+              Open ↗
+            </.control_btn>
+            <.control_btn
+              :if={!@first_port && !@exposed? && @container_port && @running?}
+              variant={:primary}
+              phx-click="toggle_port_exposure"
+              phx-value-service={@service_name}
+              phx-value-container_port={@container_port}
+              phx-value-expose="true"
+              class="w-full justify-center"
+            >
+              Open Port
+            </.control_btn>
+            <.control_btn
+              :if={!@running?}
+              variant={:primary}
+              phx-click="start_service"
+              phx-value-service_name={@service_name}
+              class="w-full justify-center"
+            >
+              Start
+            </.control_btn>
 
-        <%!-- SECONDARY: full-width single column on mobile (big tap targets),
+            <%!-- SECONDARY: full-width single column on mobile (big tap targets),
     2-up grid on the desktop rail where space is tight. --%>
-        <%!-- All three on ONE row: two-up left Console orphaned on a second
+            <%!-- All three on ONE row: two-up left Console orphaned on a second
         line, which read as a separate group rather than one action set. --%>
-        <div :if={@running?} class="grid grid-cols-3 gap-1.5">
-          <.control_btn
-            phx-click="restart_service"
-            phx-value-service_name={@service_name}
-            class="w-full justify-center"
-          >
-            Restart
-          </.control_btn>
-          <.control_btn
-            phx-click="stop_service"
-            phx-value-service_name={@service_name}
-            class="w-full justify-center"
-          >
-            Stop
-          </.control_btn>
-          <.control_btn
-            patch={"#{@base_path}/services/#{@service_name}/console"}
-            class="w-full justify-center"
-          >
-            Console
-          </.control_btn>
-          <.control_btn
-            :if={@exposed? && @container_port}
-            phx-click="toggle_port_exposure"
-            phx-value-service={@service_name}
-            phx-value-container_port={@container_port}
-            phx-value-expose="false"
-            class="w-full justify-center"
-          >
-            Close Port
-          </.control_btn>
-        </div>
-      </:main>
-    </.action_bar>
+            <div :if={@running?} class="grid grid-cols-3 gap-1.5">
+              <.control_btn
+                phx-click="restart_service"
+                phx-value-service_name={@service_name}
+                class="w-full justify-center"
+              >
+                Restart
+              </.control_btn>
+              <.control_btn
+                phx-click="stop_service"
+                phx-value-service_name={@service_name}
+                class="w-full justify-center"
+              >
+                Stop
+              </.control_btn>
+              <.control_btn
+                patch={"#{@base_path}/services/#{@service_name}/console"}
+                class="w-full justify-center"
+              >
+                Console
+              </.control_btn>
+              <.control_btn
+                :if={@exposed? && @container_port}
+                phx-click="toggle_port_exposure"
+                phx-value-service={@service_name}
+                phx-value-container_port={@container_port}
+                phx-value-expose="false"
+                class="w-full justify-center"
+              >
+                Close Port
+              </.control_btn>
+            </div>
+          </:main>
+        </.action_bar>
+      </div>
+    </div>
     """
   end
 

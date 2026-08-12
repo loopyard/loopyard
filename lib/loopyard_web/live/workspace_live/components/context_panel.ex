@@ -133,41 +133,38 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
         </.section>
 
         <.docker_context agent={@agent} />
+
+        <%!-- Actions live INSIDE the fold. Restart/Remove are rare, deliberate
+        acts — parking them permanently under a calm status card made the panel
+        read as a control surface and put a destructive button one stray tap
+        away at all times. `sticky={false}`: pinning is inert under the fold's
+        overflow-hidden anyway, and the pinned background read as a stray band.
+        Both on ONE row; Remove keeps its danger styling to stay distinct. --%>
+        <.action_bar sticky={false}>
+          <:main>
+            <div class="grid grid-cols-2 gap-1.5">
+              <.control_btn
+                phx-click="restart_session"
+                phx-value-id={@agent.id}
+                data-confirm={"Restart agent \"#{@agent.name}\"? Reloads its tools and reconnects the harness. Any in-progress turn stops; the conversation is kept."}
+                class="w-full justify-center"
+              >
+                Restart
+              </.control_btn>
+              <.control_btn
+                variant={:danger}
+                phx-click="remove_agent"
+                phx-value-id={@agent.id}
+                data-confirm={"Remove \"#{@agent.name}\"?\n\nIts session stops and the whole conversation with it — every message, tool call and decision — is gone from this workspace. This cannot be undone.\n\nYour code is NOT touched: the volume and everything the agent wrote stay exactly as they are."}
+                class="w-full justify-center"
+              >
+                Remove
+              </.control_btn>
+            </div>
+          </:main>
+        </.action_bar>
       </div>
     </div>
-
-    <%!-- STICKY FOOTER, OUTSIDE the collapsible: `overflow-hidden` on the
-    slide's child kills `position: sticky` for anything inside it, so nesting
-    these clipped them the moment you expanded. Always visible, always pinned
-    to the bottom — the actions shouldn't hide behind a fold anyway.
-    Laid out like the Service panel: a ghost-button grid, two-up where there's
-    room. Destructive stays below the divider. --%>
-    <%!-- Both actions on ONE row, like the Service panel's Restart/Stop/Console
-    grid. Remove keeps its danger styling to stay distinguishable without
-    needing its own stacked row and divider. --%>
-    <.action_bar>
-      <:main>
-        <div class="grid grid-cols-2 gap-1.5">
-          <.control_btn
-            phx-click="restart_session"
-            phx-value-id={@agent.id}
-            data-confirm={"Restart agent \"#{@agent.name}\"? Reloads its tools and reconnects the harness. Any in-progress turn stops; the conversation is kept."}
-            class="w-full justify-center"
-          >
-            Restart
-          </.control_btn>
-          <.control_btn
-            variant={:danger}
-            phx-click="remove_agent"
-            phx-value-id={@agent.id}
-            data-confirm={"Remove \"#{@agent.name}\"?\n\nIts session stops and the whole conversation with it — every message, tool call and decision — is gone from this workspace. This cannot be undone.\n\nYour code is NOT touched: the volume and everything the agent wrote stay exactly as they are."}
-            class="w-full justify-center"
-          >
-            Remove
-          </.control_btn>
-        </div>
-      </:main>
-    </.action_bar>
     """
   end
 

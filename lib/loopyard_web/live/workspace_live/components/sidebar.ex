@@ -148,6 +148,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
           service_name={@selected_service}
           base_path={@base_path}
           host={@host}
+          expanded={Map.get(assigns, :agent_details_expanded, false)}
         />
         <.volume_context
           :if={detail_kind(@live_action, @selected_agent) == :volume}

@@ -36,6 +36,14 @@ defmodule LoopyardWeb.ShowcaseTest do
       "Answer",
       "Skip"
     ],
+    # First run: the on-ramp shown before any project exists — brand mark,
+    # headline, and the three creation paths as one-tap rows (not a dead end).
+    "workspaces-empty" => [
+      "Start your first project",
+      "From GitHub",
+      "From scratch",
+      "From a folder on the Loopyard machine"
+    ],
     # The whole cockpit: tree with ports, chat, agents/services/usage rail.
     "workspace-full" => [
       "gardenparty",

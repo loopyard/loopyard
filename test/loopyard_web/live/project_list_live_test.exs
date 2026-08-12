@@ -11,13 +11,17 @@ defmodule LoopyardWeb.ProjectListLiveTest do
   end
 
   describe "mount" do
-    # The home page is now a projects list + a "New project" button; the
-    # creation methods (folder/scratch/github) each live on their own screen.
-    test "renders the workspaces page with the grouped list and New project", %{conn: conn} do
+    # With projects, the page is the grouped list + a "New project" button. With
+    # NONE (this test's state) it's the first-run on-ramp instead: the three
+    # creation paths inline, one tap each — not an empty void plus a button that
+    # only opens a menu of those same three.
+    test "renders the workspaces page — first run shows the on-ramp", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/workspaces")
       assert html =~ "Loopyard"
       assert html =~ "Workspaces"
-      assert html =~ "New project"
+      assert html =~ "Start your first project"
+      assert html =~ "From GitHub"
+      assert html =~ "From scratch"
     end
 
     test "home dashboard surfaces the binding and System", %{conn: conn} do

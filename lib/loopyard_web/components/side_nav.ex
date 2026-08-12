@@ -147,23 +147,32 @@ defmodule LoopyardWeb.Components.SideNav do
           <div class="section-label flex-1 min-w-0">
             {@eyebrow}
           </div>
-          <svg
+          <%!-- LABELLED toggle, not a bare chevron. An arrow alone can't say whether it
+    describes the CURRENT state or what a CLICK will do — you have to click it to
+    find out. The word states the action ("Details" opens, "Hide" closes) and the
+    chevron just points where it goes, so there's nothing left to decode. --%>
+          <span
             :if={@expandable && @toggle_event}
-            viewBox="0 0 20 20"
-            fill="currentColor"
             class={[
-              "w-4 h-4 flex-none text-zinc-400 dark:text-zinc-500 transition-all",
-              "group-hover/hero:text-zinc-700 dark:group-hover/hero:text-zinc-200",
-              @expanded && "rotate-180"
+              "section-label flex-none inline-flex items-center gap-1 transition-colors",
+              "text-zinc-400 dark:text-zinc-500",
+              "group-hover/hero:text-zinc-700 dark:group-hover/hero:text-zinc-200"
             ]}
-            aria-hidden="true"
           >
-            <path
-              fill-rule="evenodd"
-              d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
-              clip-rule="evenodd"
-            />
-          </svg>
+            {(@expanded && "Hide") || "Details"}
+            <svg
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              class={["w-3.5 h-3.5 flex-none transition-transform", @expanded && "rotate-180"]}
+              aria-hidden="true"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
+                clip-rule="evenodd"
+              />
+            </svg>
+          </span>
         </div>
         <%!-- The TITLE row: a big, bold name that clearly dominates everything the
     card shows/controls, with the status as a colored pill flush-right. --%>
@@ -208,12 +217,23 @@ defmodule LoopyardWeb.Components.SideNav do
   slot :main, doc: "operational buttons"
   slot :danger, doc: "a destructive action, set apart below a divider"
 
+  attr :sticky, :boolean,
+    default: true,
+    doc: """
+    Pin to the bottom of the panel. Pass `false` when the bar sits INSIDE a
+    collapsible fold: `position: sticky` is inert under the fold's
+    `overflow-hidden` and the pinned background just reads as a stray band.
+    """
+
   def action_bar(assigns) do
     ~H"""
     <div
       :if={@main != [] || @danger != []}
-      data-sticky-edge="bottom"
-      class="sticky bottom-0 z-10 bg-zinc-50/95 dark:bg-zinc-900/95 backdrop-blur-sm px-3 pt-4 pb-3"
+      data-sticky-edge={(@sticky && "bottom") || nil}
+      class={[
+        "px-3 pt-4 pb-3",
+        (@sticky && "sticky bottom-0 z-10 bg-zinc-50/95 dark:bg-zinc-900/95 backdrop-blur-sm") || ""
+      ]}
     >
       <div :if={@main != []} class="space-y-1.5">{render_slot(@main)}</div>
       <div
