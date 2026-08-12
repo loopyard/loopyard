@@ -138,41 +138,41 @@ defmodule LoopyardWeb.Components.SideNav do
         tag_name={(@expandable && @toggle_event && "button") || "div"}
         phx-click={(@expandable && @toggle_event) || nil}
         aria-expanded={(@expandable && @toggle_event && to_string(@expanded)) || nil}
+        aria-label={(@expandable && @toggle_event && "#{@eyebrow} details") || nil}
         class={[
           "group/hero w-full text-left",
           (@expandable && @toggle_event && "focus-ring rounded-sm") || ""
         ]}
       >
-        <div class="flex items-center gap-2 mb-1 md:mb-0.5">
+        <%!-- GRAB HANDLE — the affordance for "this panel pulls up / pushes down".
+    A short centred bar is the mobile-sheet convention: it says the surface
+    MOVES without encoding a direction you have to decode. That's why it beats
+    the alternatives here. A bare chevron can't say whether it describes the
+    current state or the next action. A +/× would collide head-on with the `+`
+    the Agents section already uses to ADD an agent — same glyph, two meanings,
+    two inches apart. And a word ("Details"/"Hide") is one more thing to read on
+    a card whose whole job is to be glanceable.
+    The TYPE eyebrow (SERVICE / AGENT / VOLUME) is gone with it: the dot, the
+    name, the status pill and the facts line already say what this is, so the
+    label was a caption for a picture you can see. It survives as the button's
+    aria-label, which is where a screen reader actually needs it. --%>
+        <div :if={@expandable && @toggle_event} class="flex justify-center pb-2 md:pb-1.5">
+          <span
+            class={[
+              "block h-1 w-9 rounded-full transition-colors",
+              "bg-zinc-300 dark:bg-zinc-700",
+              "group-hover/hero:bg-zinc-400 dark:group-hover/hero:bg-zinc-500"
+            ]}
+            aria-hidden="true"
+          >
+          </span>
+        </div>
+        <%!-- Non-expandable heroes keep a plain eyebrow: there's no handle to
+    carry the identity, so the type label still earns its place. --%>
+        <div :if={!(@expandable && @toggle_event)} class="flex items-center gap-2 mb-1 md:mb-0.5">
           <div class="section-label flex-1 min-w-0">
             {@eyebrow}
           </div>
-          <%!-- LABELLED toggle, not a bare chevron. An arrow alone can't say whether it
-    describes the CURRENT state or what a CLICK will do — you have to click it to
-    find out. The word states the action ("Details" opens, "Hide" closes) and the
-    chevron just points where it goes, so there's nothing left to decode. --%>
-          <span
-            :if={@expandable && @toggle_event}
-            class={[
-              "section-label flex-none inline-flex items-center gap-1 transition-colors",
-              "text-zinc-400 dark:text-zinc-500",
-              "group-hover/hero:text-zinc-700 dark:group-hover/hero:text-zinc-200"
-            ]}
-          >
-            {(@expanded && "Hide") || "Details"}
-            <svg
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              class={["w-3.5 h-3.5 flex-none transition-transform", @expanded && "rotate-180"]}
-              aria-hidden="true"
-            >
-              <path
-                fill-rule="evenodd"
-                d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
-                clip-rule="evenodd"
-              />
-            </svg>
-          </span>
         </div>
         <%!-- The TITLE row: a big, bold name that clearly dominates everything the
     card shows/controls, with the status as a colored pill flush-right. --%>
