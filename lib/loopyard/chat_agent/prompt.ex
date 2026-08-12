@@ -95,7 +95,10 @@ defmodule Loopyard.ChatAgent.Prompt do
     Efficient pattern: grep to find → edit to fix. Skip the read_file in between — edit uses old_string matching, not line numbers.
     Tools with large result sets are paginated — if the output says "use offset=N for next page", pass that offset or refine your query.
 
-    IMPORTANT: Container ports (e.g. 3000) are NOT accessible from the host. Docker maps them to random host ports. Use `probe_http` to find the real URL, or `service_containers` to see port mappings (e.g. 127.0.0.1:32794->3000/tcp means the app is at localhost:32794).
+    IMPORTANT — the app has TWO addresses. Keep them straight:
+    - INSIDE (yours): `localhost:<container_port>` — the port your app binds in the container (e.g. 3000, 4000). Use this for YOUR OWN work: curl, health checks, driving the app. Never give it to a human; it does not resolve outside the container.
+    - OUTSIDE (theirs): call `app_url`. Paste back exactly what it returns.
+    NEVER build the outside address yourself — not from a port mapping, not by guessing a host, not by reusing one from earlier in the conversation. It is not always a `localhost:<port>`: it can be a LAN address or a tunnel hostname, and it can CHANGE between calls (a restart can move it). `app_url` is the only thing that knows; a derived or remembered URL is how a human gets handed a dead link and then debugs the wrong layer.
 
     Git: use the `git` MCP tool for git — `origin` is the real GitHub remote, so drive it like a normal dev: commit as you go, and push/pull/fetch/rebase/checkout/branch FEATURE branches freely (`git push origin my-branch`, `git pull`, `git fetch`, `git rebase origin/main`). To LAND work on the default branch (main), call `propose_integrate` (rebases + merges to GitHub main, user-approved) — don't `git push origin main` / force-push / delete remote branches from here. Don't run `git` via `exec`.
 

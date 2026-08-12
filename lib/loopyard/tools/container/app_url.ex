@@ -2,7 +2,12 @@ defmodule Loopyard.Tools.Container.AppUrl do
   use Loopyard.Tool,
     name: "app_url",
     description:
-      "Get a clickable URL to a page in the running dev server. Use this after building a feature, fixing a bug, or when the user asks to see/open/view something in their browser. The URL automatically adapts to each viewer's hostname (localhost, LAN, tunnel).",
+      "THE source of the app's OUTSIDE address — the one a human can open. Call it " <>
+        "after building a feature or fixing a bug, and any time you're about to hand " <>
+        "over a link. Returns the URL on the first line (paste that verbatim), then " <>
+        "the INSIDE address to use for your own curls/health checks. Never construct " <>
+        "the outside address yourself from a port mapping or a remembered value: it " <>
+        "may be a LAN address or a tunnel hostname, and it can change between calls.",
     busy_words: ["building a link", "URL crafting"],
     params: [
       agent_id: {:string, required: true},
@@ -16,11 +21,20 @@ defmodule Loopyard.Tools.Container.AppUrl do
     ]
 
   @doc """
-  Returns `http://localhost:<docker_port>/<path>`.
+  The app's two addresses, in one call — so the agent never has to derive either.
 
-  The UI's markdown renderer rewrites `localhost` to the viewer's actual
-  hostname (window.location.hostname), so the link works from any machine
-  — localhost, LAN IP, or tunnel.
+  Line 1 is the OUTSIDE address (what a human opens); everything after is a note
+  carrying the INSIDE address (`localhost:<container_port>`) for the agent's own
+  curls. Agents kept conflating the two — reading a port mapping and handing the
+  user a container port, or curling the host port from inside the container —
+  which burns a turn debugging the wrong layer.
+
+  Today the outside address is `http://localhost:<host_port>`, and the UI's
+  markdown renderer rewrites `localhost` to the viewer's hostname
+  (window.location.hostname) so the link works from any machine. When the
+  outside address becomes something else entirely — a `*.loopyard.ai` relay —
+  it changes HERE and nowhere else: no prompt edits, no agent relearning,
+  because nothing downstream is allowed to build the URL itself.
   """
   def execute(%{agent_id: agent_id, path: route_path} = params, _assigns) do
     service = Map.get(params, :service, "dev")
@@ -39,11 +53,19 @@ defmodule Loopyard.Tools.Container.AppUrl do
               %URI{scheme: "http", host: "localhost", port: host_port, path: clean_path}
               |> URI.to_string()
 
+            # Line 1 is always the pasteable outside URL; notes go below it so a
+            # careless paste still hands over a working link.
+            inside =
+              if cport,
+                do: "\n\n> For your OWN testing inside the container, use `localhost:#{cport}`.",
+                else: ""
+
             if exposed? do
-              {:ok, url}
+              {:ok, url <> inside}
             else
               {:ok,
-               "#{url}\n\n> **This port is local-only.** To access from another device, open port #{service}/#{cport}."}
+               "#{url}\n\n> **This port is local-only.** To access from another device, open port #{service}/#{cport}." <>
+                 inside}
             end
 
           :no_ports ->
