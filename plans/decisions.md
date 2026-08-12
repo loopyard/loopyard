@@ -137,7 +137,96 @@ This is also what makes the phone story cohere: swipe to move between decisions,
 talk to the one in front of you, and it either resolves or becomes a better
 question.
 
-### 5. The operator is the chief of staff — fewer, better questions
+### 5. How the sidebar actually works: a decision agent
+
+Spin up an agent **scoped to the decision**, let it hold the back-and-forth in
+its own context, and when the decision lands, roll only the *outcome* back into
+the main agent's context.
+
+This isn't only elegant — it's the one shape that survives the constraints:
+
+**Constraint A: context cost.** A ten-message negotiation about which option to
+pick has exactly one durable output: the choice, and maybe why. If that whole
+exchange lands in the main agent's window, you've spent the trunk's context on
+deliberation that summarises to one line. The sidebar keeps the transcript out
+and returns the conclusion.
+
+**Constraint B: nothing can stay blocked that long.** A live `ask_user` parks
+the agent's turn *inside the tool call*, and three separate clocks are running:
+
+| Clock | Value | Source |
+|---|---|---|
+| ACP elicitation waiter | **~60s** | comment at `questions.ex:435` |
+| `Questions.ask` timeout | **10 min** | `@timeout_ms` |
+| Stream stall watchdog | **10 min** | `@stream_stall_ms` |
+
+An executive taking twenty minutes to think — which is *normal and good* — blows
+through all three. So the decision conversation **cannot** happen inside the
+blocked tool call. The main agent must be released; the sidebar owns the
+deliberation; the answer arrives later.
+
+**The good news: half of this already exists.** Loopyard already handles "the
+answer arrived long after the waiter died" — `Questions.with_entry` rebuilds the
+broker entry from the card, and `deliver_late_answer` enqueues the selections to
+the agent. Relevance is already card state, not waiter liveness. The decoupled
+model is the direction the code has been drifting anyway.
+
+**What rolls back** into the main context, and nothing more:
+
+* the resolution (chosen option, typed answer, or a replacement question), and
+* a one-line *why*, when the reasoning changes what the agent should do next.
+
+Not the transcript. If the agent later needs the detail, it can pull it —
+`recall_conversation` already exists for exactly this shape of "read your own
+history on demand."
+
+**The leftovers problem — and why "fork vs. merge" is the wrong frame.**
+A sidebar often produces something valuable that *isn't* the decision: "by the
+way, we're deprecating that Rails app in Q3." Summarise-and-discard loses it;
+merging the whole transcript defeats the point. But that dilemma only exists if
+context is the only place knowledge can live — and here it isn't:
+
+* **Nothing is discarded, because the sidebar is durable and addressable.** The
+  thread persists on the decision. The main agent doesn't need it *pushed* into
+  context; it can pull it the same way it already reads its own history
+  (`recall_conversation`). "Not in context" ≠ "lost."
+* **Genuinely durable facts belong in memory, not context.** "We're deprecating
+  the Rails app in Q3" isn't a fact for *one agent's current window* — it's a
+  fact about the project, and it should outlive this agent, this turn, and the
+  next harness recycle. That's a `.claude/` memory or skill write, which agents
+  here already do. Promoting it into one context window is the weaker move: it
+  dies at the next recycle and no other workspace ever sees it.
+
+So the resolution isn't "how much do we merge back" but **three targets**:
+
+| What came out of the sidebar | Goes to |
+|---|---|
+| The decision itself (+ one-line why) | Main agent context — it changes the next action |
+| Incidental but durable project fact | Project memory / skill — outlives every agent |
+| Everything else | Stays on the thread, retrievable, pushed nowhere |
+
+**Who decides which?** Start with the human — an explicit "keep this" on a
+sidebar message is cheap, precise, and honest. Letting the sidebar agent guess
+what's "interesting" is the same shape as the fabricated cost figure: a
+confident classification nobody asked for. Auto-promotion is a later
+optimisation, if ever, and should propose rather than write.
+
+**Open engineering questions for this piece:**
+
+* **What context does the sidebar agent get?** Enough to answer "what does
+  option 2 change?" honestly — which is more than the card and less than the
+  whole history. Probably: the question, the options, and read access to the
+  main agent's recent turns via `recall_conversation` rather than a copy.
+* **Reframe returns a question, not an answer.** The sidebar's output is
+  sometimes a *replacement card* (see `superseded`), which the main agent must
+  accept as its new ask rather than as its answer.
+* **Cost.** A sub-agent per decision is not free. Cheap decisions must never
+  spawn one — it starts only when a human opens the door (Section 4).
+* **Who is the sidebar agent?** The operator is the natural candidate (it
+  already embeds sub-agents and holds cross-workspace context), versus a
+  purpose-spawned short-lived agent that dies with the decision.
+
+### 6. The operator is the chief of staff — fewer, better questions
 
 An executive isn't just given depth on each decision; they're given **fewer
 decisions**. That's the operator's existing job (`CLAUDE.md`: "a chief of staff
