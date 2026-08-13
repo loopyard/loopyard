@@ -300,10 +300,29 @@ defmodule LoopyardWeb.ReviewLive do
 
     cards = deck |> Enum.reject(&is_nil/1) |> Enum.map(&resolve_card/1) |> Enum.reject(&is_nil/1)
 
+    assigns = assign(assigns, :cards, cards)
+
+    ~H"""
+    <.review_deck cards={@cards} focused?={@focused?} history?={@history?} />
+    """
+  end
+
+  @doc """
+  The deck itself, pure: everything below the card-resolution seam.
+  `render/1` resolves slides to live messages (ETS) and hands the result
+  here; the showcase `reviewer` scene calls this directly with mock cards.
+  """
+  attr :cards, :list, required: true
+  attr :focused?, :boolean, default: false
+  attr :history?, :boolean, default: false
+
+  def review_deck(assigns) do
     assigns =
-      assigns
-      |> assign(:cards, cards)
-      |> assign(:pending_count, Enum.count(cards, &(&1.msg.status == :pending)))
+      assign(
+        assigns,
+        :pending_count,
+        Enum.count(assigns.cards, &(&1.msg.status == :pending))
+      )
 
     ~H"""
     <FocusedView.layout

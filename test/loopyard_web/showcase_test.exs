@@ -84,6 +84,15 @@ defmodule LoopyardWeb.ShowcaseTest do
       "In motion",
       "Workstations"
     ],
+    # The Reviewer deck: pending decisions one per slide, waiting count,
+    # per-decision permalink, and a settled receipt staying traversable.
+    "reviewer" => [
+      "2 waiting",
+      "Where should staging deploys go?",
+      "Ship the fix now or hold for a real repro?",
+      "Open this decision",
+      "Answered"
+    ],
     # The ambient sound bed's control page (the aural package's UI).
     "aural" => [
       "Ambient bed",
