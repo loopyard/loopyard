@@ -12,7 +12,7 @@ defmodule Mix.Tasks.Loopyard.Setup do
   3. Remove stale Docker Desktop buildx builders
   4. Install Hex + Rebar locally
   5. Fetch Mix dependencies
-  6. Build assets
+  6. Install JavaScript dependencies and build assets
 
   Safe to re-run — each step is idempotent.
   """
@@ -42,21 +42,26 @@ defmodule Mix.Tasks.Loopyard.Setup do
       :ok -> info("  #{name} ✓")
       {:ok, msg} -> info("  #{name} ✓ #{msg}")
       {:skip, msg} -> info("  #{name} — #{msg}")
-      {:error, msg} -> warn("  #{name} ✗ #{msg}")
+      {:error, msg} -> Mix.raise("#{name} failed: #{msg}")
     end
   end
 
   defp brew_bundle do
     if System.find_executable("brew") do
-      {output, code} =
-        System.cmd("brew", ["bundle", "install", "--no-lock"],
-          cd: File.cwd!(),
-          stderr_to_stdout: true
-        )
-
-      if code == 0, do: :ok, else: {:error, output}
+      with :ok <- run_command("brew", ["tap", "mutagen-io/mutagen"]),
+           :ok <- trust_mutagen_formula(),
+           :ok <- run_command("brew", ["bundle", "install"]) do
+        :ok
+      end
     else
       {:skip, "brew not found (Linux? Install deps manually)"}
+    end
+  end
+
+  defp trust_mutagen_formula do
+    case System.cmd("brew", ["command", "trust"], stderr_to_stdout: true) do
+      {_, 0} -> run_command("brew", ["trust", "--formula", "mutagen-io/mutagen/mutagen"])
+      _ -> :ok
     end
   end
 
@@ -101,22 +106,28 @@ defmodule Mix.Tasks.Loopyard.Setup do
   end
 
   defp hex_rebar do
-    Mix.Task.run("local.hex", ["--force"])
-    Mix.Task.run("local.rebar", ["--force"])
-    :ok
+    with :ok <- run_command("mix", ["local.hex", "--force"]),
+         :ok <- run_command("mix", ["local.rebar", "--force"]) do
+      :ok
+    end
   end
 
-  defp mix_deps do
-    Mix.Task.run("deps.get")
-    :ok
-  end
+  defp mix_deps, do: run_command("mix", ["deps.get"])
 
   defp assets do
-    Mix.Task.run("assets.setup")
-    Mix.Task.run("assets.build")
-    :ok
+    with :ok <- run_command("npm", ["ci", "--prefix", "assets"]),
+         :ok <- run_command("mix", ["assets.setup"]),
+         :ok <- run_command("mix", ["assets.build"]) do
+      :ok
+    end
+  end
+
+  defp run_command(executable, args) do
+    case System.cmd(executable, args, cd: File.cwd!(), stderr_to_stdout: true) do
+      {_, 0} -> :ok
+      {output, _code} -> {:error, String.trim(output)}
+    end
   end
 
   defp info(msg), do: Mix.shell().info(msg)
-  defp warn(msg), do: Mix.shell().info([:yellow, msg, :reset])
 end
