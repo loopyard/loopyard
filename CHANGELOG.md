@@ -17,7 +17,7 @@
 - PR template with checklist
 
 ### Fixed
-- `mix loopyard.setup` now supports current Homebrew, isolates Hex installation from dependency resolution, installs JavaScript dependencies, and stops on failed steps
+- `mix loopyard.setup` now supports Homebrew 6.0.10, isolates Hex installation from dependency resolution, installs JavaScript dependencies, and stops on failed steps
 - Rebuild messages now reach the agent (was broadcasting to PubSub only, agent never subscribed to its own topic)
 - `append_external_message` now broadcasts to PubSub so both agent and LiveView subscribers see external messages
 
