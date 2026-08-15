@@ -141,10 +141,16 @@ defmodule Loopyard.VolumeManager do
     end
   end
 
-  # Parse volume name to determine its purpose and related service
+  # Parse volume name to determine its purpose and related service.
+  # Code volumes are `<prefix><workspace_id>-code` — match against the
+  # RUNTIME prefix (per-environment, e.g. `loopyard-test-` in tests), not a
+  # hard-coded `loopyard-`, or classification silently breaks anywhere the
+  # prefix differs.
   defp parse_volume_purpose(name) do
+    code_re = ~r/^#{Regex.escape(Loopyard.Docker.prefix())}[a-f0-9]+-code$/
+
     cond do
-      Regex.match?(~r/^loopyard-[a-f0-9]+-code$/, name) ->
+      Regex.match?(code_re, name) ->
         {:code, "workspace", "Project source code"}
 
       String.contains?(name, "cache") ->

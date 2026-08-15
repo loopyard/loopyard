@@ -261,6 +261,14 @@ defmodule Loopyard.Docker do
   # the isolation boundary.
   @shared_artifacts ["loopyard-workspace-base"]
 
+  # A leading "/" means a HOST PATH (bind-mount source, config file, …) —
+  # its segments are filesystem names, not Docker resource names. Docker
+  # only reads a NAMED volume from a `-v` value that does NOT start with a
+  # slash, so path args can't smuggle a real resource name past this
+  # clause. Without it, a checkout under any directory literally named
+  # loopyard-<something> (a git worktree, say) false-positives the guard.
+  defp names_real_resource?("/" <> _), do: false
+
   defp names_real_resource?(arg) do
     # Split on the separators Docker args use ("vol:/mount", "name=x", lists).
     arg
