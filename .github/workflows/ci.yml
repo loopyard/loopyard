@@ -40,6 +40,9 @@ jobs:
       - name: Compile (warnings as errors)
         run: mix compile --warnings-as-errors
 
+      - name: Install asset packages (app.css imports from assets/node_modules)
+        run: npm ci --prefix assets
+
       - name: Build assets (showcase scene tests render against the compiled CSS)
         run: mix tailwind loopyard
 
@@ -148,5 +151,6 @@ jobs:
       - name: Run docker E2E tests
         env:
           LOOPYARD_LONG_TIMEOUTS: "1"
+          LOOPYARD_DOCKER_TESTS: "1"
         run: mix test --only docker --exclude macos --exclude ssh --exclude terminal
         timeout-minutes: 15

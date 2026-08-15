@@ -32,7 +32,7 @@ defmodule Loopyard.Workspace.LifecycleE2ETest do
     # Minimal compose: one workspace container running `sleep infinity`.
     # Everything the lifecycle needs to exercise — named volume,
     # loopback port, compose validation — is present.
-    volume_name = "loopyard-#{ws_id}-code"
+    volume_name = "#{Loopyard.Docker.prefix()}#{ws_id}-code"
 
     compose = """
     {
@@ -83,7 +83,7 @@ defmodule Loopyard.Workspace.LifecycleE2ETest do
 
     # ServiceManager.init is async; wait up to 60s for containers up.
     wait_for(60_000, fn ->
-      Docker.container_running?("loopyard-#{ws_id}-workspace-1")
+      Docker.container_running?("#{Loopyard.Docker.prefix()}#{ws_id}-workspace-1")
     end)
 
     # --- Seed an agent state so Exec can look up the workspace ---
@@ -121,7 +121,7 @@ defmodule Loopyard.Workspace.LifecycleE2ETest do
     Loopyard.Workspace.Destructor.destroy(ws_id)
 
     # Workspace container is gone.
-    refute Docker.container_exists?("loopyard-#{ws_id}-workspace-1"),
+    refute Docker.container_exists?("#{Loopyard.Docker.prefix()}#{ws_id}-workspace-1"),
            "workspace container should be removed after destroy"
 
     # Code volume is gone.
@@ -176,7 +176,7 @@ defmodule Loopyard.Workspace.LifecycleE2ETest do
     Process.sleep(5_000)
 
     # Container should NOT be up — validator rejected the compose file.
-    refute Docker.container_running?("loopyard-#{ws_id}-workspace-1"),
+    refute Docker.container_running?("#{Loopyard.Docker.prefix()}#{ws_id}-workspace-1"),
            "workspace container must not start when compose has a host bind mount"
 
     _ = project_dir

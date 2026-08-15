@@ -11,7 +11,7 @@
 ```bash
 mix test                           # Default (excludes :docker, :slow, :terminal, :ssh, :recovery)
 mix test --trace                   # Verbose output
-mix test --include docker          # Include Docker integration tests
+LOOPYARD_DOCKER_TESTS=1 mix test --include docker   # Include Docker integration tests
 mix test path/to/test.exs          # Run specific file
 mix test path/to/test.exs:42       # Run specific test at line 42
 ```
@@ -207,5 +207,5 @@ Agent tools must go through Docker, never the host filesystem. Tests should veri
 ## Known test issues
 
 - Claude CLI not available in test environment — `send_message` triggers stream errors (expected, non-blocking)
-- Docker tests excluded by default — run with `--include docker`
+- Docker tests excluded by default — run with `LOOPYARD_DOCKER_TESTS=1 mix test --include docker` (the env var re-enables the daemon gate from config/test.exs)
 - Some tests may flake under full-suite load due to 2s timeout — if a test consistently needs more time, tag it `:slow`

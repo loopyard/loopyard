@@ -27,7 +27,7 @@ defmodule Loopyard.Workspace.WorkContainerTest do
 
     # Working is cheap: no compose, no project image — just the work container.
     assert {:ok, name} = WorkContainer.ensure_up(ws)
-    assert name == "loopyard-#{ws}-work"
+    assert name == "#{Loopyard.Docker.prefix()}#{ws}-work"
     assert WorkContainer.running?(ws)
 
     # The agent's eye view: it execs here and sees the branch's code at /workspace.

@@ -185,7 +185,7 @@ defmodule Loopyard.OnboardingTest do
              Docker.docker([
                "ps",
                "--filter",
-               "name=loopyard-#{ws.id}",
+               "name=#{Loopyard.Docker.prefix()}#{ws.id}",
                "--format",
                "{{.Names}} {{.Status}}"
              ])

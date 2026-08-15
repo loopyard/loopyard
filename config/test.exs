@@ -91,6 +91,9 @@ config :loopyard, forbid_real_docker_resources: true
 
 # The default suite does not talk to the Docker daemon: shelling out is slow,
 # depends on what happens to be running on this machine, and blew the
-# 2s-per-test budget in unrelated tests. Tests that genuinely exercise Docker
-# carry the :docker tag and turn it on for themselves.
-config :loopyard, docker_enabled: false
+# 2s-per-test budget in unrelated tests. A run that actually exercises the
+# :docker-tagged tests opts in via env — `LOOPYARD_DOCKER_TESTS=1 mix test
+# --include docker` locally, and CI's docker-e2e job sets it. (The tag alone
+# can't flip this: app env is global, so per-test put_env would leak into
+# concurrently running untagged tests.)
+config :loopyard, docker_enabled: System.get_env("LOOPYARD_DOCKER_TESTS") in ["1", "true"]

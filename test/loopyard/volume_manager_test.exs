@@ -3,6 +3,9 @@ defmodule Loopyard.VolumeManagerTest do
 
   alias Loopyard.VolumeManager
 
+  defp scratch_dir(name),
+    do: Path.join([System.user_home!(), ".cache", "#{Loopyard.Docker.prefix()}scratch", name])
+
   describe "volume naming" do
     test "code_volume_name/1 generates correct name" do
       assert VolumeManager.code_volume_name("abc123") == "#{Loopyard.Docker.prefix()}abc123-code"
@@ -133,7 +136,11 @@ defmodule Loopyard.VolumeManagerTest do
 
     test "copies local directory contents into a volume" do
       volume_name = "loopyard-test-copy-#{:rand.uniform(100_000)}"
-      tmp_dir = Path.join(System.tmp_dir!(), "boom-vol-copy-#{:rand.uniform(100_000)}")
+      # Under $HOME, not System.tmp_dir!(): macOS puts tmp in /var/folders,
+      # which Colima does not mount into the VM — the bind mount comes up
+      # empty and rsync "succeeds" copying nothing. $HOME is shared, and the
+      # test-prefixed dir name satisfies the real-resource guard.
+      tmp_dir = scratch_dir("boom-vol-copy-#{:rand.uniform(100_000)}")
       File.mkdir_p!(tmp_dir)
       File.write!(Path.join(tmp_dir, "README.md"), "# Test Project")
       File.mkdir_p!(Path.join(tmp_dir, "src"))
@@ -152,7 +159,7 @@ defmodule Loopyard.VolumeManagerTest do
 
     test "calls streaming callback during copy" do
       volume_name = "loopyard-test-copy-cb-#{:rand.uniform(100_000)}"
-      tmp_dir = Path.join(System.tmp_dir!(), "boom-vol-copy-cb-#{:rand.uniform(100_000)}")
+      tmp_dir = scratch_dir("boom-vol-copy-cb-#{:rand.uniform(100_000)}")
       File.mkdir_p!(tmp_dir)
       File.write!(Path.join(tmp_dir, "test.txt"), "data")
 

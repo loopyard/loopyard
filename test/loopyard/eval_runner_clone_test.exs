@@ -65,7 +65,7 @@ defmodule Loopyard.EvalRunnerCloneTest do
       File.mkdir_p!(project_path)
       File.write!(Path.join(project_path, "hello.txt"), "world")
 
-      volume_name = "loopyard-clone-test-#{:rand.uniform(100_000)}-code"
+      volume_name = "#{Loopyard.Docker.prefix()}clone-#{:rand.uniform(100_000)}-code"
 
       try do
         :ok = Loopyard.VolumeManager.create_volume(volume_name)
