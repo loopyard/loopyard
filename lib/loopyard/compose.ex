@@ -623,15 +623,25 @@ defmodule Loopyard.Compose do
   end
 
   defp docker_compose(args, timeout) do
-    task =
-      Task.async(fn ->
-        System.cmd("docker-compose", args, stderr_to_stdout: true)
-      end)
+    if Application.get_env(:loopyard, :docker_enabled, true) do
+      task =
+        Task.async(fn ->
+          System.cmd("docker-compose", args, stderr_to_stdout: true)
+        end)
 
-    case Task.yield(task, timeout) || Task.shutdown(task) do
-      {:ok, {output, 0}} -> {:ok, output}
-      {:ok, {output, _}} -> {:error, output}
-      nil -> {:error, "docker-compose timed out"}
+      case Task.yield(task, timeout) || Task.shutdown(task) do
+        {:ok, {output, 0}} -> {:ok, output}
+        {:ok, {output, _}} -> {:error, output}
+        nil -> {:error, "docker-compose timed out"}
+      end
+    else
+      # Same contract as Docker.docker/2's gate. This legacy fallback is the
+      # one daemon path that doesn't go through Docker.docker — with docker
+      # disabled the v2 probe fails, everything lands here, and on a machine
+      # without the legacy binary (CI runners) System.cmd is a raised
+      # :enoent, not an error tuple. The gate keeps the default suite off
+      # the daemon entirely.
+      {:error, "docker disabled in this environment"}
     end
   end
 

@@ -605,5 +605,4 @@ defmodule LoopyardWeb.Components.Common do
   defp mode_btn(_),
     do:
       "flex-none inline-flex items-center justify-center w-11 h-11 md:w-9 md:h-9 rounded-sm text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
-
 end

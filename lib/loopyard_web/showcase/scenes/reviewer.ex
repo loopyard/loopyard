@@ -76,7 +76,10 @@ defmodule LoopyardWeb.Showcase.Scenes.Reviewer do
       prompt: "Rename the ambiguous `total` column while I'm in the migration?",
       multi: false,
       options: [
-        %{label: "Yes, rename to subtotal_cents", description: "One migration, I'll fix call sites."},
+        %{
+          label: "Yes, rename to subtotal_cents",
+          description: "One migration, I'll fix call sites."
+        },
         %{label: "Leave it", description: "Out of scope for this fix."}
       ]
     }

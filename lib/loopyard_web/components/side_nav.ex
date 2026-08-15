@@ -164,8 +164,7 @@ defmodule LoopyardWeb.Components.SideNav do
               "group-hover/hero:bg-zinc-400 dark:group-hover/hero:bg-zinc-500"
             ]}
             aria-hidden="true"
-          >
-          </span>
+          ></span>
         </div>
         <%!-- Non-expandable heroes keep a plain eyebrow: there's no handle to
     carry the identity, so the type label still earns its place. --%>
