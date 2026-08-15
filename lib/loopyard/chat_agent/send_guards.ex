@@ -11,6 +11,26 @@ defmodule Loopyard.ChatAgent.SendGuards do
   alias Loopyard.ChatAgent.Persistence
   alias Loopyard.Events
 
+  @doc """
+  Edit a queued message IN PLACE, preserving its position. `old_text` guards
+  against a queue that shifted since the edit opened: replace at `index` only
+  if it still holds the original; else replace wherever the original now sits;
+  else (it drained/was removed) append the edit as a fresh queued line so the
+  text is never silently dropped.
+  """
+  def update_pending(pending, index, old_text, new_text) do
+    cond do
+      Enum.at(pending, index) == old_text ->
+        List.replace_at(pending, index, new_text)
+
+      old_text in pending ->
+        List.replace_at(pending, Enum.find_index(pending, &(&1 == old_text)), new_text)
+
+      true ->
+        pending ++ [new_text]
+    end
+  end
+
   # See ChatAgent's @max_message_bytes note: "bounded by user behavior" is
   # unbounded in multiplayer.
   @max_pending_sends 50
