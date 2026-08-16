@@ -21,7 +21,10 @@ mix loopyard.shot --out ../website/priv/content/marketing/features/shots
 mix loopyard.shot --list              # list scenes
 ```
 
-Output: `tmp/showcase/<scene>-<viewport>[-dark].png`, 2× retina.
+Output: `tmp/showcase/<scene>-<viewport>[-dark].png`, 2× retina, plus a
+`.webp` twin (ffmpeg/libwebp, best-effort) and a `manifest.json` of pixel
+dimensions per shot — the website serves WebP via `<picture>` and uses the
+dims for width/height attributes.
 Viewports: mobile 390×844, desktop 1440×900.
 
 ## Add a scene

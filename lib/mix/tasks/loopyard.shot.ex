@@ -104,12 +104,50 @@ defmodule Mix.Tasks.Loopyard.Shot do
 
         with true <- status == 0 and File.exists?(out),
              :ok <- crop(out, frame_width, h) do
+          webp_twin(out)
+          record_dims(out_dir, Path.basename(out), {w * 2, h * 2})
           Mix.shell().info("✓ #{out}")
         else
           _ -> Mix.raise("Chrome failed for #{scene.name()}/#{vp_name}:\n#{output}")
         end
       end
     end
+  end
+
+  # A lossy-WebP twin next to every PNG: the website serves it via
+  # <picture> with the PNG as fallback. Screenshots-with-text stay crisp
+  # at this quality and land at a fraction of the PNG's bytes. Best-effort:
+  # no ffmpeg (or no libwebp) just means no twin, never a failed shoot.
+  defp webp_twin(png) do
+    with ffmpeg when is_binary(ffmpeg) <- System.find_executable("ffmpeg"),
+         webp = String.replace_suffix(png, ".png", ".webp"),
+         {_, 0} <-
+           System.cmd(
+             ffmpeg,
+             ["-hide_banner", "-loglevel", "error", "-y", "-i", png, "-quality", "88", webp],
+             stderr_to_stdout: true
+           ) do
+      :ok
+    else
+      _ -> Mix.shell().info("  (no webp twin — ffmpeg with libwebp not available)")
+    end
+  end
+
+  # Pixel dimensions per shot, merged into <out>/manifest.json. The dims are
+  # deterministic (viewport × the 2x scale factor), so the manifest is exact
+  # without reading the PNG back. The website uses it for width/height
+  # attributes (no layout shift) and to know a WebP twin exists.
+  defp record_dims(out_dir, basename, {px_w, px_h}) do
+    path = Path.join(out_dir, "manifest.json")
+
+    manifest =
+      case File.read(path) do
+        {:ok, json} -> Jason.decode!(json)
+        _ -> %{}
+      end
+
+    manifest = Map.put(manifest, basename, %{"width" => px_w, "height" => px_h})
+    File.write!(path, Jason.encode!(manifest, pretty: true))
   end
 
   # Center-crop back to the framed width (2× for the retina scale factor).
