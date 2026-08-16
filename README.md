@@ -25,11 +25,18 @@ The agent doesn't just write code inside that boundary; it builds the whole stac
 
 ## Getting started
 
-macOS only. Requires [Homebrew](https://brew.sh) and a running container
-runtime — [Docker Desktop](https://docker.com), [Colima](https://github.com/abiosoft/colima),
-or OrbStack. Docker isn't a dependency so much as the substrate: every
+Runs on macOS and Linux. You need [Elixir](https://elixir-lang.org) 1.19+,
+Node.js, [Mutagen](https://mutagen.io) (host-to-volume file sync), and a
+running Docker daemon — [Docker Desktop](https://docker.com),
+[Colima](https://github.com/abiosoft/colima), or OrbStack on macOS; Docker
+Engine on Linux. Docker isn't a dependency so much as the substrate: every
 workspace, agent, and dev server is a container, so nothing works until
 `docker version` succeeds.
+
+On macOS, `mix loopyard.setup` installs the tool dependencies for you via
+[Homebrew](https://brew.sh) (`brew bundle`). On Linux, install
+elixir/node/mutagen/fswatch with your package manager first; setup detects
+the missing brew and takes it from there.
 
 ```bash
 git clone https://github.com/loopyard/loopyard.git
@@ -41,7 +48,7 @@ mix loopyard.server
 Then open http://localhost:4000 and **connect Claude** — the dashboard leads
 with it. Agents build everything else (the Dockerfile, the services, the dev
 server), so none of that can start until Claude can authenticate. The one
-command it gives you runs on your Mac, opens a browser to authorize, and
+command it gives you runs on your machine, opens a browser to authorize, and
 pushes a 1-year token back:
 
 ```bash
