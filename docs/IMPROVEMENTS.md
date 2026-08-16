@@ -16,6 +16,14 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 ## Robustness (handles edge cases gracefully)
 
+0000. **SystemSagasLive empty-state test is order-dependent (seen on CI, 2026-08-16).**
+      `test/loopyard_web/live/system_sagas_live_test.exs:39` asserts
+      "No sagas recorded yet" but another test's saga journal entry leaked
+      into the page under one seed (run 31947506699; green on rerun). Same
+      family as the known shared-cwd/global-state pollution — the fix is
+      isolating the saga journal per test (or clearing it in setup), not
+      loosening the assertion.
+
 0000. **claude-code-acp large-session + subprocess-death limits (upstream, worked around).**
       Confirmed against the ACP docs + upstream issues: `session/load` does a
       FULL-JSONL replay of the whole conversation, so a large session is slow to
