@@ -1,3 +1,5 @@
+tap "mutagen-io/mutagen"
+
 brew "elixir"
 brew "node"
 brew "fswatch"

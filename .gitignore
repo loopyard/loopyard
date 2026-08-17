@@ -4,6 +4,7 @@
 # Any alternate build path (e.g. MIX_BUILD_PATH=_build_wt when compiling a
 # git worktree so it never touches the main checkout's build).
 /_build*
+/assets/node_modules/
 /.mix_home
 /.hex_home
 /.mix
