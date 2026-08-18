@@ -77,7 +77,7 @@ defmodule Loopyard.TerminalTest do
 
     setup do
       # Start a minimal container to test against
-      container = "loopyard-terminal-test-#{:rand.uniform(100_000)}"
+      container = "#{Loopyard.Docker.prefix()}terminal-test-#{:rand.uniform(100_000)}"
 
       {_, 0} =
         System.cmd("docker", ["run", "-d", "--name", container, "alpine:latest", "sleep", "300"],

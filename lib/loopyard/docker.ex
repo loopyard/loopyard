@@ -261,23 +261,35 @@ defmodule Loopyard.Docker do
   # the isolation boundary.
   @shared_artifacts ["loopyard-workspace-base"]
 
-  # A leading "/" means a HOST PATH (bind-mount source, config file, …) —
-  # its segments are filesystem names, not Docker resource names. Docker
-  # only reads a NAMED volume from a `-v` value that does NOT start with a
-  # slash, so path args can't smuggle a real resource name past this
-  # clause. Without it, a checkout under any directory literally named
-  # loopyard-<something> (a git worktree, say) false-positives the guard.
-  defp names_real_resource?("/" <> _), do: false
+  # A leading "/" followed by MORE path structure (`/a/b`, `/host:/mount`) is a
+  # host filesystem path — its segments are filenames, not resource names — so
+  # exempt it; without this, a compose file under a worktree dir named
+  # `loopyard-<x>` false-positives. But `/<name>` with NO further separators is
+  # Docker's leading-slash form of a container/volume NAME (`docker rm /foo` ==
+  # `docker rm foo`), so it must still be checked — that single-segment case is
+  # what the old blanket exemption let through.
+  defp names_real_resource?("/" <> rest = _arg) do
+    if String.contains?(rest, ["/", ":"]) do
+      false
+    else
+      real_resource_part?(rest)
+    end
+  end
 
   defp names_real_resource?(arg) do
     # Split on the separators Docker args use ("vol:/mount", "name=x", lists).
     arg
     |> String.split([":", "=", ",", " ", "/"])
-    |> Enum.any?(fn part ->
-      String.starts_with?(part, @production_prefix) and
-        not String.starts_with?(part, prefix()) and
-        not Enum.any?(@shared_artifacts, &String.starts_with?(part, &1))
-    end)
+    |> Enum.any?(&real_resource_part?/1)
+  end
+
+  # A single token names a real (non-test, non-shared-artifact) resource.
+  # Shared artifacts must match EXACTLY — `starts_with?` let
+  # `loopyard-workspace-base-EVIL` masquerade as the build image.
+  defp real_resource_part?(part) do
+    String.starts_with?(part, @production_prefix) and
+      not String.starts_with?(part, prefix()) and
+      part not in @shared_artifacts
   end
 
   @doc """

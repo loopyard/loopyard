@@ -89,7 +89,14 @@ defmodule Loopyard.VolumeManager do
   them separately for the volumes the user actually opens.
   """
   def list_all_volumes do
-    case Docker.docker(["volume", "ls", "--filter", "name=loopyard-", "--format", "{{.Name}}"]) do
+    case Docker.docker([
+           "volume",
+           "ls",
+           "--filter",
+           "name=#{Loopyard.Docker.prefix()}",
+           "--format",
+           "{{.Name}}"
+         ]) do
       {:ok, output} ->
         output
         |> String.trim()
@@ -240,7 +247,7 @@ defmodule Loopyard.VolumeManager do
 
         orphans =
           Enum.filter(volumes, fn name ->
-            case Regex.run(~r/^loopyard-([a-f0-9]+)-/, name) do
+            case Regex.run(~r/^#{Regex.escape(Loopyard.Docker.prefix())}([a-f0-9]+)-/, name) do
               [_, ws_id] -> ws_id not in active_ids
               nil -> false
             end
