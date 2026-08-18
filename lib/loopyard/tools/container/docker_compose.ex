@@ -15,39 +15,43 @@ defmodule Loopyard.Tools.Container.DockerCompose do
     ]
 
   alias Loopyard.Tools.Container.Helpers
-
-  alias Loopyard.Tools.Container.Helpers
+  alias Loopyard.Tools.CommandGuard
 
   def execute(%{agent_id: agent_id, command: command} = params, _assigns) do
     # Default 10 minutes for builds (image pulls can be slow).
     # The agent can override with a shorter timeout for quick commands.
     timeout_seconds = Map.get(params, :timeout, 600)
 
-    case Loopyard.ChatAgent.get_state(agent_id) do
-      %{workspace_id: workspace_id} when is_binary(workspace_id) ->
-        project_dir = Loopyard.Workspace.compose_dir(workspace_id)
-        volume_name = Loopyard.Workspace.volume_name_for(workspace_id)
+    with :ok <- CommandGuard.compose(command),
+         %{workspace_id: workspace_id} when is_binary(workspace_id) <-
+           Loopyard.ChatAgent.get_state(agent_id) do
+      run_compose(agent_id, workspace_id, command, timeout_seconds)
+    else
+      {:error, _} = err -> err
+      _ -> {:error, "Agent #{agent_id} has no workspace"}
+    end
+  end
 
-        # Sync files from volume to host before running docker-compose
-        Helpers.sync_volume_to_host(volume_name, project_dir)
+  defp run_compose(agent_id, workspace_id, command, timeout_seconds) do
+    project_dir = Loopyard.Workspace.compose_dir(workspace_id)
+    volume_name = Loopyard.Workspace.volume_name_for(workspace_id)
 
-        compose_file = Loopyard.Compose.compose_path(project_dir)
-        project_name = Loopyard.Compose.project_name(workspace_id)
+    # Sync files from volume to host before running docker-compose
+    Helpers.sync_volume_to_host(volume_name, project_dir)
 
-        args = String.split(command, ~r/\s+/, trim: true)
-        full_args = ["-f", compose_file, "-p", project_name | args]
+    compose_file = Loopyard.Compose.compose_path(project_dir)
+    project_name = Loopyard.Compose.project_name(workspace_id)
 
-        # Stream build/up to the chat window AND return the result to the
-        # agent synchronously. The agent blocks until done — it needs the
-        # exit status to know whether to proceed or debug.
-        if Enum.any?(args, &(&1 in ~w(up build))) do
-          compose_stream(agent_id, full_args, command, timeout_seconds)
-        else
-          Loopyard.Compose.compose_cmd(full_args, timeout_seconds * 1_000)
-        end
+    args = String.split(command, ~r/\s+/, trim: true)
+    full_args = ["-f", compose_file, "-p", project_name | args]
 
-      _ ->
-        {:error, "Agent #{agent_id} has no workspace"}
+    # Stream build/up to the chat window AND return the result to the
+    # agent synchronously. The agent blocks until done — it needs the
+    # exit status to know whether to proceed or debug.
+    if Enum.any?(args, &(&1 in ~w(up build))) do
+      compose_stream(agent_id, full_args, command, timeout_seconds)
+    else
+      Loopyard.Compose.compose_cmd(full_args, timeout_seconds * 1_000)
     end
   end
 
