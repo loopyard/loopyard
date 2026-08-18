@@ -324,6 +324,7 @@ defmodule Loopyard.Workspace.WorkContainer do
         name,
         "--init"
       ] ++
+        security_args() ++
         memory_args() ++
         [
           "-v",
@@ -349,6 +350,21 @@ defmodule Loopyard.Workspace.WorkContainer do
       "" -> []
       mem -> ["--memory", to_string(mem), "--memory-swap", to_string(mem)]
     end
+  end
+
+  # Defense-in-depth so a breakout is defanged even if the tool/validator
+  # guards are ever bypassed. `no-new-privileges` blocks setuid/setgid
+  # escalation (a common breakout amplifier); it's safe for a root container
+  # because root already has its caps — apt/mise/gem don't need setuid. We
+  # also drop the capabilities a dev container never needs but that appear in
+  # breakout chains. The container keeps root (the "pet" install-tools-live
+  # model) and Docker's default seccomp profile. See docs/SECURITY.md.
+  @dropped_caps ~w(SYS_ADMIN SYS_PTRACE SYS_MODULE SYS_RAWIO SYS_BOOT SYS_TIME
+                   MAC_ADMIN MAC_OVERRIDE NET_ADMIN DAC_READ_SEARCH LINUX_IMMUTABLE)
+
+  defp security_args do
+    ["--security-opt", "no-new-privileges"] ++
+      Enum.flat_map(@dropped_caps, fn cap -> ["--cap-drop", cap] end)
   end
 
   # The identity's $HOME inside the container: /home/<id>.

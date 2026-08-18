@@ -106,4 +106,48 @@ defmodule Loopyard.Tools.CommandGuard do
   end
 
   def gh(_), do: {:error, "gh arguments must be a string."}
+
+  # ── git (host path) ───────────────────────────────────────────────────────
+
+  # `git` run host-side (legacy non-volume workspaces) takes agent argv into
+  # `System.cmd("git", …)`. The escape is config/alias injection:
+  # `git -c alias.x='!sh -c "…"' x` runs a shell, and `-C /path`,
+  # `--exec-path`, `--upload-pack`/`--receive-pack`, `--config-env` all reach
+  # outside the repo or execute code. Block those; the ordinary porcelain
+  # (status/diff/add/commit/log/push/pull/…) has no such flag.
+  @git_deny_prefixes [
+    "-c",
+    "-C",
+    "--exec-path",
+    "--upload-pack",
+    "--receive-pack",
+    "--config-env",
+    "--namespace"
+  ]
+
+  @doc "Validate host-side `git` argv (a token list)."
+  @spec git([String.t()]) :: :ok | {:error, String.t()}
+  def git(argv) when is_list(argv) do
+    case Enum.find(argv, &git_denied?/1) do
+      nil ->
+        :ok
+
+      bad ->
+        {:error,
+         "git flag `#{bad}` is not allowed — `-c`/`-C`/`--exec-path`/pack " <>
+           "overrides can run arbitrary host commands or escape the repo. " <>
+           "Use plain git porcelain (status, diff, add, commit, log, push, …)."}
+    end
+  end
+
+  def git(_), do: {:error, "git argv must be a list."}
+
+  defp git_denied?(token) when is_binary(token) do
+    Enum.any?(@git_deny_prefixes, fn p ->
+      token == p or String.starts_with?(token, p <> "=") or
+        (String.length(p) == 2 and String.starts_with?(token, p))
+    end)
+  end
+
+  defp git_denied?(_), do: true
 end

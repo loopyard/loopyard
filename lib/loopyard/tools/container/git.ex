@@ -156,22 +156,25 @@ defmodule Loopyard.Tools.Container.Git do
   end
 
   defp run_git_host(workspace_id, args, command) do
-    case host_git_path(workspace_id) do
-      {:ok, path} ->
-        case System.cmd("git", args,
-               cd: path,
-               stderr_to_stdout: true,
-               env: [{"GIT_TERMINAL_PROMPT", "0"}]
-             ) do
-          {output, 0} ->
-            {:ok, Pagination.cap(output)}
+    with :ok <- Loopyard.Tools.CommandGuard.git(args),
+         {:ok, path} <- host_git_path(workspace_id) do
+      run_git_host_cmd(path, args, command)
+    else
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
-          {output, code} ->
-            {:error, "git #{command} failed (exit #{code}):\n#{Pagination.cap(output)}"}
-        end
+  defp run_git_host_cmd(path, args, command) do
+    case System.cmd("git", args,
+           cd: path,
+           stderr_to_stdout: true,
+           env: [{"GIT_TERMINAL_PROMPT", "0"}]
+         ) do
+      {output, 0} ->
+        {:ok, Pagination.cap(output)}
 
-      {:error, reason} ->
-        {:error, reason}
+      {output, code} ->
+        {:error, "git #{command} failed (exit #{code}):\n#{Pagination.cap(output)}"}
     end
   end
 
