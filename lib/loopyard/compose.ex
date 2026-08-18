@@ -737,25 +737,32 @@ defmodule Loopyard.Compose do
   end
 
   defp docker_compose(args, timeout) do
-    if Application.get_env(:loopyard, :docker_enabled, true) do
-      task =
-        Task.async(fn ->
-          System.cmd("docker-compose", args, stderr_to_stdout: true)
-        end)
+    cond do
+      # Same contract as Docker.docker/2's gate — keeps the default test
+      # suite off the daemon entirely.
+      not Application.get_env(:loopyard, :docker_enabled, true) ->
+        {:error, "docker disabled in this environment"}
 
-      case Task.yield(task, timeout) || Task.shutdown(task) do
-        {:ok, {output, 0}} -> {:ok, output}
-        {:ok, {output, _}} -> {:error, output}
-        nil -> {:error, "docker-compose timed out"}
-      end
-    else
-      # Same contract as Docker.docker/2's gate. This legacy fallback is the
-      # one daemon path that doesn't go through Docker.docker — with docker
-      # disabled the v2 probe fails, everything lands here, and on a machine
-      # without the legacy binary (CI runners) System.cmd is a raised
-      # :enoent, not an error tuple. The gate keeps the default suite off
-      # the daemon entirely.
-      {:error, "docker disabled in this environment"}
+      # No compose binary at all. This is the fresh Colima / OrbStack /
+      # Docker Engine case: no `docker compose` v2 plugin AND no
+      # `docker-compose`. `System.cmd` on a missing binary raises `:enoent`
+      # INSIDE the linked Task, which propagates and crashes the caller
+      # (the ServiceManager) — so check for it up front and return an error
+      # tuple the caller can surface instead.
+      is_nil(System.find_executable("docker-compose")) ->
+        {:error,
+         "Docker Compose is not installed. Loopyard needs it to run project " <>
+           "stacks — install Docker Desktop, or the `docker compose` plugin / " <>
+           "`docker-compose` binary for Colima, OrbStack, or Docker Engine."}
+
+      true ->
+        task = Task.async(fn -> System.cmd("docker-compose", args, stderr_to_stdout: true) end)
+
+        case Task.yield(task, timeout) || Task.shutdown(task) do
+          {:ok, {output, 0}} -> {:ok, output}
+          {:ok, {output, _}} -> {:error, output}
+          _ -> {:error, "docker-compose timed out"}
+        end
     end
   end
 

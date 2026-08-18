@@ -26,6 +26,7 @@ defmodule Mix.Tasks.Loopyard.Setup do
     info("Setting up Loopyard...\n")
 
     step("Brewfile dependencies", fn -> brew_bundle() end)
+    step("Docker Compose available", fn -> check_compose() end)
     step("Docker credential store", fn -> fix_docker_creds() end)
     step("Docker buildx builders", fn -> clean_buildx() end)
     step("Hex + Rebar", fn -> hex_rebar() end)
@@ -63,6 +64,41 @@ defmodule Mix.Tasks.Loopyard.Setup do
       {_, 0} -> run_command("brew", ["trust", "--formula", "mutagen-io/mutagen/mutagen"])
       _ -> :ok
     end
+  end
+
+  # Loopyard runs project stacks with Docker Compose. `cask "docker"` ships
+  # the v2 plugin, but the README also documents Colima / OrbStack / Docker
+  # Engine, where compose is a separate install. Warn at setup time rather
+  # than letting the first project boot crash — see Compose.docker_compose/2.
+  defp check_compose do
+    v2? =
+      match?({_, 0}, safe_cmd("docker", ["compose", "version"]))
+
+    legacy? = System.find_executable("docker-compose") != nil
+
+    cond do
+      v2? ->
+        {:ok, "docker compose (v2 plugin)"}
+
+      legacy? ->
+        {:ok, "docker-compose (standalone)"}
+
+      true ->
+        {:skip,
+         "no Docker Compose found — install the compose plugin or docker-compose before running projects"}
+    end
+  end
+
+  # Like System.cmd but never raises on a missing binary (returns a
+  # non-zero-shaped result instead), so a probe can't crash setup.
+  defp safe_cmd(exe, args) do
+    if System.find_executable(exe) do
+      System.cmd(exe, args, stderr_to_stdout: true)
+    else
+      {"", 127}
+    end
+  rescue
+    _ -> {"", 127}
   end
 
   defp fix_docker_creds do
@@ -123,9 +159,15 @@ defmodule Mix.Tasks.Loopyard.Setup do
   end
 
   defp run_command(executable, args) do
-    case System.cmd(executable, args, cd: File.cwd!(), stderr_to_stdout: true) do
-      {_, 0} -> :ok
-      {output, _code} -> {:error, String.trim(output)}
+    if System.find_executable(executable) do
+      case System.cmd(executable, args, cd: File.cwd!(), stderr_to_stdout: true) do
+        {_, 0} -> :ok
+        {output, _code} -> {:error, String.trim(output)}
+      end
+    else
+      # On Linux, brew_bundle skips and nothing installs node — a missing
+      # `npm` otherwise surfaced as a raw `** (ErlangError) :enoent`.
+      {:error, "`#{executable}` not found on PATH — install it and re-run setup."}
     end
   end
 
