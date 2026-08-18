@@ -104,8 +104,17 @@ defmodule Mix.Tasks.Loopyard.Shot do
 
         with true <- status == 0 and File.exists?(out),
              :ok <- crop(out, frame_width, h) do
-          webp_twin(out)
-          record_dims(out_dir, Path.basename(out), {w * 2, h * 2})
+          # A manifest entry means BOTH "dims known" AND "the WebP twin
+          # exists" — the website gates its <picture> WebP <source> on the
+          # entry, and <picture> commits to the first matching source
+          # rather than falling back to the PNG on a 404. So only record
+          # dims when the twin was actually written; no ffmpeg -> no entry
+          # -> the site serves the plain PNG, which is correct.
+          case webp_twin(out) do
+            :ok -> record_dims(out_dir, Path.basename(out), {w * 2, h * 2})
+            :error -> :ok
+          end
+
           Mix.shell().info("✓ #{out}")
         else
           _ -> Mix.raise("Chrome failed for #{scene.name()}/#{vp_name}:\n#{output}")
@@ -129,7 +138,12 @@ defmodule Mix.Tasks.Loopyard.Shot do
            ) do
       :ok
     else
-      _ -> Mix.shell().info("  (no webp twin — ffmpeg with libwebp not available)")
+      _ ->
+        # A prior twin may be stale now (re-shoot without ffmpeg): drop it
+        # so the manifest (rewritten to omit this entry) and the disk agree.
+        File.rm(String.replace_suffix(png, ".png", ".webp"))
+        Mix.shell().info("  (no webp twin — ffmpeg with libwebp not available)")
+        :error
     end
   end
 
@@ -141,13 +155,23 @@ defmodule Mix.Tasks.Loopyard.Shot do
     path = Path.join(out_dir, "manifest.json")
 
     manifest =
-      case File.read(path) do
-        {:ok, json} -> Jason.decode!(json)
+      with {:ok, json} <- File.read(path),
+           {:ok, %{} = map} <- Jason.decode(json) do
+        map
+      else
+        # A malformed manifest (e.g. a truncated write from a Ctrl-C'd run)
+        # must not crash the whole shoot — start fresh. This run rewrites
+        # every scene's entry anyway.
         _ -> %{}
       end
 
     manifest = Map.put(manifest, basename, %{"width" => px_w, "height" => px_h})
-    File.write!(path, Jason.encode!(manifest, pretty: true))
+
+    # Write atomically: a Ctrl-C between truncate and write otherwise leaves
+    # a half-written manifest that 500s the marketing site's shot lookups.
+    tmp = path <> ".tmp"
+    File.write!(tmp, Jason.encode!(manifest, pretty: true))
+    File.rename!(tmp, path)
   end
 
   # Center-crop back to the framed width (2× for the retina scale factor).
