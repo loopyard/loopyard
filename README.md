@@ -25,18 +25,20 @@ The agent doesn't just write code inside that boundary; it builds the whole stac
 
 ## Getting started
 
-Runs on macOS and Linux. You need [Elixir](https://elixir-lang.org) 1.19+,
-Node.js, [Mutagen](https://mutagen.io) (host-to-volume file sync), and a
-running Docker daemon — [Docker Desktop](https://docker.com),
-[Colima](https://github.com/abiosoft/colima), or OrbStack on macOS; Docker
+Runs on macOS and Linux. Every commit builds and runs the full test suite
+on Linux in CI, including the Docker end-to-end tests that boot real
+containers, so the Linux path is exercised continuously.
+
+You need [Elixir](https://elixir-lang.org) 1.19+, Node.js,
+[Mutagen](https://mutagen.io) (host-to-volume file sync), and a running
+Docker daemon: [Docker Desktop](https://docker.com),
+[Colima](https://github.com/abiosoft/colima), or OrbStack on macOS, Docker
 Engine on Linux. Docker isn't a dependency so much as the substrate: every
 workspace, agent, and dev server is a container, so nothing works until
 `docker version` succeeds.
 
-On macOS, `mix loopyard.setup` installs the tool dependencies for you via
-[Homebrew](https://brew.sh) (`brew bundle`). On Linux, install
-elixir/node/mutagen/fswatch with your package manager first; setup detects
-the missing brew and takes it from there.
+On macOS, `mix loopyard.setup` installs those with [Homebrew](https://brew.sh).
+On Linux, install them with your package manager first, then run setup.
 
 ```bash
 git clone https://github.com/loopyard/loopyard.git
