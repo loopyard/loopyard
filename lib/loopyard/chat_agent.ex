@@ -676,13 +676,9 @@ defmodule Loopyard.ChatAgent do
         :ok
     end
 
-    # DURABLY persist the card change (issue #77). Answering a
-    # question/approval/secret arrives here, and this path used to update
-    # ETS + memory only — so the answer vanished on restart and the card
-    # came back :pending, re-asking a decision you already made. `card_v` is
-    # a transient UI convergence token, not message state; drop it from what
-    # we log. Replay applies {:msg_update, …} by merging (agent_log.ex), so
-    # persisting the change is the whole fix — no separate reconciliation.
+    # DURABLY persist the card change (issue #77): answering a card used to
+    # update ETS + memory only, so the answer vanished on restart. `card_v`
+    # is a transient UI token, not message state (replay merges msg_updates).
     Persistence.persist_message_update(state, msg_id, Map.delete(changes, :card_v))
 
     :ets.insert(@ets_table, {state.id, summary(state)})
@@ -1017,11 +1013,9 @@ defmodule Loopyard.ChatAgent do
     {:reply, {:error, :unknown_call}, state}
   end
 
-  # Turn the transient `:last_enqueue` outcome that handle_cast stashed into
-  # the sync send reply, so a dropped-because-full message reports
-  # {:error, :queue_full} instead of being laundered into :ok (issue #78).
-  # The key is cleared from the returned state so it never leaks into a
-  # summary or a later reply.
+  # Turn handle_cast's transient `:last_enqueue` outcome into the sync send
+  # reply, so a dropped-because-full message reports {:error, :queue_full}
+  # instead of being laundered into :ok (#78). Clear the key so it can't leak.
   defp reply_from_enqueue(state) do
     reply = if Map.get(state, :last_enqueue) == :full, do: {:error, :queue_full}, else: :ok
     {:reply, reply, Map.delete(state, :last_enqueue)}
