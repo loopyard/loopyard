@@ -504,8 +504,8 @@ defmodule Loopyard.ChatAgent do
         # chat stream — it enters the history only when actually sent on drain.
         state =
           case SendGuards.park_send(state, text) do
-            {:ok, state} -> state
-            :full -> SendGuards.queue_full_note(state)
+            {:ok, state} -> Map.put(state, :last_enqueue, :ok)
+            :full -> state |> SendGuards.queue_full_note() |> Map.put(:last_enqueue, :full)
           end
 
         # Refresh the ETS summary so the live queue panel updates.
@@ -526,8 +526,8 @@ defmodule Loopyard.ChatAgent do
         # and the chat says exactly what's blocking + the one link to fix it.
         state =
           case SendGuards.park_send(state, text) do
-            {:ok, state} -> state
-            :full -> SendGuards.queue_full_note(state)
+            {:ok, state} -> Map.put(state, :last_enqueue, :ok)
+            :full -> state |> SendGuards.queue_full_note() |> Map.put(:last_enqueue, :full)
           end
 
         # The pending auth-fix CARD is the chat's answer; make sure one exists
@@ -675,6 +675,11 @@ defmodule Loopyard.ChatAgent do
       _ ->
         :ok
     end
+
+    # DURABLY persist the card change (issue #77): answering a card used to
+    # update ETS + memory only, so the answer vanished on restart. `card_v`
+    # is a transient UI token, not message state (replay merges msg_updates).
+    Persistence.persist_message_update(state, msg_id, Map.delete(changes, :card_v))
 
     :ets.insert(@ets_table, {state.id, summary(state)})
     {:noreply, state}
@@ -966,11 +971,11 @@ defmodule Loopyard.ChatAgent do
       # START a turn, and these statuses never do.
       state.status in [:thinking, :backoff, :compacting, :rate_limited, :auth_expired] ->
         {:noreply, new_state} = handle_cast({:send_message, text}, state)
-        {:reply, :ok, new_state}
+        reply_from_enqueue(new_state)
 
       session_alive_quick?(state) ->
         {:noreply, new_state} = handle_cast({:send_message, text}, state)
-        {:reply, :ok, new_state}
+        reply_from_enqueue(new_state)
 
       true ->
         case SendGuards.park_send(state, text) do
@@ -1006,6 +1011,14 @@ defmodule Loopyard.ChatAgent do
     )
 
     {:reply, {:error, :unknown_call}, state}
+  end
+
+  # Turn handle_cast's transient `:last_enqueue` outcome into the sync send
+  # reply, so a dropped-because-full message reports {:error, :queue_full}
+  # instead of being laundered into :ok (#78). Clear the key so it can't leak.
+  defp reply_from_enqueue(state) do
+    reply = if Map.get(state, :last_enqueue) == :full, do: {:error, :queue_full}, else: :ok
+    {:reply, reply, Map.delete(state, :last_enqueue)}
   end
 
   # Bounded liveness check for the send-ack fast path: nil session or a

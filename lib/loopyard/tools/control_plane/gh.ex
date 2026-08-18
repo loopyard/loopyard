@@ -15,16 +15,18 @@ defmodule Loopyard.Tools.ControlPlane.Gh do
       args: {:string, required: true, description: "gh arguments, e.g. 'org list'"}
     ]
 
-  def execute(%{args: args}, _assigns) do
-    case OptionParser.split(args || "") do
-      [] ->
-        {:error, "No gh command given."}
+  alias Loopyard.Tools.CommandGuard
 
-      argv ->
-        case System.cmd("gh", argv, stderr_to_stdout: true) do
-          {out, 0} -> {:ok, blank_to_note(out)}
-          {out, code} -> {:error, "gh exited #{code}:\n#{out}"}
-        end
+  def execute(%{args: args}, _assigns) do
+    with :ok <- CommandGuard.gh(args || ""),
+         argv when argv != [] <- OptionParser.split(args || "") do
+      case System.cmd("gh", argv, stderr_to_stdout: true) do
+        {out, 0} -> {:ok, blank_to_note(out)}
+        {out, code} -> {:error, "gh exited #{code}:\n#{out}"}
+      end
+    else
+      {:error, _} = err -> err
+      [] -> {:error, "No gh command given."}
     end
   rescue
     e -> {:error, "gh failed: #{Exception.message(e)}"}

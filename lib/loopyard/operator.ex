@@ -78,7 +78,7 @@ defmodule Loopyard.Operator do
     # Restore prior chat history (if any) from the operator's own ETF log — same
     # replay mechanism workspace agents use, keyed per workstation instead of per
     # workspace. Seeded into the fresh agent so the transcript survives restarts.
-    {messages, claude_session_id} = load_history(identity, id)
+    {messages, claude_session_id, pending_sends} = load_history(identity, id)
 
     # Bring up the workstation container — the operator's OWN image (base
     # toolchain + this identity's gh/Claude creds via the mounted $HOME). Its
@@ -112,7 +112,10 @@ defmodule Loopyard.Operator do
       # Restored transcript (oldest-first) + Claude session, so the chat doesn't
       # blank out across restarts and the CLI resumes the same conversation.
       initial_messages: messages,
-      claude_session_id: claude_session_id
+      claude_session_id: claude_session_id,
+      # Restore anything queued to the operator when the server went down
+      # (issue #78) — init_fresh drains it on boot.
+      pending_sends: pending_sends
     ]
 
     {:ok, _pid} =
@@ -130,19 +133,23 @@ defmodule Loopyard.Operator do
     case Loopyard.AgentLog.replay(log_path: path, version: 1) do
       {:ok, agents} ->
         case Map.get(agents, id) do
-          %{} = data -> {Map.get(data, :messages, []), Map.get(data, :claude_session_id)}
-          _ -> {[], nil}
+          %{} = data ->
+            {Map.get(data, :messages, []), Map.get(data, :claude_session_id),
+             Map.get(data, :pending_messages, [])}
+
+          _ ->
+            {[], nil, []}
         end
 
       _ ->
-        {[], nil}
+        {[], nil, []}
     end
   rescue
     e ->
       # Booting amnesic is the "conversation survives restart" invariant
       # failing — it must never be invisible.
       Loopyard.EventLog.error("operator", "history restore failed: #{Exception.message(e)}")
-      {[], nil}
+      {[], nil, []}
   end
 
   # Liveness = a LIVE GenServer process, not just an ETS row. `get_state/1`

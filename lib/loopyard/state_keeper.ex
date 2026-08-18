@@ -26,6 +26,12 @@ defmodule Loopyard.StateKeeper do
     # (the check appearing then vanishing read as "questions are busted").
     # Keyed {agent_id, msg_id}; the agent deletes on convergence.
     {:card_patches, [:named_table, :public, :set]},
+    # Loopyard.MCP.Token revocation epochs, keyed by agent_id. A token embeds
+    # the agent's epoch at mint time; verify rejects a token whose epoch is
+    # below the current one. Revoking (agent death / workspace delete) bumps
+    # the epoch, so outstanding tokens for that agent stop verifying. Cleared
+    # on restart (agents/containers are torn down then anyway).
+    {:mcp_token_epochs, [:named_table, :public, :set, {:read_concurrency, true}]},
     # Loopyard.Markdown render cache, keyed by content. Chat bubbles render
     # Markdown server-side; without this, LiveView re-runs MDEx for every
     # visible bubble on every chat re-render (hundreds per streaming turn),

@@ -578,6 +578,11 @@ defmodule Loopyard.ChatAgent.Initializer do
       # Restored history (internal list is reversed; summary reverses back).
       messages: Enum.reverse(initial_messages),
       claude_session_id: resumed_session_id,
+      # Restore any queue that was pending at shutdown (issue #78). Workspace
+      # agents resume via init_resume; the operator (and any fresh-with-history
+      # boot) comes through here, and this used to take the struct default []
+      # — silently dropping whatever was queued when the server went down.
+      pending_sends: Keyword.get(opts, :pending_sends, []),
       service_name: service_name,
       prompt_hash: prompt_hash,
       # Boot opts needed to REBUILD session_opts on a full ("reload tools")
@@ -592,6 +597,9 @@ defmodule Loopyard.ChatAgent.Initializer do
     Persistence.persist_agent(state, &Loopyard.ChatAgent.summary/1)
     Events.ChatAgent.publish(%Events.ChatAgent.Started{summary: summary})
     Loopyard.EventLog.info("agent:#{name}", "Started (#{id})")
+
+    # Deliver anything that was queued at shutdown, same as init_resume.
+    if state.pending_sends != [], do: send(self(), :drain_resumed_pending)
 
     {:ok, state}
   end

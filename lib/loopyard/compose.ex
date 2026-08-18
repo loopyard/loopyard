@@ -122,7 +122,7 @@ defmodule Loopyard.Compose do
   def validate_no_host_mounts(compose) when is_map(compose) do
     with :ok <- validate_service_volumes(compose),
          :ok <- validate_top_level_volumes(compose),
-         :ok <- validate_service_host_escapes(compose),
+         :ok <- Loopyard.Compose.HostEscape.validate(compose),
          :ok <- validate_service_ports(compose),
          :ok <- validate_networks(compose) do
       :ok
@@ -252,68 +252,6 @@ defmodule Loopyard.Compose do
 
   defp check_service_networks(_name, networks) when is_list(networks), do: :ok
   defp check_service_networks(_name, _), do: :ok
-
-  # Block the other common ways a compose service can punch through the
-  # container boundary: privileged mode, sharing host namespaces, direct
-  # device access. These are all runtime grants that defeat the sandbox
-  # just as thoroughly as a bind mount — no point blocking one and not
-  # the others.
-  defp validate_service_host_escapes(compose) do
-    services = Map.get(compose, "services", %{}) || %{}
-
-    Enum.reduce_while(services, :ok, fn {name, svc}, _acc ->
-      case check_host_escape(name, svc) do
-        :ok -> {:cont, :ok}
-        {:error, _} = err -> {:halt, err}
-      end
-    end)
-  end
-
-  defp check_host_escape(name, svc) when is_map(svc) do
-    cond do
-      svc["privileged"] == true ->
-        {:error,
-         "service #{name}: `privileged: true` is not allowed. " <>
-           "Privileged containers can remount the host filesystem and " <>
-           "reach other workspaces. Drop the key, or if you genuinely " <>
-           "need a capability use `cap_add: [SPECIFIC_CAP]` instead."}
-
-      svc["network_mode"] == "host" ->
-        {:error,
-         "service #{name}: `network_mode: host` is not allowed. " <>
-           "Host networking lets this service bind to the host's ports " <>
-           "(clashing with other workspaces) and reach host services " <>
-           "directly. Use the default bridge network; expose ports via " <>
-           "the `ports:` key so Loopyard can route them."}
-
-      svc["pid"] == "host" ->
-        {:error,
-         "service #{name}: `pid: host` is not allowed — it exposes every " <>
-           "host process (including other workspaces' containers) to this " <>
-           "service. Remove the key."}
-
-      svc["ipc"] == "host" ->
-        {:error,
-         "service #{name}: `ipc: host` is not allowed — it shares the host's " <>
-           "IPC namespace across workspaces. Remove the key."}
-
-      svc["userns_mode"] == "host" ->
-        {:error,
-         "service #{name}: `userns_mode: host` is not allowed — it disables " <>
-           "user-namespace isolation. Remove the key."}
-
-      is_list(svc["devices"]) and svc["devices"] != [] ->
-        {:error,
-         "service #{name}: `devices:` is not allowed (#{inspect(svc["devices"])}). " <>
-           "Direct host device access breaks the workspace boundary. Remove " <>
-           "the key or find a userspace alternative."}
-
-      true ->
-        :ok
-    end
-  end
-
-  defp check_host_escape(_name, _), do: :ok
 
   defp validate_service_volumes(compose) do
     services = Map.get(compose, "services", %{}) || %{}
@@ -623,25 +561,32 @@ defmodule Loopyard.Compose do
   end
 
   defp docker_compose(args, timeout) do
-    if Application.get_env(:loopyard, :docker_enabled, true) do
-      task =
-        Task.async(fn ->
-          System.cmd("docker-compose", args, stderr_to_stdout: true)
-        end)
+    cond do
+      # Same contract as Docker.docker/2's gate — keeps the default test
+      # suite off the daemon entirely.
+      not Application.get_env(:loopyard, :docker_enabled, true) ->
+        {:error, "docker disabled in this environment"}
 
-      case Task.yield(task, timeout) || Task.shutdown(task) do
-        {:ok, {output, 0}} -> {:ok, output}
-        {:ok, {output, _}} -> {:error, output}
-        nil -> {:error, "docker-compose timed out"}
-      end
-    else
-      # Same contract as Docker.docker/2's gate. This legacy fallback is the
-      # one daemon path that doesn't go through Docker.docker — with docker
-      # disabled the v2 probe fails, everything lands here, and on a machine
-      # without the legacy binary (CI runners) System.cmd is a raised
-      # :enoent, not an error tuple. The gate keeps the default suite off
-      # the daemon entirely.
-      {:error, "docker disabled in this environment"}
+      # No compose binary at all. This is the fresh Colima / OrbStack /
+      # Docker Engine case: no `docker compose` v2 plugin AND no
+      # `docker-compose`. `System.cmd` on a missing binary raises `:enoent`
+      # INSIDE the linked Task, which propagates and crashes the caller
+      # (the ServiceManager) — so check for it up front and return an error
+      # tuple the caller can surface instead.
+      is_nil(System.find_executable("docker-compose")) ->
+        {:error,
+         "Docker Compose is not installed. Loopyard needs it to run project " <>
+           "stacks — install Docker Desktop, or the `docker compose` plugin / " <>
+           "`docker-compose` binary for Colima, OrbStack, or Docker Engine."}
+
+      true ->
+        task = Task.async(fn -> System.cmd("docker-compose", args, stderr_to_stdout: true) end)
+
+        case Task.yield(task, timeout) || Task.shutdown(task) do
+          {:ok, {output, 0}} -> {:ok, output}
+          {:ok, {output, _}} -> {:error, output}
+          _ -> {:error, "docker-compose timed out"}
+        end
     end
   end
 

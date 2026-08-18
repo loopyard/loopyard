@@ -90,7 +90,17 @@ defmodule Loopyard.ComposeSecurityTest do
           {"pid host", %{"pid" => "host"}, "`pid: host` is not allowed"},
           {"ipc host", %{"ipc" => "host"}, "`ipc: host` is not allowed"},
           {"userns_mode host", %{"userns_mode" => "host"}, "`userns_mode: host` is not allowed"},
-          {"devices", %{"devices" => ["/dev/sda:/dev/sda"]}, "`devices:` is not allowed"}
+          {"devices", %{"devices" => ["/dev/sda:/dev/sda"]}, "`devices:` is not allowed"},
+          # Escape primitives the validator previously ignored (issue #79).
+          {"cap_add", %{"cap_add" => ["SYS_ADMIN"]}, "cap_add"},
+          {"security_opt", %{"security_opt" => ["seccomp:unconfined"]}, "security_opt"},
+          {"pid container:", %{"pid" => "container:loopyard-other-work"}, "pid"},
+          {"network_mode container:", %{"network_mode" => "container:loopyard-other-work"},
+           "network_mode"},
+          {"cgroup host", %{"cgroup" => "host"}, "cgroup"},
+          {"uts host", %{"uts" => "host"}, "uts"},
+          {"group_add", %{"group_add" => ["0"]}, "group_add"},
+          {"sysctls", %{"sysctls" => %{"kernel.msgmax" => "65536"}}, "sysctls"}
         ] do
       test "rejects #{label}" do
         assert {:error, reason} =
@@ -103,6 +113,52 @@ defmodule Loopyard.ComposeSecurityTest do
     test "accepts an empty devices list (no escape)" do
       # check_host_escape only fires when devices is a non-empty list.
       assert :ok = Compose.validate_no_host_mounts(svc_compose(%{"devices" => []}))
+    end
+
+    test "accepts compose-local namespace sharing (service:x is same-project)" do
+      # `pid`/`network_mode: "service:web"` shares a namespace with another
+      # service in THIS compose file, inside the workspace — only host and
+      # `container:` are escapes.
+      assert :ok = Compose.validate_no_host_mounts(svc_compose(%{"pid" => "service:web"}))
+
+      assert :ok =
+               Compose.validate_no_host_mounts(svc_compose(%{"network_mode" => "service:web"}))
+    end
+  end
+
+  describe "validate_no_host_mounts/1 — build context" do
+    test "rejects a build context outside the workspace" do
+      compose = %{
+        "services" => %{
+          "x" => %{"build" => %{"context" => "/Users/x/.loopyard/workstations"}}
+        }
+      }
+
+      assert {:error, reason} = Compose.validate_no_host_mounts(compose)
+      assert reason =~ "build"
+    end
+
+    test "rejects a dockerfile that escapes with .." do
+      compose = %{
+        "services" => %{
+          "x" => %{"build" => %{"context" => "/workspace", "dockerfile" => "../../../etc/x"}}
+        }
+      }
+
+      assert {:error, reason} = Compose.validate_no_host_mounts(compose)
+      assert reason =~ "dockerfile"
+    end
+
+    test "accepts the workspace build context (short and long form)" do
+      assert :ok =
+               Compose.validate_no_host_mounts(%{
+                 "services" => %{"x" => %{"build" => "/workspace"}}
+               })
+
+      assert :ok =
+               Compose.validate_no_host_mounts(%{
+                 "services" => %{"x" => %{"build" => %{"context" => "/workspace"}}}
+               })
     end
   end
 
@@ -221,8 +277,7 @@ defmodule Loopyard.ComposeSecurityTest do
           "web" => %{
             "image" => "myapp",
             "volumes" => ["${CODE_VOLUME}:/workspace", "appdata:/data"],
-            "ports" => ["3000"],
-            "cap_add" => ["NET_ADMIN"]
+            "ports" => ["3000"]
           },
           "db" => %{
             "image" => "postgres:16",
