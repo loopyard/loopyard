@@ -528,10 +528,29 @@ defmodule Loopyard.ChatAgent.StreamHandler do
             state
           end
 
+        # Persist the DRAINED agent record, not the full-queue one (issue #78).
+        # The queued messages are about to be turned into durable :user
+        # messages by send_batch; if we persisted `state` here (queue still
+        # full) and then drained, a crash before the next turn-end left the
+        # on-disk snapshot claiming those messages were still queued — so a
+        # restart re-drained them AND replayed them as history: the same
+        # message run twice, days later. Persisting the cleared queue shifts
+        # that to a microsecond loss window (crash between this persist and
+        # send_batch's first append), which the user simply re-sends — far
+        # better than a silent re-execution. ETS keeps the live queue so the
+        # panel still shows what's about to send.
         :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
-        Persistence.persist_agent(state, &Loopyard.ChatAgent.summary/1)
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
-        drain_pending_sends(state)
+
+        case drain_pending_sends(state) do
+          {:noreply, drained} = result ->
+            Persistence.persist_agent(drained, &Loopyard.ChatAgent.summary/1)
+            result
+
+          {:drain, _pending, drained} = result ->
+            Persistence.persist_agent(drained, &Loopyard.ChatAgent.summary/1)
+            result
+        end
     end
   end
 
