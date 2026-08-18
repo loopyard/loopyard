@@ -124,6 +124,13 @@ defmodule Loopyard.WorkspaceRegistry do
         {:error, "Cannot remove the main workspace"}
 
       true ->
+        # Revoke the MCP bridge tokens of every agent in this workspace before
+        # tearing it down — the workspace is gone, so leaked tokens must stop
+        # working (issue #81).
+        for agent <- Loopyard.ChatAgent.list_agents_for_workspace(workspace_id) do
+          Loopyard.MCP.Token.revoke(agent.id)
+        end
+
         Loopyard.Workspace.Destructor.destroy(workspace_id)
     end
   end

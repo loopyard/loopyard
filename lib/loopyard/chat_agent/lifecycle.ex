@@ -151,6 +151,12 @@ defmodule Loopyard.ChatAgent.Lifecycle do
     # bug. Terminate via the DynamicSupervisor so OTP won't restart it.
     terminate_process(id)
 
+    # Revoke this agent's outstanding MCP bridge tokens — the agent is gone, so
+    # a leaked token must stop working (issue #81). This is a definitive
+    # removal, not a transient restart (restart re-mints a token), so bumping
+    # the epoch here can't strand a live agent.
+    Loopyard.MCP.Token.revoke(id)
+
     # Remove from sidebar
     :ets.delete(@ets_table, id)
     Events.ChatAgent.publish(%Events.ChatAgent.Removed{id: id})
