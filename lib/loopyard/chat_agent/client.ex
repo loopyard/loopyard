@@ -123,17 +123,28 @@ defmodule Loopyard.ChatAgent.Client do
     * `:credentials` — token pushed (`Workstation.reload_agents`); silent.
     * `:memory_reclaim` — MemoryMonitor reclaiming an idle bloated harness;
       silent (it already EventLogs the why).
+    * `:harness` — the user picked a different harness (Claude → Codex);
+      confirm with a marker, since the switch is theirs and the reply will
+      come from somewhere new.
     * `:recovery` — actual crash recovery (internal casts); keeps the loud
       marker.
   """
   def restart_session(id, reason \\ :user)
-      when reason in [:user, :reload, :credentials, :memory_reclaim, :recovery] do
+      when reason in [:user, :reload, :credentials, :memory_reclaim, :recovery, :harness] do
     GenServer.cast(via(id), {:restart_session, reason})
   end
 
   @doc "Switch the agent's model (Usage-panel Model row); see ChatAgent.ModelControl."
   def set_model(id, model_id) when is_binary(model_id),
     do: GenServer.cast(via(id), {:set_model, model_id})
+
+  @doc """
+  Switch the agent to a different harness (Claude → Codex). Restarts the
+  session; the conversation is carried over from Loopyard's durable log.
+  See `ChatAgent.HarnessControl`.
+  """
+  def set_harness(id, harness_id, model \\ nil),
+    do: GenServer.cast(via(id), {:set_harness, harness_id, model})
 
   @doc "Register an agent as booting in ETS so all viewers can see it"
   def register_booting(id, name, working_dir, opts \\ []),

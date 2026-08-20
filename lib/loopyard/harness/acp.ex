@@ -42,6 +42,7 @@ defmodule Loopyard.Harness.ACP do
   @behaviour Loopyard.Harness
 
   alias Loopyard.Harness.ACP.{Connection, SystemPrompt}
+  alias Loopyard.Harness.Catalog
 
   @ready_timeout 30_000
   # session/load REPLAYS the whole saved conversation (plus MCP connects)
@@ -134,7 +135,9 @@ defmodule Loopyard.Harness.ACP do
   # adapter mid-handshake.
   @reap_min_age_s 150
 
-  def docker_exec_cmd(container, adapter \\ "claude-agent-acp") do
+  def docker_exec_cmd(container, harness \\ nil) do
+    %{adapter: adapter, proc_match: proc_match, env: extra_env} = Catalog.fetch(harness)
+
     # Launch the adapter through an in-container shell that sources ~/.profile, so
     # the identity env (CLAUDE_CODE_OAUTH_TOKEN, written to ~/.loopyard/env and
     # sourced from ~/.profile by Env.sync_home/1) is in scope. A bare
@@ -156,9 +159,12 @@ defmodule Loopyard.Harness.ACP do
     # /proc/uptime — read with `cut` (comm has no spaces for node/claude, so
     # field indexing is stable). No `||` in the script: it must not contain the
     # sigil delimiter `|`.
+    # `proc_match` keeps the sweep scoped to THIS harness's process tree: a
+    # Codex adapter must not reap a live Claude adapter (or vice versa) when
+    # both are running in the same work container.
     reap =
       ~S|now=$(cut -d. -f1 /proc/uptime); for d in /proc/[0-9]*; do pid=${d##*/}; | <>
-        ~S|if [ "$pid" != "$$" ] && grep -qa claude "$d/cmdline" 2>/dev/null; then | <>
+        ~s|if [ "$pid" != "$$" ] && grep -qa #{proc_match} "$d/cmdline" 2>/dev/null; then | <>
         ~S|st=$(cut -d" " -f22 "$d/stat" 2>/dev/null); if [ -n "$st" ]; then | <>
         "age=$(( now - st/100 )); if [ \"$age\" -gt #{@reap_min_age_s} ]; then " <>
         ~S|kill -9 "$pid" 2>/dev/null; fi; fi; fi; done; |
@@ -175,7 +181,13 @@ defmodule Loopyard.Harness.ACP do
         "exec " <> adapter
       end
 
-    inner = reap <> ~S|. "$HOME/.profile" 2>/dev/null; | <> launch
+    # Harness-specific env (e.g. NO_BROWSER=1 so Codex doesn't offer a browser
+    # login no one can complete in a headless container). Exported inside the
+    # container, after ~/.profile so it wins over anything sourced there.
+    exports =
+      Enum.map_join(extra_env, "", fn {key, value} -> ~s|export #{key}="#{value}"; | end)
+
+    inner = reap <> ~S|. "$HOME/.profile" 2>/dev/null; | <> exports <> launch
 
     "docker exec -i #{container} sh -c '#{inner}'"
   end
@@ -210,8 +222,11 @@ defmodule Loopyard.Harness.ACP do
         case Keyword.get(opts, :transport) do
           # Tests can inject a fake transport even in container mode.
           nil ->
-            adapter = Keyword.get(opts, :adapter, "claude-agent-acp")
-            Keyword.put(base, :transport_opts, cmd: docker_exec_cmd(container, adapter))
+            Keyword.put(
+              base,
+              :transport_opts,
+              cmd: docker_exec_cmd(container, Keyword.get(opts, :harness))
+            )
 
           transport ->
             base

@@ -41,6 +41,11 @@ defmodule Loopyard.ChatAgent.Restart do
   defp restart_note(:reload, false, _),
     do: "Restarted — tools reloaded, rebuilding context from history."
 
+  # A harness switch always rebuilds from history (the new adapter can't resume
+  # the old one's session), so there is no "resumed" variant to report.
+  defp restart_note(:harness, _resumed?, _live_id),
+    do: "Switched harness — carrying the conversation over."
+
   defp restart_note(_maintenance, _resumed?, _live_id), do: nil
 
   # The user's last message with NO assistant reply after it — the in-flight
@@ -104,7 +109,11 @@ defmodule Loopyard.ChatAgent.Restart do
     # amnesic ("switched accounts and it forgot everything"). Drop it → start
     # fresh and reconstruct from Loopyard's durable log (the seed below + the
     # recall_conversation tool). Every other reason keeps the id and resumes.
-    state = if reason == :credentials, do: %{state | claude_session_id: nil}, else: state
+    # A harness switch is the same hazard in a starker form: Codex has never
+    # heard of a Claude session id, so resuming is not merely wrong, it's
+    # meaningless. Drop it and rebuild from the durable log.
+    state =
+      if reason in [:credentials, :harness], do: %{state | claude_session_id: nil}, else: state
 
     # Stop the current session
     if state.session do

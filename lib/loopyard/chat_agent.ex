@@ -290,6 +290,9 @@ defmodule Loopyard.ChatAgent do
   @doc "Switch the agent's model (Usage-panel Model row); see ChatAgent.ModelControl."
   defdelegate set_model(id, model_id), to: Client
 
+  @doc "Switch the agent's harness (see `ChatAgent.HarnessControl`)."
+  defdelegate set_harness(id, harness_id, model \\ nil), to: Client
+
   @doc "Start a stopped/crashed agent — starts a new GenServer and resumes from saved state"
   defdelegate start_agent(id), to: Lifecycle
 
@@ -587,6 +590,10 @@ defmodule Loopyard.ChatAgent do
   def handle_cast({:set_model, model_id}, state) do
     {:noreply, Loopyard.ChatAgent.ModelControl.switch(state, model_id)}
   end
+
+  @impl true
+  def handle_cast({:set_harness, harness_id, model}, state),
+    do: Loopyard.ChatAgent.HarnessControl.handle_switch(state, harness_id, model)
 
   @impl true
   # Internal recovery paths cast the bare atom — they ARE crash recoveries.
@@ -973,7 +980,7 @@ defmodule Loopyard.ChatAgent do
         {:noreply, new_state} = handle_cast({:send_message, text}, state)
         reply_from_enqueue(new_state)
 
-      session_alive_quick?(state) ->
+      SessionManager.alive_quick?(state) ->
         {:noreply, new_state} = handle_cast({:send_message, text}, state)
         reply_from_enqueue(new_state)
 
@@ -1019,19 +1026,6 @@ defmodule Loopyard.ChatAgent do
   defp reply_from_enqueue(state) do
     reply = if Map.get(state, :last_enqueue) == :full, do: {:error, :queue_full}, else: :ok
     {:reply, reply, Map.delete(state, :last_enqueue)}
-  end
-
-  # Bounded liveness check for the send-ack fast path: nil session or a
-  # backend probe that errors/exits reads as dead. ACP's session_alive? is a
-  # real ping with its own short timeout; never let a probe blow up the ack.
-  defp session_alive_quick?(%{session: nil}), do: false
-
-  defp session_alive_quick?(state) do
-    state.backend.session_alive?(state.session)
-  rescue
-    _ -> false
-  catch
-    :exit, _ -> false
   end
 
   @impl true

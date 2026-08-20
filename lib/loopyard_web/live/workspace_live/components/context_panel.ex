@@ -7,6 +7,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   """
   use Phoenix.Component
 
+  alias Loopyard.Harness.Catalog
+
   import LoopyardWeb.Components.SideNav,
     only: [section: 1, info_row: 1, detail_hero: 1, action_bar: 1]
 
@@ -415,30 +417,30 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
 
     ~H"""
     <.section label="Usage">
-      <%!-- Model is a SWITCHER, not a label: pick the CLI alias here and the
-    live session flips via ACP session/set_model (persisted for future
-    restarts). Options are the CLI's stable aliases; the row shows the
-    resolved human name as the current selection. --%>
+      <%!-- ONE control for harness AND model: the options are grouped by
+    harness, so "run this on Codex" is the same gesture as "run this on
+    Opus 4.8" — which is how a user thinks about it. Picking within the
+    current harness flips the live session (ACP session/set_model);
+    picking another harness restarts onto that adapter and carries the
+    conversation over. Values are `harness:model` tokens — see
+    Harness.Catalog.parse_selection/1. --%>
       <div class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-5 text-body">
-        <span class="text-zinc-500 dark:text-zinc-400 flex-none">Model</span>
+        <span class="text-zinc-500 dark:text-zinc-400 flex-none">Agent</span>
         <form phx-change="set_agent_model" class="flex-none">
           <input type="hidden" name="agent-id" value={@agent.id} />
           <select
             name="model"
-            aria-label="Agent model"
+            aria-label="Agent harness and model"
             class="focus-ring rounded-sm border-0 bg-transparent py-0 pl-1 pr-6 text-body text-right font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400"
           >
-            <%!-- The container CLI's set_model passes FULL model ids through, so
-    we offer the latest frontier models by id — not just the
-    adapter's stale default/opus/haiku aliases. --%>
             <option value="" disabled selected={true}>
-              {short_model(@agent[:model]) || "default"}
+              {current_harness_model(@agent)}
             </option>
-            <option value="claude-opus-4-8">Opus 4.8</option>
-            <option value="claude-fable-5">Fable 5</option>
-            <option value="claude-sonnet-5">Sonnet 5</option>
-            <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
-            <option value="default">Adapter default</option>
+            <optgroup :for={harness <- Catalog.all()} label={harness.label}>
+              <option :for={{value, label} <- Catalog.model_options(harness.id)} value={value}>
+                {label}
+              </option>
+            </optgroup>
           </select>
         </form>
       </div>
@@ -474,6 +476,23 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   end
 
   def short_tool(name), do: name
+
+  @doc """
+  The picker's current-selection line: harness first, then model.
+
+  Always names the harness, even for Claude. Once an agent can be running on
+  something else, "Opus 4.8" alone no longer answers "what is this agent?" —
+  and a row that silently changes meaning between agents is worse than a
+  slightly longer one.
+  """
+  def current_harness_model(agent) do
+    harness = Catalog.label(agent[:harness])
+
+    case short_model(agent[:model]) do
+      nil -> "#{harness} · default"
+      model -> "#{harness} · #{model}"
+    end
+  end
 
   @doc "Human display name for a model id/name."
   def short_model(nil), do: nil

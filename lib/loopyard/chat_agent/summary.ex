@@ -31,6 +31,9 @@ defmodule Loopyard.ChatAgent.Summary do
       errors: state.errors,
       service_name: state.service_name,
       model: state.model,
+      # Which harness this agent runs on, so the picker can show the current
+      # selection without reaching into session_opts from the view.
+      harness: Loopyard.ChatAgent.HarnessControl.current(state),
       total_input_tokens: state.total_input_tokens,
       total_output_tokens: state.total_output_tokens,
       total_cache_read_tokens: state.total_cache_read_tokens,

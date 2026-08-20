@@ -60,8 +60,12 @@ defmodule Loopyard.Workstation.Integration do
     %{
       id: "codex",
       label: "Codex",
-      blurb: "Use the OpenAI Codex CLI in the box with your login.",
+      blurb:
+        "Run Codex in the box as a full agent harness — pick it per agent in the model picker.",
       env: "OPENAI_API_KEY",
+      # Either path authenticates the codex-acp harness: `codex login` writes
+      # ~/.codex/auth.json (survives Restart in the $HOME volume), or drop an
+      # OPENAI_API_KEY / CODEX_API_KEY in the env box below.
       console: "codex login",
       check: {:file, ".codex/auth.json"},
       lands: "~/.codex — live, every agent inherits it"

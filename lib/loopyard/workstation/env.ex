@@ -161,7 +161,11 @@ defmodule Loopyard.Workstation.Env do
   # Credentials the in-container harness authenticates with. Pushing a new value
   # for one of these should reload running sessions; other env vars (build flags,
   # feature toggles) don't need to interrupt an in-flight turn.
-  @credential_keys ~w(CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY)
+  #
+  # Covers every harness in `Loopyard.Harness.Catalog`, not just Claude: dropping
+  # in an OpenAI key must reload agents the same way, or a Codex harness keeps
+  # running unauthenticated until something else happens to restart it.
+  @credential_keys ~w(CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY CODEX_API_KEY OPENAI_API_KEY)
 
   defp maybe_reload_agents(key, id) do
     if key in @credential_keys, do: Loopyard.Workstation.reload_agents(id)

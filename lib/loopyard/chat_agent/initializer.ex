@@ -24,6 +24,7 @@ defmodule Loopyard.ChatAgent.Initializer do
 
   alias Loopyard.ChatAgent.{IdleReaper, Persistence, Prompt, SessionManager, ToolConfig}
   alias Loopyard.Events
+  alias Loopyard.Harness.Catalog
 
   @ets_table :chat_agents
 
@@ -92,6 +93,7 @@ defmodule Loopyard.ChatAgent.Initializer do
     :backend,
     :system_prompt,
     :model,
+    :harness,
     :container,
     :workstation_identity
   ]
@@ -127,6 +129,17 @@ defmodule Loopyard.ChatAgent.Initializer do
       case Keyword.get(state.session_opts || [], :model) do
         model when is_binary(model) -> Keyword.put(opts, :model, model)
         _ -> opts
+      end
+
+    # Same for a LIVE harness switch (Claude → Codex from the picker): the
+    # choice lives in session_opts, and a rebuild that read only the frozen boot
+    # opts would quietly drop the user back onto the harness they switched away
+    # from — with the conversation intact, which makes it look like the switch
+    # worked and then silently reverted.
+    opts =
+      case Keyword.get(state.session_opts || [], :harness) do
+        nil -> opts
+        harness -> Keyword.put(opts, :harness, harness)
       end
 
     params = [
@@ -255,9 +268,22 @@ defmodule Loopyard.ChatAgent.Initializer do
     # rather than the adapter's stale "opus" alias (4.6). Applied via
     # session/set_model once the session is ready. Overridable per-agent (opts)
     # or globally (config :loopyard, :acp_model).
+    # Which harness drives this agent. Every one speaks ACP, so only the adapter
+    # binary changes (see Harness.Catalog).
+    harness =
+      Keyword.get(opts, :harness) ||
+        Application.get_env(:loopyard, :agent_harness, Catalog.default())
+
+    # A model default is only safe when we know the harness's vocabulary:
+    # "claude-opus-4-8" handed to codex-acp is not a slow path, it's a
+    # set_model error. For anything but Claude, send no model and let the
+    # adapter boot on its own default; the picker sets one from the live list.
     acp_model =
-      Keyword.get(opts, :model) ||
-        Application.get_env(:loopyard, :acp_model, "claude-opus-4-8")
+      cond do
+        model = Keyword.get(opts, :model) -> model
+        Catalog.fetch(harness).id == :claude -> acp_default_model()
+        true -> nil
+      end
 
     session_opts =
       cond do
@@ -277,7 +303,8 @@ defmodule Loopyard.ChatAgent.Initializer do
             Loopyard.Workspace.WorkContainer.container_name(workspace_id)
           )
           |> Keyword.put(:cwd, "/workspace")
-          |> Keyword.put(:model, acp_model)
+          |> Keyword.put(:harness, harness)
+          |> maybe_put_model(acp_model)
 
         container_only? and is_binary(Keyword.get(opts, :container)) ->
           identity = Keyword.get(opts, :workstation_identity) || "operator"
@@ -287,7 +314,8 @@ defmodule Loopyard.ChatAgent.Initializer do
           |> Keyword.put(:acp_mcp_servers, ToolConfig.acp_mcp_servers(id, nil, :operator))
           |> Keyword.put(:container, Keyword.get(opts, :container))
           |> Keyword.put(:cwd, "/home/#{identity}")
-          |> Keyword.put(:model, acp_model)
+          |> Keyword.put(:harness, harness)
+          |> maybe_put_model(acp_model)
 
         true ->
           session_opts
@@ -297,6 +325,12 @@ defmodule Loopyard.ChatAgent.Initializer do
   end
 
   # --- Private helpers ---
+
+  defp acp_default_model,
+    do: Application.get_env(:loopyard, :acp_model, "claude-opus-4-8")
+
+  defp maybe_put_model(session_opts, nil), do: session_opts
+  defp maybe_put_model(session_opts, model), do: Keyword.put(session_opts, :model, model)
 
   # Write Loopyard's managed brief into `volume`'s CLAUDE.local.md, where the
   # in-container ACP harness reads it (its cwd is /workspace for a workspace agent,

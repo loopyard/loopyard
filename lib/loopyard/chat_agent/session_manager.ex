@@ -522,4 +522,19 @@ defmodule Loopyard.ChatAgent.SessionManager do
 
     nil
   end
+
+  @doc """
+  Bounded liveness check for the send-ack fast path: a nil session, or a backend
+  probe that errors or exits, reads as dead. ACP's `session_alive?` is a real
+  ping with its own short timeout; never let a probe blow up the ack.
+  """
+  def alive_quick?(%{session: nil}), do: false
+
+  def alive_quick?(state) do
+    state.backend.session_alive?(state.session)
+  rescue
+    _ -> false
+  catch
+    :exit, _ -> false
+  end
 end
