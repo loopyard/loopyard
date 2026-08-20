@@ -48,10 +48,14 @@ RUN arch="$(dpkg --print-architecture)" \
 # build. claude-agent-acp (the renamed claude-code-acp) pushes `usage_update`
 # notifications with real token usage and rate-limit info (_claude/rateLimit)
 # that the Translator depends on for compaction + rate-limit parking.
+# codex-acp bundles its own @openai/codex dependency but honours the CODEX_PATH
+# /system binary above. It speaks the SAME ACP wire as the Claude adapter, so
+# one image can host either harness; which one runs is chosen per `docker exec`.
 RUN npm install -g \
       @anthropic-ai/claude-code \
       @openai/codex \
-      @agentclientprotocol/claude-agent-acp@0.60.0
+      @agentclientprotocol/claude-agent-acp@0.60.0 \
+      @agentclientprotocol/codex-acp@1.6.0
 
 # Fly CLI (`fly`) — installed to a SYSTEM path (/usr/local), NOT $HOME: the
 # $HOME volume would shadow anything the image placed under it, so system tools
