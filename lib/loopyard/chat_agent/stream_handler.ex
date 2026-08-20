@@ -182,9 +182,14 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
     window = RateLimit.context_window_for(result.model || state.model)
 
+    # Prefer the harness's own context-usage level when it reports one; only
+    # fall back to summing this turn's input + cache_read (which approximates
+    # the window for backends that don't tell us directly).
+    context_used = result.context_used_tokens || result.input_tokens + result.cache_read_tokens
+
     utilization =
       if window > 0 do
-        (result.input_tokens + result.cache_read_tokens) / window
+        context_used / window
       else
         state.context_utilization
       end

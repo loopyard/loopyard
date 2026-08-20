@@ -134,6 +134,12 @@ defmodule Loopyard.Harness.ACP.Connection do
           # don't advertise, and the adapter falls back to its non-elicitation
           # AskUserQuestion path.
           agent_id: Keyword.get(opts, :agent_id),
+          # Cost accounting: `session_cost_usd` is the latest CUMULATIVE figure
+          # the adapter reported for this session; `reported_cost_usd` is how
+          # much of it we've already handed upstream as per-turn cost. See
+          # capture_session_cost/2.
+          session_cost_usd: 0.0,
+          reported_cost_usd: 0.0,
           waiters: [],
           turn: nil
         }
@@ -465,13 +471,32 @@ defmodule Loopyard.Harness.ACP.Connection do
       send(turn.subscriber, {:acp_event, turn.ref, %Event.RateLimitStatus{status: :rejected}})
     end
 
-    {_translator, events} = Translator.finish(turn.translator, error)
+    usage = turn_usage(msg, state)
+    {_translator, events} = Translator.finish(turn.translator, error, usage)
 
     Enum.each(events, &send(turn.subscriber, {:acp_event, turn.ref, &1}))
     send(turn.subscriber, {:acp_done, turn.ref, stop_reason || prompt_error(msg)})
 
-    {:noreply, %{state | turn: nil}}
+    {:noreply, %{state | turn: nil, reported_cost_usd: state.session_cost_usd}}
   end
+
+  # The `session/prompt` RESULT carries this turn's real token counts
+  # (`usage: {inputTokens, outputTokens, cachedReadTokens, …}`) — the adapter
+  # accumulates them per turn and resets on turn activation. Absent under older
+  # adapters, in which case the Translator falls back to its estimate.
+  defp turn_usage(msg, state) do
+    usage = get_in(msg, ["result", "usage"]) || %{}
+
+    %{cost_usd: turn_cost_delta(state)}
+    |> maybe_put_count(:input_tokens, usage["inputTokens"])
+    |> maybe_put_count(:output_tokens, usage["outputTokens"])
+    |> maybe_put_count(:cache_read_tokens, usage["cachedReadTokens"])
+  end
+
+  defp maybe_put_count(acc, key, value) when is_integer(value) and value >= 0,
+    do: Map.put(acc, key, value)
+
+  defp maybe_put_count(acc, _key, _value), do: acc
 
   # Request the DESIRED model when it differs from what the session booted on.
   # The adapter starts every session on the CLI "default" alias — this is what
@@ -550,12 +575,47 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   defp handle_notification("session/update", %{"update" => update}, %{turn: turn} = state)
        when not is_nil(turn) do
+    state = capture_session_cost(state, update)
     {translator, events} = Translator.step(turn.translator, update)
     Enum.each(events, &send(turn.subscriber, {:acp_event, turn.ref, &1}))
     {:noreply, %{state | turn: %{turn | translator: translator}}}
   end
 
+  # Cost also arrives on turn-less updates (the adapter reports autonomous
+  # results separately) — bank it so the next turn's delta stays honest.
+  defp handle_notification("session/update", %{"update" => update}, state),
+    do: {:noreply, capture_session_cost(state, update)}
+
   defp handle_notification(_method, _params, state), do: {:noreply, state}
+
+  # `usage_update.cost.amount` is the adapter's passthrough of the SDK's
+  # `total_cost_usd`, which is CUMULATIVE for the session ("read the latest
+  # result rather than summing across results") and restarts from zero on a
+  # resumed session or a mid-session /clear. Loopyard's `SessionResult.cost_usd`
+  # is a per-turn figure that StreamHandler ADDS to the agent's lifetime total,
+  # so summing the cumulative number directly would multiply spend by the turn
+  # count. Bank the latest cumulative value here (session-scoped state belongs
+  # to the Connection, not the per-turn Translator); `turn_cost_delta/1`
+  # converts it to the per-turn delta at settle time.
+  defp capture_session_cost(state, %{"sessionUpdate" => "usage_update"} = update) do
+    case get_in(update, ["cost", "amount"]) do
+      amount when is_number(amount) and amount >= 0 ->
+        %{state | session_cost_usd: amount * 1.0}
+
+      _ ->
+        state
+    end
+  end
+
+  defp capture_session_cost(state, _update), do: state
+
+  # Per-turn cost = what the session has spent minus what we've already
+  # reported. A cumulative figure that went DOWN means the adapter's counter
+  # reset (resume, /clear) — treat the new value as the whole delta rather than
+  # emitting zeros until it climbs back past the old high-water mark.
+  defp turn_cost_delta(%{session_cost_usd: current, reported_cost_usd: reported}) do
+    if current < reported, do: current, else: current - reported
+  end
 
   # ---- agent requests we must answer ----
 

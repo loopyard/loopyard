@@ -204,8 +204,74 @@ defmodule Loopyard.Harness.ACP.TranslatorTest do
       assert events == [%Event.ThinkingDelta{thinking: "hmm..."}]
 
       {_state, finish_events} = Translator.finish(state, nil)
-      # Thinking is display-only; the finalized message text stays empty.
+      # Reasoning is committed on its own channel, never folded into the answer.
       refute Enum.any?(finish_events, &match?(%Event.Text{}, &1))
+    end
+
+    test "commits the accumulated block as a persisted Thinking event at finish" do
+      {state, _events} =
+        run(Translator.new(), [
+          %{"sessionUpdate" => "agent_thought_chunk", "content" => chunk("weigh ")},
+          %{"sessionUpdate" => "agent_thought_chunk", "content" => chunk("options")}
+        ])
+
+      {_state, finish_events} = Translator.finish(state, nil)
+
+      # Without this the whole reasoning trace was live-only and vanished on
+      # refresh — the deltas are display, this is the durable record.
+      assert %Event.Thinking{thinking: "weigh options"} in finish_events
+    end
+
+    test "closes the reasoning block when the answer starts, keeping think→answer order" do
+      {_state, events} =
+        run(Translator.new(), [
+          %{"sessionUpdate" => "agent_thought_chunk", "content" => chunk("thinking")},
+          %{"sessionUpdate" => "agent_message_chunk", "content" => chunk("Answer.")}
+        ])
+
+      assert [
+               %Event.ThinkingDelta{},
+               %Event.Thinking{thinking: "thinking"},
+               %Event.TextDelta{text: "Answer."}
+             ] = events
+    end
+
+    test "closes the reasoning block when a tool call starts" do
+      {_state, events} =
+        run(Translator.new(), [
+          %{"sessionUpdate" => "agent_thought_chunk", "content" => chunk("plan it")},
+          %{
+            "sessionUpdate" => "tool_call",
+            "toolCallId" => "t1",
+            "title" => "Bash",
+            "rawInput" => %{"command" => "ls"}
+          }
+        ])
+
+      assert [
+               %Event.ThinkingDelta{},
+               %Event.Thinking{thinking: "plan it"},
+               %Event.ToolCall{id: "t1"}
+             ] = events
+    end
+
+    test "each reasoning block is committed separately across a think→tool→think turn" do
+      {state, events} =
+        run(Translator.new(), [
+          %{"sessionUpdate" => "agent_thought_chunk", "content" => chunk("first")},
+          %{
+            "sessionUpdate" => "tool_call",
+            "toolCallId" => "t1",
+            "title" => "Bash",
+            "rawInput" => %{"command" => "ls"}
+          },
+          %{"sessionUpdate" => "agent_thought_chunk", "content" => chunk("second")}
+        ])
+
+      {_state, finish_events} = Translator.finish(state, nil)
+      blocks = Enum.filter(events ++ finish_events, &match?(%Event.Thinking{}, &1))
+
+      assert [%Event.Thinking{thinking: "first"}, %Event.Thinking{thinking: "second"}] = blocks
     end
 
     test "drops empty thinking" do
@@ -500,6 +566,59 @@ defmodule Loopyard.Harness.ACP.TranslatorTest do
 
       {_state, finish_events} = Translator.finish(state, "end_turn")
       assert %Event.Text{text: "turn 2"} = hd(finish_events)
+    end
+  end
+
+  describe "finish/3 accounting (real usage from the session/prompt result)" do
+    test "prefers the result's per-turn counts over the text estimate" do
+      {state, _} =
+        Translator.step(Translator.new(), %{
+          "sessionUpdate" => "agent_message_chunk",
+          "content" => chunk(String.duplicate("x", 400))
+        })
+
+      usage = %{input_tokens: 900, output_tokens: 42, cache_read_tokens: 7, cost_usd: 0.031}
+
+      {_state, events} = Translator.finish(state, nil, usage)
+      result = List.last(events)
+
+      assert result.input_tokens == 900
+      # 400 bytes / 4 would have estimated 100 — the real number wins.
+      assert result.output_tokens == 42
+      assert result.cache_read_tokens == 7
+      assert result.cost_usd == 0.031
+    end
+
+    test "context fullness travels separately from per-turn input" do
+      {state, _} =
+        Translator.step(Translator.new(), %{
+          "sessionUpdate" => "usage_update",
+          "used" => 150_000,
+          "size" => 200_000
+        })
+
+      {_state, events} = Translator.finish(state, nil, %{input_tokens: 1_200})
+      result = List.last(events)
+
+      # Per-turn input must NOT be mistaken for context fullness: utilization is
+      # computed off context_used_tokens, and collapsing it to 1_200/200_000
+      # would silently disarm proactive compaction.
+      assert result.input_tokens == 1_200
+      assert result.context_used_tokens == 150_000
+    end
+
+    test "falls back to the estimate when the result carries no usage" do
+      {state, _} =
+        Translator.step(Translator.new(), %{
+          "sessionUpdate" => "agent_message_chunk",
+          "content" => chunk(String.duplicate("y", 80))
+        })
+
+      {_state, events} = Translator.finish(state, nil, nil)
+      result = List.last(events)
+
+      assert result.output_tokens == 20
+      assert result.cost_usd == 0.0
     end
   end
 

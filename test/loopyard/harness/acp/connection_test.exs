@@ -189,6 +189,92 @@ defmodule Loopyard.Harness.ACP.ConnectionTest do
       refute_receive {:acp_event, _ref, _event}, 100
       assert Process.alive?(conn)
     end
+
+    test "the prompt result's usage reaches SessionResult", %{conn: conn} do
+      ref = make_ref()
+      Connection.prompt(conn, "go", self(), ref)
+      assert_receive {:sent, %{"method" => "session/prompt", "id" => id}}
+
+      send(
+        conn,
+        {:acp_msg,
+         %{
+           "id" => id,
+           "result" => %{
+             "stopReason" => "end_turn",
+             "usage" => %{
+               "inputTokens" => 1_500,
+               "outputTokens" => 320,
+               "cachedReadTokens" => 90
+             }
+           }
+         }}
+      )
+
+      assert_receive {:acp_event, ^ref,
+                      %Event.SessionResult{
+                        input_tokens: 1_500,
+                        output_tokens: 320,
+                        cache_read_tokens: 90
+                      }}
+    end
+  end
+
+  describe "cost accounting (cumulative → per-turn delta)" do
+    setup do
+      {conn, _transport} = start_conn()
+      handshake(conn)
+      {:ok, conn: conn}
+    end
+
+    # Drive one full turn, optionally pushing a cumulative cost mid-turn.
+    # Returns the turn's SessionResult.
+    defp turn_with_cost(conn, cumulative) do
+      ref = make_ref()
+      Connection.prompt(conn, "go", self(), ref)
+      assert_receive {:sent, %{"method" => "session/prompt", "id" => id}}
+
+      if cumulative do
+        send(
+          conn,
+          {:acp_msg,
+           notif("usage_update", %{
+             "used" => 1_000,
+             "size" => 200_000,
+             "cost" => %{"amount" => cumulative, "currency" => "USD"}
+           })}
+        )
+      end
+
+      send(conn, {:acp_msg, %{"id" => id, "result" => %{"stopReason" => "end_turn"}}})
+      assert_receive {:acp_event, ^ref, %Event.SessionResult{} = result}
+      result
+    end
+
+    test "each turn reports only what it spent, not the running session total",
+         %{conn: conn} do
+      # The adapter passes through the SDK's total_cost_usd, which is CUMULATIVE.
+      # StreamHandler adds cost_usd to a lifetime total, so reporting the
+      # cumulative figure every turn would multiply spend by the turn count.
+      assert turn_with_cost(conn, 0.10).cost_usd == 0.10
+      assert_in_delta turn_with_cost(conn, 0.25).cost_usd, 0.15, 0.000001
+      assert_in_delta turn_with_cost(conn, 0.30).cost_usd, 0.05, 0.000001
+    end
+
+    test "a counter reset (resume, /clear) is treated as a fresh delta, not zeros",
+         %{conn: conn} do
+      assert turn_with_cost(conn, 0.40).cost_usd == 0.40
+
+      # Cumulative went DOWN — the session's counter restarted. Reporting
+      # max(0, current - reported) would emit 0 until spend climbed back past
+      # 0.40, silently losing every turn in between.
+      assert turn_with_cost(conn, 0.05).cost_usd == 0.05
+      assert_in_delta turn_with_cost(conn, 0.09).cost_usd, 0.04, 0.000001
+    end
+
+    test "a turn with no cost report costs nothing", %{conn: conn} do
+      assert turn_with_cost(conn, nil).cost_usd == 0.0
+    end
   end
 
   describe "agent-initiated requests" do

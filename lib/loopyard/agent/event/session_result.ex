@@ -19,7 +19,16 @@ defmodule Loopyard.Agent.Event.SessionResult do
     cache_read_tokens: 0,
     cost_usd: 0.0,
     duration_ms: 0.0,
-    num_turns: 0
+    num_turns: 0,
+    # How full the CONTEXT WINDOW is right now — a session-scoped level, not a
+    # per-turn amount, and therefore not summable. Kept separate from
+    # `input_tokens` because the two answer different questions: input/output/
+    # cache_read accumulate into the agent's lifetime totals, while this drives
+    # context utilization and the proactive-compaction threshold. `nil` means
+    # the harness didn't report it, and utilization falls back to the per-turn
+    # input+cache figure (what backends without a context signal have always
+    # done).
+    context_used_tokens: nil
   ]
 
   @type t :: %__MODULE__{
@@ -27,6 +36,7 @@ defmodule Loopyard.Agent.Event.SessionResult do
           input_tokens: non_neg_integer(),
           output_tokens: non_neg_integer(),
           cache_read_tokens: non_neg_integer(),
+          context_used_tokens: non_neg_integer() | nil,
           cost_usd: float(),
           duration_ms: float(),
           num_turns: non_neg_integer(),

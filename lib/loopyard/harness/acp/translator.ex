@@ -43,14 +43,40 @@ defmodule Loopyard.Harness.ACP.Translator do
   # notifications (claude-agent-acp; the old claude-code-acp never sends them).
   # Deliberately NOT reset in finish/2 — usage is session-scoped, and the last
   # known value is the honest number for a turn that emitted no update.
-  defstruct text: [], model: nil, tools: %{}, break_pending: false, used_tokens: nil
+  #
+  # `thoughts`: accumulated `agent_thought_chunk` text for the CURRENT reasoning
+  # block. The live `ThinkingDelta`s are display-only — without committing the
+  # block as an `%Event.Thinking{}` the whole reasoning trace vanished on
+  # refresh (the `💭 Reasoning` disclosure in the transcript was never fed).
+  # Flushed when the block ENDS (first text chunk or tool call after thinking)
+  # rather than only at turn end, so a think → tool → think → answer turn keeps
+  # its reasoning in the right places instead of collapsing to one block up top.
+  defstruct text: [],
+            model: nil,
+            tools: %{},
+            break_pending: false,
+            used_tokens: nil,
+            thoughts: []
 
   @type t :: %__MODULE__{
           text: iodata(),
           model: String.t() | nil,
           tools: map(),
           break_pending: boolean(),
-          used_tokens: non_neg_integer() | nil
+          used_tokens: non_neg_integer() | nil,
+          thoughts: iodata()
+        }
+
+  @typedoc """
+  End-of-turn accounting handed to `finish/3` by the Connection (which owns
+  session-scoped state). All fields optional; absent ones fall back to the
+  previous estimate-based behaviour.
+  """
+  @type usage :: %{
+          optional(:input_tokens) => non_neg_integer(),
+          optional(:output_tokens) => non_neg_integer(),
+          optional(:cache_read_tokens) => non_neg_integer(),
+          optional(:cost_usd) => float()
         }
 
   @spec new(keyword()) :: t()
@@ -75,18 +101,29 @@ defmodule Loopyard.Harness.ACP.Translator do
     if text == "" do
       {state, []}
     else
+      # The answer starting ends any open reasoning block — commit it first so
+      # the transcript keeps think-then-answer order.
+      {state, thinking} = flush_thoughts(state)
+
       sep = if state.break_pending and state.text != [], do: "\n\n", else: ""
       chunk = sep <> text
 
       {%{state | text: [state.text, chunk], break_pending: false},
-       [%Event.TextDelta{text: chunk}]}
+       thinking ++ [%Event.TextDelta{text: chunk}]}
     end
   end
 
-  # Streaming thinking — display-only, not part of the committed message.
+  # Streaming thinking — `ThinkingDelta` drives the live view; the accumulated
+  # block is committed as `%Event.Thinking{}` by flush_thoughts/1 so it survives
+  # a refresh.
   defp do_step(state, "agent_thought_chunk", update) do
     text = dig_text(update["content"])
-    if text == "", do: {state, []}, else: {state, [%Event.ThinkingDelta{thinking: text}]}
+
+    if text == "" do
+      {state, []}
+    else
+      {%{state | thoughts: [state.thoughts, text]}, [%Event.ThinkingDelta{thinking: text}]}
+    end
   end
 
   # A tool call surfaces across several frames: the first may carry an empty
@@ -96,15 +133,18 @@ defmodule Loopyard.Harness.ACP.Translator do
   # update/result forces it out).
   defp do_step(state, "tool_call", update) do
     id = update["toolCallId"]
+    # Acting ends any open reasoning block (Claude thinks, then calls).
+    {state, thinking} = flush_thoughts(state)
     {state, entry} = buffer_tool(state, id, update)
     {state, events} = maybe_emit_call(state, id, entry)
     # Tool activity now sits between any prior text and the next — the next
     # text chunk opens a fresh block (see break_pending).
-    {%{state | break_pending: true}, events}
+    {%{state | break_pending: true}, thinking ++ events}
   end
 
   defp do_step(state, "tool_call_update", update) do
     id = update["toolCallId"]
+    {state, thinking} = flush_thoughts(state)
     {state, entry} = buffer_tool(state, id, update)
 
     # Ensure the call is emitted before its result (force it out if needed).
@@ -145,7 +185,7 @@ defmodule Loopyard.Harness.ACP.Translator do
         {state, []}
       end
 
-    {%{state | break_pending: true}, call_events ++ result_events}
+    {%{state | break_pending: true}, thinking ++ call_events ++ result_events}
   end
 
   # Slash commands / skills available this session (surface for #8); not chat noise.
@@ -193,9 +233,13 @@ defmodule Loopyard.Harness.ACP.Translator do
   message is committed/persisted) and a `SessionResult` for accounting +
   session-id capture.
   """
-  @spec finish(t(), nil | {:error, term()}) :: {t(), [Event.t()]}
-  def finish(state, error \\ nil) do
+  @spec finish(t(), nil | {:error, term()}, usage() | nil) :: {t(), [Event.t()]}
+  def finish(state, error \\ nil, usage \\ nil) do
     full = IO.iodata_to_binary(state.text)
+
+    # A turn that ended mid-reasoning (no answer, or interrupted) still has an
+    # open block — commit it rather than losing it.
+    {state, thinking_events} = flush_thoughts(state)
 
     text_events = if full == "", do: [], else: [%Event.Text{text: full}]
 
@@ -210,19 +254,31 @@ defmodule Loopyard.Harness.ACP.Translator do
         _ -> {false, nil}
       end
 
-    # Input tokens: the adapter's `usage_update` (claude-agent-acp) gives us
-    # the session's real context usage — report it so StreamHandler's
-    # context_utilization actually moves and the 92% proactive compaction
-    # fires BEFORE the harness balloons past the container memory cap (#20).
-    # Under the legacy adapter (no usage_update) it stays 0 as before.
-    # Output: ESTIMATE from the turn's assembled text (~4 chars/token) so the
-    # cumulative counter racks up even when the adapter is usage-silent.
+    # Accounting, in order of trust:
+    #
+    #   1. `usage` — the `session/prompt` RESULT's real per-turn counts
+    #      (inputTokens/outputTokens/cachedReadTokens), plus the cost DELTA the
+    #      Connection derived from `usage_update`'s cumulative figure. This is
+    #      the honest path and the one modern adapters take.
+    #   2. `state.used_tokens` — the session's context usage pushed by
+    #      `usage_update`. Keeps `context_utilization` moving (and the 92%
+    #      proactive compaction firing) when the result omitted usage.
+    #   3. An output ESTIMATE from the assembled text (~4 chars/token), so the
+    #      cumulative counter still racks up against a usage-silent adapter.
+    #
+    # `input_tokens` is a per-turn amount that accumulates into lifetime totals;
+    # context fullness travels separately as `context_used_tokens` so feeding
+    # real per-turn input here can't collapse utilization (and silently disarm
+    # the proactive-compaction threshold).
+    usage = usage || %{}
+
     result = %Event.SessionResult{
       model: state.model,
-      input_tokens: state.used_tokens || 0,
-      output_tokens: div(byte_size(full), 4),
-      cache_read_tokens: 0,
-      cost_usd: 0.0,
+      context_used_tokens: state.used_tokens,
+      input_tokens: Map.get(usage, :input_tokens) || state.used_tokens || 0,
+      output_tokens: Map.get(usage, :output_tokens) || div(byte_size(full), 4),
+      cache_read_tokens: Map.get(usage, :cache_read_tokens, 0),
+      cost_usd: Map.get(usage, :cost_usd, 0.0),
       duration_ms: 0.0,
       num_turns: 1,
       is_error: is_error,
@@ -230,7 +286,20 @@ defmodule Loopyard.Harness.ACP.Translator do
     }
 
     # Reset turn-scoped accumulation; keep model.
-    {%{state | text: [], tools: %{}, break_pending: false}, text_events ++ [result]}
+    {%{state | text: [], tools: %{}, break_pending: false},
+     thinking_events ++ text_events ++ [result]}
+  end
+
+  # Commit the open reasoning block, if any, as a persisted `%Event.Thinking{}`.
+  # StreamHandler drops the queued live deltas when it sees one, so the block
+  # doesn't render twice.
+  defp flush_thoughts(%{thoughts: []} = state), do: {state, []}
+
+  defp flush_thoughts(state) do
+    case IO.iodata_to_binary(state.thoughts) do
+      "" -> {%{state | thoughts: []}, []}
+      text -> {%{state | thoughts: []}, [%Event.Thinking{thinking: text}]}
+    end
   end
 
   # --- helpers ---
