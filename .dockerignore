@@ -1,0 +1,22 @@
+# Build context hygiene. Without this the context includes evals/ (full cloned
+# projects), worktrees/, and every _build — gigabytes shipped to the daemon.
+.git
+.github
+_build
+_build_wt
+deps
+assets/node_modules
+evals
+worktrees
+workspaces
+tmp
+docs
+plans
+test
+.loopyard_home
+.profhome
+.loopyard
+ssh
+*.log
+.elixir_ls
+.DS_Store

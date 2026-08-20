@@ -13,6 +13,7 @@ defmodule Loopyard.MixProject do
       listeners: [Phoenix.CodeReloader],
       aliases: aliases(),
       deps: deps(),
+      releases: releases(),
       description:
         "An open-source multiplayer software factory where humans and AI ship code together.",
       package: [licenses: ["AGPL-3.0-or-later"], links: %{}],
@@ -31,6 +32,18 @@ defmodule Loopyard.MixProject do
 
   def cli do
     [preferred_envs: [coveralls: :test, "coveralls.detail": :test, "coveralls.html": :test]]
+  end
+
+  # Self-contained release — assembles a runnable tree bundling ERTS + the app.
+  # This is what the server image (deploy/Dockerfile) copies out of the builder.
+  defp releases do
+    [
+      loopyard: [
+        include_executables_for: [:unix],
+        applications: [runtime_tools: :permanent],
+        steps: [:assemble]
+      ]
+    ]
   end
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]

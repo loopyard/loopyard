@@ -14,6 +14,12 @@ config :loopyard,
   auth_password: System.get_env("LOOPYARD_AUTH_PASSWORD"),
   auth_username: System.get_env("LOOPYARD_AUTH_USERNAME")
 
+# Releases do not start the endpoint unless told to. The server image sets this;
+# an embedded/desktop release that wants the app without a listener does not.
+if System.get_env("PHX_SERVER") do
+  config :loopyard, LoopyardWeb.Endpoint, server: true
+end
+
 if config_env() == :prod do
   secret_key_base =
     System.get_env("SECRET_KEY_BASE") ||
