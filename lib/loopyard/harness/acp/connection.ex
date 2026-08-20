@@ -14,14 +14,16 @@ defmodule Loopyard.Harness.ACP.Connection do
   (and we still surface a `%Event.PermissionRequest{}` so the #7 UI can later
   intercept); `:ask` (block on a UI decision) is future work.
 
-  Cohesive helper clusters live in sub-modules: stderr diagnostics in
-  `Connection.Diagnostics`, model/session wire helpers in `Connection.Models`,
-  token/cost accounting in `Connection.Usage`.
+  Cohesive helper clusters live in sub-modules: the initialize/authenticate/
+  session handshake in `Connection.Handshake` (auth-method selection in
+  `Connection.Auth`), stderr diagnostics in `Connection.Diagnostics`,
+  model/session wire helpers in `Connection.Models`, token/cost accounting in
+  `Connection.Usage`.
   """
   use GenServer
   require Logger
 
-  alias Loopyard.Harness.ACP.Connection.{Diagnostics, Models, Usage}
+  alias Loopyard.Harness.ACP.Connection.{Diagnostics, Handshake, Models, Usage}
   alias Loopyard.Harness.ACP.Translator
   alias Loopyard.Agent.Event
 
@@ -368,78 +370,19 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   # ---- response routing ----
 
-  defp handle_response(:initialize, msg, %{resume: sid} = state)
-       when is_binary(sid) and sid != "" do
-    # Resume: replay the saved conversation via session/load instead of booting
-    # a fresh (amnesic) session/new — this is what makes ACP honor the
-    # conversation-continuity invariant across restarts. Only if the adapter
-    # advertises the capability; otherwise fall back to a new session so we
-    # still boot.
-    if Models.load_supported?(msg) do
-      {state, _} =
-        request(state, "session/load", %{
-          "sessionId" => sid,
-          "cwd" => state.cwd,
-          "mcpServers" => state.mcp_servers
-        })
-
-      {:noreply, state}
-    else
-      {:noreply, elem(new_session(state), 0)}
-    end
+  # Some adapters gate session creation behind ACP `authenticate` (codex-acp
+  # does). Do it BEFORE session/new, else that call answers "Authentication
+  # required" even with a usable key in the container env. `Auth.method_id/1`
+  # returns nil when there's nothing advertised we can satisfy headlessly, in
+  # which case we handshake exactly as before.
+  # Handshake responses (initialize / authenticate / session load+new) live in
+  # `Connection.Handshake` — one cohesive cluster, and the only part of this
+  # module with multi-step control flow of its own.
+  defp handle_response(kind, msg, state)
+       when kind in [:initialize, :authenticate, :session_load, :session_new] do
+    Handshake.response(kind, msg, state)
   end
 
-  defp handle_response(:initialize, _msg, state) do
-    {:noreply, elem(new_session(state), 0)}
-  end
-
-  defp handle_response(:session_load, %{"result" => result}, state) do
-    # session/load loads the session we named, so its id is our resume id (the
-    # adapter may omit it from the result). Any replayed history arrives as
-    # session/update notifications with turn == nil first — safely ignored.
-    sid = (is_map(result) && result["sessionId"]) || state.resume
-
-    state =
-      state
-      |> session_ready(sid, result)
-      |> maybe_set_model(result)
-
-    {:noreply, reply_waiters(state, :ok)}
-  end
-
-  defp handle_response(:session_load, %{"error" => error}, state) do
-    # Saved session unknown/expired — boot a fresh one so the agent still comes
-    # up (as a new conversation) rather than failing to start. LOUD on purpose:
-    # this silently drops harness-side conversation continuity (Loopyard's own
-    # message history survives in ETS), so it must be visible when it happens.
-    Logger.warning(
-      "ACP: session/load for #{inspect(state.resume)} failed (#{inspect(error)}); " <>
-        "falling back to a FRESH session — harness-side history not restored"
-    )
-
-    Loopyard.EventLog.error(
-      "harness:acp",
-      "Resume failed for session #{inspect(state.resume)} — started fresh instead"
-    )
-
-    {:noreply, elem(new_session(state), 0)}
-  end
-
-  defp handle_response(:session_new, %{"result" => result}, state) do
-    state =
-      state
-      |> session_ready(result["sessionId"], result)
-      |> maybe_set_model(result)
-
-    {:noreply, reply_waiters(state, :ok)}
-  end
-
-  defp handle_response(:session_new, %{"error" => error}, state) do
-    {:noreply, reply_waiters(%{state | status: :closed}, {:error, error})}
-  end
-
-  # Ping response — result OR error both prove the adapter's event loop is
-  # alive and serving; reply :pong either way.
   defp handle_response({:ping, from}, _msg, state) do
     GenServer.reply(from, :pong)
     {:noreply, state}
@@ -486,7 +429,8 @@ defmodule Loopyard.Harness.ACP.Connection do
   # model's human name immediately; the :set_model error path reverts it.
   # `session_ready/3` (already run) normalized the current model + dialect out
   # of either wire shape.
-  defp maybe_set_model(state, result) do
+  @doc false
+  def maybe_set_model(state, result) do
     desired = state.desired_model
     {_models, current, _dialect} = Models.extract_models(result)
 
@@ -508,7 +452,8 @@ defmodule Loopyard.Harness.ACP.Connection do
     end
   end
 
-  defp new_session(state),
+  @doc false
+  def new_session(state),
     do: request(state, "session/new", %{"cwd" => state.cwd, "mcpServers" => state.mcp_servers})
 
   defp prompt_error(%{"error" => error}), do: {:error, error}
@@ -760,7 +705,8 @@ defmodule Loopyard.Harness.ACP.Connection do
   #
   # Wire-dialect normalization lives in Connection.Models — we remember which
   # dialect to speak (`:model_dialect`) for later model switches.
-  defp session_ready(state, sid, result) do
+  @doc false
+  def session_ready(state, sid, result) do
     {models, current, dialect} = Models.extract_models(result)
     name = Models.model_name(models, current) || current || state.model
 
@@ -769,7 +715,8 @@ defmodule Loopyard.Harness.ACP.Connection do
     |> Map.merge(%{session_id: sid, status: :ready, available_models: models, model: name})
   end
 
-  defp reply_waiters(state, reply) do
+  @doc false
+  def reply_waiters(state, reply) do
     Enum.each(state.waiters, &GenServer.reply(&1, reply))
     %{state | waiters: []}
   end
