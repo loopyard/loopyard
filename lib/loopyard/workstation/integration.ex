@@ -104,6 +104,12 @@ defmodule Loopyard.Workstation.Integration do
   local form shown on the tool page.
   """
   @spec mac_script(map(), String.t(), String.t(), String.t()) :: String.t()
+  # EVERY branch speaks. These scripts run on the user's Mac, far from any
+  # Loopyard log, and a missing local credential is exactly the case a human
+  # must act on (`fly auth login`) and the system cannot self-fix. The old
+  # `&&`-chained / bare-`if` forms short-circuited in SILENCE: the user fired
+  # the command, nothing was pushed, and the page still read "Not connected"
+  # with no way to tell a failed push from a missing login.
   def mac_script(integration, base, ws, curl_flags \\ "-fsS")
 
   def mac_script(%{id: "github"}, base, ws, cf) do
@@ -111,12 +117,13 @@ defmodule Loopyard.Workstation.Integration do
     hosts = url(base, ws, "file/.config/gh/hosts.yml")
 
     """
-    if command -v gh >/dev/null 2>&1; then
-      t=$(gh auth token 2>/dev/null)
-      if [ -n "$t" ]; then
-        printf '%s' "$t" | curl #{cf} -T - "#{env}"
-        printf 'github.com:\\n    oauth_token: %s\\n    user: %s\\n    git_protocol: ssh\\n' "$t" "$(gh api user -q .login 2>/dev/null)" | curl #{cf} -T - "#{hosts}"
-      fi
+    if ! command -v gh >/dev/null 2>&1; then
+      echo "loopyard: gh is not installed — install the GitHub CLI, then re-run this command." >&2
+    elif t=$(gh auth token 2>/dev/null) && [ -n "$t" ]; then
+      printf '%s' "$t" | curl #{cf} -T - "#{env}"
+      printf 'github.com:\\n    oauth_token: %s\\n    user: %s\\n    git_protocol: ssh\\n' "$t" "$(gh api user -q .login 2>/dev/null)" | curl #{cf} -T - "#{hosts}"
+    else
+      echo "loopyard: gh is not logged in — run 'gh auth login', then re-run this command." >&2
     fi\
     """
   end
@@ -137,6 +144,8 @@ defmodule Loopyard.Workstation.Integration do
       else
         printf '{"hasCompletedOnboarding":true}' | curl #{cf} -T - "#{cfg_url}"
       fi
+    else
+      echo "loopyard: no Claude credentials on this Mac — run 'claude' and sign in, then re-run this command." >&2
     fi\
     """
   end
@@ -145,7 +154,11 @@ defmodule Loopyard.Workstation.Integration do
     file = url(base, ws, "file/.codex/auth.json")
 
     """
-    [ -f "$HOME/.codex/auth.json" ] && cat "$HOME/.codex/auth.json" | curl #{cf} -T - "#{file}"\
+    if [ -f "$HOME/.codex/auth.json" ]; then
+      curl #{cf} -T "$HOME/.codex/auth.json" "#{file}"
+    else
+      echo "loopyard: no ~/.codex/auth.json — run 'codex login', then re-run this command." >&2
+    fi\
     """
   end
 
@@ -153,7 +166,13 @@ defmodule Loopyard.Workstation.Integration do
     env = url(base, ws, "env/FLY_ACCESS_TOKEN")
 
     """
-    command -v fly >/dev/null 2>&1 && t=$(fly auth token 2>/dev/null) && [ -n "$t" ] && printf '%s' "$t" | curl #{cf} -T - "#{env}"\
+    if ! command -v fly >/dev/null 2>&1; then
+      echo "loopyard: fly is not installed — install flyctl, then re-run this command." >&2
+    elif t=$(fly auth token 2>/dev/null) && [ -n "$t" ]; then
+      printf '%s' "$t" | curl #{cf} -T - "#{env}"
+    else
+      echo "loopyard: fly is not logged in — run 'fly auth login', then re-run this command." >&2
+    fi\
     """
   end
 

@@ -71,4 +71,31 @@ defmodule Loopyard.Workstation.EnvTest do
       assert Env.all(id) == %{}
     end
   end
+
+  describe "credential writes announce themselves" do
+    test "put/3 broadcasts so an open integration page re-probes", %{id: id} do
+      Loopyard.Events.Workstation.subscribe(id)
+
+      assert :ok = Env.put("FLY_ACCESS_TOKEN", "tok-123", id)
+
+      assert_receive %Loopyard.Events.Workstation.CredentialsChanged{
+                       workstation_id: ^id,
+                       source: :env,
+                       key: "FLY_ACCESS_TOKEN"
+                     }
+    end
+
+    test "delete/2 broadcasts too — disconnecting is also a state change", %{id: id} do
+      :ok = Env.put("FLY_ACCESS_TOKEN", "tok-123", id)
+      Loopyard.Events.Workstation.subscribe(id)
+
+      Env.delete("FLY_ACCESS_TOKEN", id)
+
+      assert_receive %Loopyard.Events.Workstation.CredentialsChanged{
+                       workstation_id: ^id,
+                       source: :env,
+                       key: "FLY_ACCESS_TOKEN"
+                     }
+    end
+  end
 end

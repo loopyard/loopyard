@@ -12,7 +12,19 @@ defmodule LoopyardWeb.WorkstationToolLive do
 
   alias Loopyard.Terminal
   alias Loopyard.Workstation
+  alias Loopyard.Events.Workstation.CredentialsChanged
   alias Loopyard.Workstation.{Container, Env, Integration}
+
+  @behaviour Loopyard.Events.Workstation.Subscriber
+
+  @impl true
+  def handle_info(%CredentialsChanged{} = e, socket),
+    do: on_workstation_credentials_changed(e, socket)
+
+  @impl Loopyard.Events.Workstation.Subscriber
+  def on_workstation_credentials_changed(%CredentialsChanged{}, socket) do
+    {:noreply, recheck(socket)}
+  end
 
   @impl true
   def mount(%{"id" => ws, "tool" => tool}, _session, socket) do
@@ -50,9 +62,15 @@ defmodule LoopyardWeb.WorkstationToolLive do
           end
 
         socket =
-          if connected?(socket),
-            do: subscribe_iex(socket),
-            else: assign(socket, :iex_session, %{level: nil})
+          if connected?(socket) do
+            # A credential can land from a `curl -T` on the user's Mac, with no
+            # browser event to hang a re-probe off. Without this the badge sits
+            # on its mount-time answer.
+            Loopyard.Events.Workstation.subscribe(ws)
+            subscribe_iex(socket)
+          else
+            assign(socket, :iex_session, %{level: nil})
+          end
 
         socket =
           socket
@@ -129,12 +147,17 @@ defmodule LoopyardWeb.WorkstationToolLive do
   end
 
   def handle_event("recheck", _params, socket) do
+    {:noreply, recheck(socket)}
+  end
+
+  # Re-run the connected? probe. Shared by the manual button and the PubSub
+  # arrival so both land on exactly one code path.
+  defp recheck(socket) do
     %{ig: ig, current_id: ws} = socket.assigns
 
-    {:noreply,
-     socket
-     |> assign(:status, :checking)
-     |> start_async(:status, fn -> Integration.connected?(ig, ws) end)}
+    socket
+    |> assign(:status, :checking)
+    |> start_async(:status, fn -> Integration.connected?(ig, ws) end)
   end
 
   # Fill doc placeholders: $LOOPYARD → `__ORIGIN__` (swapped for the real browser

@@ -17,6 +17,8 @@
 - PR template with checklist
 
 ### Fixed
+- Integration pages live-update when a credential is pushed by `curl` — env and file writes now broadcast on a per-workstation topic instead of leaving the badge on its mount-time answer
+- Mac transfer scripts say why they did nothing (not installed / not logged in) instead of silently short-circuiting and leaving the page reading "Not connected"
 - `mix loopyard.setup` now supports Homebrew 6.0.10, isolates Hex installation from dependency resolution, installs JavaScript dependencies, and stops on failed steps
 - Rebuild messages now reach the agent (was broadcasting to PubSub only, agent never subscribed to its own topic)
 - `append_external_message` now broadcasts to PubSub so both agent and LiveView subscribers see external messages
