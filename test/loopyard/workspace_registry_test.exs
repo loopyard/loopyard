@@ -246,4 +246,36 @@ defmodule Loopyard.WorkspaceRegistryTest do
       assert id1 != id2
     end
   end
+
+  describe "volume backing backfill" do
+    test "legacy row without volume_based backfills on read, keeps its host path" do
+      id = "vbt_legacy"
+
+      :ets.insert(
+        :workspace_registry,
+        {id,
+         %{
+           id: id,
+           project_id: "p_vbt",
+           name: "main",
+           path: "/home/somebody/dev/proj",
+           branch: "main",
+           is_main: true,
+           status: :stopped
+         }}
+      )
+
+      on_exit(fn -> :ets.delete(:workspace_registry, id) end)
+
+      ws = WorkspaceRegistry.get_workspace(id)
+
+      # Without this, AgentBoot's :ensure_services takes the legacy
+      # bind-mount branch and never brings the WorkContainer up.
+      assert ws.volume_based == true
+      assert ws.volume == Loopyard.VolumeManager.code_volume_name(id)
+      # Ordering guard: the backfill must not rewrite a real host path
+      # to the virtual workspaces dir (maybe_add_path keys off :volume_based).
+      assert ws.path == "/home/somebody/dev/proj"
+    end
+  end
 end

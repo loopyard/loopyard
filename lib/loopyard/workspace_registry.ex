@@ -211,6 +211,13 @@ defmodule Loopyard.WorkspaceRegistry do
       branch: workspace_name,
       is_main: is_main,
       status: :stopped,
+      # Every workspace is volume-backed (D10) — code lives in a Docker
+      # volume and the cheap WorkContainer mounts it. Without these the
+      # AgentBoot :ensure_services step falls through to the legacy
+      # bind-mount branch, never calls ensure_working/1, and the agent's
+      # ACP harness execs into a work container that was never created.
+      volume: Loopyard.VolumeManager.code_volume_name(id),
+      volume_based: true,
       added_at: DateTime.utc_now()
     }
 
@@ -228,7 +235,25 @@ defmodule Loopyard.WorkspaceRegistry do
     |> maybe_add_worktree_path()
     |> maybe_add_compose_dir()
     |> maybe_add_setup()
+    |> maybe_add_volume_backing()
   end
+
+  # Backfill volume backing for rows persisted before D10 ("working is the
+  # default"). Without it AgentBoot's :ensure_services takes the legacy
+  # bind-mount branch, never calls ensure_working/1, and the ACP harness
+  # execs into a work container nothing ever created. Runs LAST in the
+  # pipeline: maybe_add_path/1 keys off :volume_based, and setting it
+  # earlier would rewrite an existing Local row's real host path to the
+  # virtual workspaces dir.
+  defp maybe_add_volume_backing(%{volume_based: true, volume: v} = ws) when is_binary(v), do: ws
+
+  defp maybe_add_volume_backing(%{id: id} = ws) do
+    ws
+    |> Map.put(:volume_based, true)
+    |> Map.put_new(:volume, Loopyard.VolumeManager.code_volume_name(id))
+  end
+
+  defp maybe_add_volume_backing(ws), do: ws
 
   # Backfill the setup field for workspaces persisted before this feature
   # shipped. They were always synchronous-success on the old code path,
