@@ -16,32 +16,17 @@ defmodule Loopyard.Harness.ACP.Connection.Handshake do
   alias Loopyard.Harness.ACP.Connection
   alias Loopyard.Harness.ACP.Connection.{Auth, Models}
 
-  def response(:initialize, msg, state) when not :erlang.is_map_key(:auth_done, state) do
-    case Auth.method_id(msg) do
-      nil ->
-        if offered = Auth.offered(msg) do
-          Logger.info(
-            "ACP: adapter offers only interactive auth (#{offered}); continuing without it"
-          )
-        end
-
-        response(:initialize, msg, Map.put(state, :auth_done, true))
-
-      method_id ->
-        state = Map.put(state, :auth_done, true)
-        # Stash the initialize result: the authenticate response is what
-        # resumes the handshake, and it needs the capabilities from here
-        # (loadSession) to choose session/load vs session/new.
-        state = Map.put(state, :init_result, msg)
-        {state, _} = Connection.request(state, "authenticate", %{"methodId" => method_id})
-        {:noreply, state}
-    end
+  # Remember what the adapter offered, but do NOT authenticate yet — see the
+  # session/new error clause below for why this is on-demand.
+  def response(:initialize, msg, state) when not :erlang.is_map_key(:init_result, state) do
+    state = state |> Map.put(:init_result, msg) |> Map.put(:auth_method, Auth.method_id(msg))
+    response(:initialize, msg, state)
   end
 
-  # The authenticate round-trip landed — resume the handshake from the stashed
-  # initialize result. A failure here is a CREDENTIAL problem, not a transport
-  # one, so say so plainly and let the ready-waiters fail rather than retrying
-  # a login that will keep failing.
+  # The authenticate round-trip landed — retry the session that provoked it.
+  # A failure here is a CREDENTIAL problem, not a transport one, so say so
+  # plainly and let the ready-waiters fail rather than retrying a login that
+  # will keep failing.
   def response(:authenticate, %{"error" => error}, state) do
     Logger.error("ACP: authenticate failed: #{inspect(error)}")
 
@@ -50,7 +35,7 @@ defmodule Loopyard.Harness.ACP.Connection.Handshake do
   end
 
   def response(:authenticate, _msg, state) do
-    response(:initialize, Map.get(state, :init_result, %{}), state)
+    {:noreply, elem(Connection.new_session(state), 0)}
   end
 
   def response(:initialize, msg, %{resume: sid} = state)
@@ -119,9 +104,46 @@ defmodule Loopyard.Harness.ACP.Connection.Handshake do
     {:noreply, Connection.reply_waiters(state, :ok)}
   end
 
-  def response(:session_new, %{"error" => error}, state) do
-    {:noreply, Connection.reply_waiters(%{state | status: :closed}, {:error, error})}
+  # AUTH ON DEMAND. An adapter advertises every auth method it *supports*, not
+  # the ones you still need — codex-acp lists `api-key` even when you are
+  # already signed in via ChatGPT. Authenticating eagerly off that list forced
+  # an API-key login over a perfectly good existing session and failed with
+  # "CODEX_API_KEY or OPENAI_API_KEY is not set" for a user who needs neither.
+  #
+  # So the adapter gets to tell us: only when session/new comes back
+  # "Authentication required" do we authenticate, and then retry it once. An
+  # existing login never sees an authenticate call at all.
+  def response(:session_new, %{"error" => error} = msg, state) do
+    method = Map.get(state, :auth_method)
+
+    if (auth_required?(error) and method) && not Map.get(state, :auth_tried, false) do
+      state = Map.put(state, :auth_tried, true)
+      {state, _} = Connection.request(state, "authenticate", %{"methodId" => method})
+      {:noreply, state}
+    else
+      if auth_required?(error) and is_nil(method) do
+        Logger.error(
+          "ACP: session needs auth but no non-interactive method is offered" <>
+            case Auth.offered(Map.get(state, :init_result, %{})) do
+              nil -> ""
+              offered -> " (adapter offers: #{offered})"
+            end
+        )
+      end
+
+      _ = msg
+      {:noreply, Connection.reply_waiters(%{state | status: :closed}, {:error, error})}
+    end
   end
+
+  # JSON-RPC -32000 is the ACP "Authentication required" code; match the
+  # message too, since an adapter may use a different code for the same thing.
+  defp auth_required?(%{"code" => -32_000}), do: true
+
+  defp auth_required?(%{"message" => m}) when is_binary(m),
+    do: String.contains?(m, "Authentication required")
+
+  defp auth_required?(_), do: false
 
   # Ping response — result OR error both prove the adapter's event loop is
   # alive and serving; reply :pong either way.

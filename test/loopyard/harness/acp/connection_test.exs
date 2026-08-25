@@ -220,6 +220,118 @@ defmodule Loopyard.Harness.ACP.ConnectionTest do
     end
   end
 
+  describe "authentication (on demand, never eager)" do
+    # An adapter advertises every method it SUPPORTS, not the ones you still
+    # need: codex-acp lists "api-key" even when you are already signed in via
+    # ChatGPT. These tests pin the consequence — we authenticate only when a
+    # session is actually refused.
+    defp init_with_auth(conn, methods) do
+      assert_receive {:sent, %{"method" => "initialize", "id" => init_id}}
+      send(conn, {:acp_msg, %{"id" => init_id, "result" => %{"authMethods" => methods}}})
+    end
+
+    @api_key [%{"id" => "api-key", "name" => "API Key"}]
+
+    test "a session that opens never triggers an authenticate call" do
+      {conn, _t} = start_conn()
+      init_with_auth(conn, @api_key)
+
+      assert_receive {:sent, %{"method" => "session/new", "id" => new_id}}
+      send(conn, {:acp_msg, %{"id" => new_id, "result" => %{"sessionId" => "sess-1"}}})
+
+      assert :ok = Connection.await_ready(conn, 1_000)
+      # The bug this pins: authenticating off the advertised list forced an
+      # API-key login over a working ChatGPT session.
+      refute_receive {:sent, %{"method" => "authenticate"}}, 100
+    end
+
+    test "a refused session authenticates, then retries the session once" do
+      {conn, _t} = start_conn()
+      init_with_auth(conn, @api_key)
+
+      assert_receive {:sent, %{"method" => "session/new", "id" => id1}}
+
+      send(
+        conn,
+        {:acp_msg,
+         %{"id" => id1, "error" => %{"code" => -32_000, "message" => "Authentication required"}}}
+      )
+
+      assert_receive {:sent, %{"method" => "authenticate", "id" => auth_id} = frame}
+      assert frame["params"]["methodId"] == "api-key"
+
+      send(conn, {:acp_msg, %{"id" => auth_id, "result" => %{}}})
+
+      assert_receive {:sent, %{"method" => "session/new", "id" => id2}}
+      send(conn, {:acp_msg, %{"id" => id2, "result" => %{"sessionId" => "sess-2"}}})
+
+      assert :ok = Connection.await_ready(conn, 1_000)
+    end
+
+    test "it does not retry authentication forever" do
+      {conn, _t} = start_conn()
+      init_with_auth(conn, @api_key)
+
+      assert_receive {:sent, %{"method" => "session/new", "id" => id1}}
+      refusal = %{"code" => -32_000, "message" => "Authentication required"}
+      send(conn, {:acp_msg, %{"id" => id1, "error" => refusal}})
+
+      assert_receive {:sent, %{"method" => "authenticate", "id" => auth_id}}
+      send(conn, {:acp_msg, %{"id" => auth_id, "result" => %{}}})
+
+      # Still refused after authenticating — give up rather than loop.
+      assert_receive {:sent, %{"method" => "session/new", "id" => id2}}
+      task = Task.async(fn -> Connection.await_ready(conn, 1_000) end)
+      Process.sleep(20)
+      send(conn, {:acp_msg, %{"id" => id2, "error" => refusal}})
+
+      assert {:error, ^refusal} = Task.await(task, 1_000)
+      refute_receive {:sent, %{"method" => "authenticate"}}, 100
+    end
+
+    test "a credential failure surfaces as auth_failed, not a transport error" do
+      {conn, _t} = start_conn()
+      init_with_auth(conn, @api_key)
+
+      assert_receive {:sent, %{"method" => "session/new", "id" => id1}}
+
+      send(
+        conn,
+        {:acp_msg,
+         %{"id" => id1, "error" => %{"code" => -32_000, "message" => "Authentication required"}}}
+      )
+
+      assert_receive {:sent, %{"method" => "authenticate", "id" => auth_id}}
+      task = Task.async(fn -> Connection.await_ready(conn, 1_000) end)
+      Process.sleep(20)
+
+      send(
+        conn,
+        {:acp_msg, %{"id" => auth_id, "error" => %{"message" => "OPENAI_API_KEY is not set"}}}
+      )
+
+      assert {:error, {:auth_failed, %{"message" => "OPENAI_API_KEY is not set"}}} =
+               Task.await(task, 1_000)
+    end
+
+    test "no non-interactive method offered → the session error stands on its own" do
+      {conn, _t} = start_conn()
+      # Browser/device-code only: authenticating would hang on a login nobody
+      # can complete in a headless container.
+      init_with_auth(conn, [%{"id" => "chat-gpt", "name" => "ChatGPT"}])
+
+      assert_receive {:sent, %{"method" => "session/new", "id" => id1}}
+      task = Task.async(fn -> Connection.await_ready(conn, 1_000) end)
+      Process.sleep(20)
+
+      refusal = %{"code" => -32_000, "message" => "Authentication required"}
+      send(conn, {:acp_msg, %{"id" => id1, "error" => refusal}})
+
+      assert {:error, ^refusal} = Task.await(task, 1_000)
+      refute_receive {:sent, %{"method" => "authenticate"}}, 100
+    end
+  end
+
   describe "cost accounting (cumulative → per-turn delta)" do
     setup do
       {conn, _transport} = start_conn()
