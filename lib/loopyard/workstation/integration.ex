@@ -63,10 +63,20 @@ defmodule Loopyard.Workstation.Integration do
       blurb:
         "Run Codex in the box as a full agent harness — pick it per agent in the model picker.",
       env: "OPENAI_API_KEY",
-      # Either path authenticates the codex-acp harness: `codex login` writes
-      # ~/.codex/auth.json (survives Restart in the $HOME volume), or drop an
-      # OPENAI_API_KEY / CODEX_API_KEY in the env box below.
-      console: "codex login",
+      # Either path authenticates the codex-acp harness: this console command
+      # writes ~/.codex/auth.json (survives Restart in the $HOME volume), or
+      # drop an OPENAI_API_KEY / CODEX_API_KEY in the env box below.
+      #
+      # --device-auth is REQUIRED, not a preference. Plain `codex login` starts
+      # a callback server on localhost:1455 INSIDE the box and prints a URL
+      # whose redirect_uri points there — so the browser on your Mac calls back
+      # to your Mac's port 1455, which nothing is listening on, and the login
+      # can never complete. Codex says so itself: "On a remote or headless
+      # machine? Use `codex login --device-auth` instead." Device auth prints a
+      # URL plus a one-time code you enter from any browser, exactly like
+      # `claude setup-token`.
+      console: "codex login --device-auth",
+      console_label: "codex login (device code)",
       check: {:file, ".codex/auth.json"},
       lands: "~/.codex — live, every agent inherits it"
     },
