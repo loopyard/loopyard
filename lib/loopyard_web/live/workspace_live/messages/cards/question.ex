@@ -22,7 +22,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
   """
   def question_card(assigns) do
     ~H"""
-    <div class="py-2">
+    <%!-- The card is an ANCHOR: the composer's waiting-on-you band links here,
+    and `scroll-mt` clears the transcript's pinned chrome so the band doesn't
+    land the card under it. --%>
+    <div id={"msg-#{@msg[:id]}"} class="py-2 scroll-mt-16">
       <%!-- Quiet decision panel: a light amber WASH signals "needs you" (amber,
     NOT violet — violet is the "You" message colour). Options sit on white
     rows so they stay distinct on the tint. Reads top-down: label ›

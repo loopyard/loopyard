@@ -503,24 +503,33 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           </div>
         </div>
         <%!-- WAITING-ON-YOU band: when a question is pending, repeat it at the
-            composer (flame = blocked-on-a-human) so you always see the ask and
-            know a typed reply answers it. Full-bleed like the queue band. --%>
-        <div
+            composer (flame = blocked-on-a-human) so you always see the ask.
+            It is a LINK to the card — it used to say "use the buttons above"
+            while being an inert div, so tapping it did nothing and the card
+            it referred to was somewhere up the transcript. One line of ask,
+            one obvious action. Full-bleed like the queue band. --%>
+        <a
           :if={@pending_question}
-          class="w-full -mt-2 mb-2 px-3 md:px-6 py-2.5 bg-orange-50 dark:bg-orange-500/10 border-t border-b border-orange-200 dark:border-orange-500/25"
+          href={"#msg-#{@pending_question[:id]}"}
+          class="block w-full -mt-2 mb-2 px-3 md:px-6 py-2.5 bg-orange-50 dark:bg-orange-500/10 border-t border-b border-orange-200 dark:border-orange-500/25 hover:bg-orange-100 dark:hover:bg-orange-500/15 transition-colors"
         >
           <div class="wide:max-w-3xl mx-auto flex items-start gap-2">
             <span class="flex-none text-orange-600 dark:text-orange-400" aria-hidden="true">⚑</span>
-            <div class="min-w-0">
-              <div class="text-meta font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-300">
-                Waiting on you · type a reply below to answer, or use the buttons above
+            <div class="min-w-0 flex-1">
+              <div class="flex items-baseline gap-2">
+                <span class="min-w-0 flex-1 truncate text-meta font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-300">
+                  Waiting on you
+                </span>
+                <span class="flex-none text-meta font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-300">
+                  Answer ↑
+                </span>
               </div>
-              <p class="mt-0.5 text-body text-zinc-700 dark:text-zinc-200 line-clamp-2">
+              <p class="mt-0.5 text-body text-zinc-700 dark:text-zinc-200 line-clamp-1">
                 {question_prompt_preview(@pending_question)}
               </p>
             </div>
           </div>
-        </div>
+        </a>
         <%!-- The composer divider: just ABOVE the message box, BELOW the queued
             card. A DIRECT child of the pane (not the centered column), so it
             spans the full width of the screen/pane. --%>
