@@ -304,14 +304,7 @@ defmodule Loopyard.ChatAgent.SessionManager do
       {:error, reason, next_hint} ->
         error_msg = %{
           role: :error,
-          content:
-            "Session retry ##{consecutive} failed: #{inspect(reason)}. " <>
-              "WHY: exponential backoff expired; the attempt to re-spawn the Claude CLI errored. " <>
-              "CONSEQUENCE: the agent is idle but the CLI isn't running. Your prior messages are preserved. " <>
-              "ACTION: send another message — this triggers ensure_session_alive which will " <>
-              "retry the spawn. If it keeps failing, check `claude --version` + auth, or " <>
-              "click Restart. After #{max_consecutive_crashes} consecutive failures the " <>
-              "agent will auto-quarantine until you intervene.",
+          content: retry_failed_copy(state, consecutive, reason, max_consecutive_crashes),
           timestamp: DateTime.utc_now()
         }
 
@@ -537,4 +530,37 @@ defmodule Loopyard.ChatAgent.SessionManager do
   catch
     :exit, _ -> false
   end
+
+  # The retry-exhausted error, WHY / CONSEQUENCE / ACTION. Named by harness —
+  # an agent running Codex must never be told to check `claude`.
+  #
+  # An auth failure gets its own copy: "send another message to retry" is not
+  # an action when the harness has no credential — it would fail the same way
+  # forever. The fix lives on the Workstation page, so point there.
+  defp retry_failed_copy(state, _consecutive, {:auth_failed, error}, _max) do
+    harness = Loopyard.Harness.Catalog.fetch(Loopyard.ChatAgent.HarnessControl.current(state))
+
+    "#{harness.label} isn't signed in in this box (#{auth_detail(error)}). " <>
+      "CONSEQUENCE: this agent can't run until it is; your messages are preserved. " <>
+      "ACTION: connect #{harness.label} on the Workstation page — set " <>
+      "#{Enum.join(harness.credential_keys, " or ")}, or run its login command in the " <>
+      "box console — then click Restart."
+  end
+
+  defp retry_failed_copy(state, consecutive, reason, max_consecutive_crashes) do
+    harness = Loopyard.Harness.Catalog.label(Loopyard.ChatAgent.HarnessControl.current(state))
+
+    "Session retry ##{consecutive} failed: #{inspect(reason)}. " <>
+      "WHY: exponential backoff expired; the attempt to re-spawn the #{harness} harness errored. " <>
+      "CONSEQUENCE: the agent is idle but the harness isn't running. Your prior messages are preserved. " <>
+      "ACTION: send another message — this triggers ensure_session_alive which will " <>
+      "retry the spawn. If it keeps failing, check the harness's login on the Workstation page, or " <>
+      "click Restart. After #{max_consecutive_crashes} consecutive failures the " <>
+      "agent will auto-quarantine until you intervene."
+  end
+
+  defp auth_detail(%{"message" => m}) when is_binary(m),
+    do: String.replace_prefix(m, "Internal error: ", "")
+
+  defp auth_detail(other), do: inspect(other)
 end
