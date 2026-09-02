@@ -269,6 +269,55 @@ fs/exec tools are omitted (the container has native Read/Write/Bash). This is
 the one Loopyard surface reachable from inside a container — read
 docs/SECURITY.md → "ACP MCP bridge" before touching it.
 
+## Multi-harness agents (Claude + Codex on ONE connection)
+
+**`Loopyard.Harness.Catalog` is the only place a vendor is named.** Every
+harness Loopyard runs speaks ACP, so `Harness.ACP` (connection, translator,
+resume, MCP bridge, questions, approvals, model switch) is shared verbatim; a
+Catalog entry is the *whole* per-vendor difference: adapter binary
+(`claude-agent-acp` / `codex-acp`), orphan-sweep `proc_match`, credential
+keys, launch `env`, static `config`, and **how the brief reaches it**
+(`brief: :cwd_file | {:config_env, var, key}`). Adding a harness = one entry +
+its adapter in `priv/workspace-base/Dockerfile` (bump the `WorkContainer`
+`@image` tag). Never `case` on a harness id anywhere else; a per-vendor
+difference that isn't launch/credentials/brief belongs in the struct.
+
+**Codex is `codex app-server` behind an ACP shim.** The adapter
+(`@agentclientprotocol/codex-acp`, the ACP org's TypeScript package — the old
+Zed Rust `@zed-industries/codex-acp` is archived) spawns `codex app-server`,
+OpenAI's supported deep-integration surface, and translates it to the same
+ACP wire the Claude adapter speaks. Two consequences a contributor must know:
+(1) **Codex never reads `CLAUDE.local.md`** (it reads `AGENTS.md`), so the
+agent brief goes out as `developer_instructions` inside the JSON that
+`CODEX_CONFIG` carries (`Harness.ACP.docker_exec_cmd/3`, base64 through the
+single-quoted launch shell) — a Codex agent that answers "I don't know my agent
+id" means this path broke. The same config sets
+`project_doc_fallback_filenames: ["CLAUDE.md"]` so a CLAUDE.md-only repo guides
+Codex too. (2) **Auth is on demand, never eager, and gates `session/load` as
+well as `session/new`.** The adapter advertises every method it *supports*
+(`api-key` even when signed in via ChatGPT); `Connection.Handshake` only sends
+`authenticate` after a `-32000 Authentication required` refusal, once, with the
+first headless method (`Connection.Auth`), then redoes the resume-or-fresh
+decision — a refused resume is retried as a LOAD so harness-side history
+survives a Loopyard restart. `NO_BROWSER=1` (Catalog env) stops the adapter
+from offering the browser login nobody can complete in a headless container;
+the human path is `codex login --device-auth` in the box console, or an
+`OPENAI_API_KEY`/`CODEX_API_KEY` in the workstation env
+(`Workstation.Integration`).
+
+**Switching harness carries the conversation, not the session.** The sidebar
+picker's value is a `harness:model` token (`Catalog.parse_selection/1`); same
+harness → live `session/set_model`; different harness →
+`ChatAgent.set_harness/3` → `restart_session(id, :harness)`, which DROPS the
+native session id (Codex can't resume a Claude session) and rebuilds from
+Loopyard's durable log via `ResumeMessage` seeding + `recall_conversation` —
+the harness-portable memory design's first real payoff. The model does NOT
+travel across (a Claude id handed to codex-acp is a `set_model` error); the
+new adapter boots on its own default unless the picker named one.
+`session_opts[:harness]` is the source of truth (rebuilt through
+`Initializer.rebuild_session_opts/1` on `:reload`), exposed as `harness` on the
+agent summary.
+
 ## Fork readiness (provision-before-available)
 
 A fork is fully provisioned **before** it becomes available — "Open"

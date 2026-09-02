@@ -1,6 +1,9 @@
 # Epic: Multi-agent harnesses — full-fidelity Claude, plus Codex and friends
 
-Status: **analysis / proposal**. Nothing here is built. Derived from a read of
+Status: **Slices 1 (reasoning persisted, real usage/cost), 8 (Codex via
+`codex-acp`) and 8a/8b (harness + model picker, credential keys, device-code
+login) SHIPPED** on the `codex` branch — see CLAUDE.md → "Multi-harness
+agents". The rest remains a proposal. Originally derived from a read of
 [pingdotgg/t3code](https://github.com/pingdotgg/t3code) (@ `main`, Aug 2026) against Loopyard as it
 stands on `main`.
 
