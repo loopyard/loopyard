@@ -391,9 +391,14 @@ boots the cloned config once cloning is done — not just forks.
   without it gets text only and Reads the path. The store is a **target**:
   `{:workspace, id}` (code volume, via `VolumeIO`) or `{:container, name,
   home}` (the operator's workstation `$HOME/.loopyard/uploads`, via
-  `ContainerIO`); the Connection's `prompt_context` carries volume AND
-  container so `prompt_blocks/2` reads from whichever the session has.
-  `/operator/attachments/:name` serves the operator's.
+  `ContainerIO`); the Connection's `prompt_context` carries volume, container
+  AND cwd so `prompt_blocks/2` reads from whichever the session has — and
+  ONLY from `<cwd>/.loopyard/uploads` (a marker line is text anyone can type).
+  Inline images are decided by magic bytes (`sniff_image/1`), never the
+  browser's label; HEIC converts to JPEG at store time; 20 MB per prompt.
+  `/operator/attachments/:name` serves the operator's. The route serves
+  sniffed images inline and everything else as a sandboxed download — see
+  docs/SECURITY.md §9 before touching it.
 - **Composer queue is ONE card.** Messages queued while the agent is
   busy render as a single sender-labeled band (the workstation name,
   e.g. "Brad" — not "You") with every pending line inside it, each

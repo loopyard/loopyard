@@ -27,9 +27,13 @@ defmodule LoopyardWeb.ComposerWritesTest do
   test "the queued message body is not a button" do
     src = File.read!(@chat)
 
-    # Whatever element renders {text} in the queue band must not be a control.
+    # Whatever element renders the queued words must not be a control. The
+    # row hands the text to <.queued_text> (words + attachment chips); the
+    # words render inside that component as {@body}.
     [_, row] = String.split(src, ~s|:for={{text, i} <- Enum.with_index|, parts: 2)
-    [before_text, _] = String.split(row, "{text}", parts: 2)
+    assert row =~ "<.queued_text text={text} />"
+    [_, component] = String.split(src, "def queued_text(assigns) do", parts: 2)
+    [before_text, _] = String.split(component, "{@body}", parts: 2)
 
     # The tag {text} sits inside is the last one opened before it.
     opener = before_text |> String.split("<") |> List.last()

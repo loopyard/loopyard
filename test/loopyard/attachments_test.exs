@@ -5,6 +5,7 @@ defmodule Loopyard.AttachmentsTest do
   alias Loopyard.Test.FakeAttachmentWriter
 
   @png %{path: "shot.png", name: "shot.png", mime: "image/png", size: 84_213}
+  @png_bytes <<137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82>>
   @log %{
     path: "/workspace/.loopyard/uploads/x-server.log",
     name: "x-server.log",
@@ -84,7 +85,7 @@ defmodule Loopyard.AttachmentsTest do
       File.mkdir_p!(tmp)
       on_exit(fn -> File.rm_rf!(tmp) end)
       src = Path.join(tmp, "upload.tmp")
-      File.write!(src, <<137, 80, 78, 71, 1, 2, 3>>)
+      File.write!(src, @png_bytes)
 
       ws = "att-ws-#{System.unique_integer([:positive])}"
       volume = Loopyard.Workspace.volume_name_for(ws)
@@ -95,11 +96,11 @@ defmodule Loopyard.AttachmentsTest do
                ])
 
       assert att.mime == "image/png"
-      assert att.size == 7
+      assert att.size == byte_size(@png_bytes)
       assert att.path == "/workspace/.loopyard/uploads/" <> att.name
       assert att.name =~ ~r/-shot\.png$/
 
-      assert FakeAttachmentWriter.read(volume, att.path) == <<137, 80, 78, 71, 1, 2, 3>>
+      assert FakeAttachmentWriter.read(volume, att.path) == @png_bytes
       assert FakeAttachmentWriter.read(volume, ".loopyard/uploads/.gitignore") == "*\n"
     end
 
@@ -136,11 +137,13 @@ defmodule Loopyard.AttachmentsTest do
       path: "/workspace/.loopyard/uploads/x-shot.png",
       name: "x-shot.png",
       mime: "image/png",
-      size: 4
+      size: 16
     }
 
     test "text goes verbatim, images ride along as base64 image blocks" do
-      volume = FakeVolumeIO.seed("vol-pb", [{"/workspace/.loopyard/uploads/x-shot.png", "PNG!"}])
+      volume =
+        FakeVolumeIO.seed("vol-pb", [{"/workspace/.loopyard/uploads/x-shot.png", @png_bytes}])
+
       text = Attachments.annotate("look", [@shot, @log])
 
       assert [
@@ -148,7 +151,50 @@ defmodule Loopyard.AttachmentsTest do
                %{"type" => "image", "data" => data, "mimeType" => "image/png"}
              ] = Attachments.prompt_blocks(text, %{volume: volume, image?: true})
 
-      assert Base.decode64!(data) == "PNG!"
+      assert Base.decode64!(data) == @png_bytes
+    end
+
+    test "a file that isn't really an image is never inlined, whatever its label" do
+      volume =
+        FakeVolumeIO.seed("vol-pb3", [
+          {"/workspace/.loopyard/uploads/x-shot.png", "<svg onload=alert(1)>"}
+        ])
+
+      text = Attachments.annotate("look", [@shot])
+
+      assert [%{"type" => "text"}] =
+               Attachments.prompt_blocks(text, %{volume: volume, image?: true})
+    end
+
+    test "only files in the session's uploads dir are read — a typed marker line can't reach elsewhere" do
+      volume = FakeVolumeIO.seed("vol-pb4", [{"/workspace/secret.png", @png_bytes}])
+      forged = %{@shot | path: "/workspace/secret.png", name: "secret.png"}
+      text = Attachments.annotate("look", [forged])
+
+      assert [%{"type" => "text"}] =
+               Attachments.prompt_blocks(text, %{volume: volume, image?: true})
+    end
+
+    test "the prompt's inline images are capped in total; the rest stay path-only" do
+      # Six images whose marker lines each claim 4 MB: five fit a 20 MB budget,
+      # the sixth stays path-only.
+      four_mb = @png_bytes <> :binary.copy(<<0>>, 4 * 1024 * 1024 - byte_size(@png_bytes))
+      files = for i <- 1..6, do: {"/workspace/.loopyard/uploads/x-#{i}.png", four_mb}
+      volume = FakeVolumeIO.seed("vol-pb5", files)
+
+      atts =
+        for i <- 1..6,
+            do: %{
+              path: "/workspace/.loopyard/uploads/x-#{i}.png",
+              name: "x-#{i}.png",
+              mime: "image/png",
+              size: 4 * 1024 * 1024
+            }
+
+      blocks =
+        Attachments.prompt_blocks(Attachments.annotate("", atts), %{volume: volume, image?: true})
+
+      assert Enum.count(blocks, &(&1["type"] == "image")) == 5
     end
 
     test "a harness without image support, or no volume, gets the lone text block" do
@@ -169,7 +215,12 @@ defmodule Loopyard.AttachmentsTest do
       text =
         Attachments.annotate("", [
           @shot,
-          %{@shot | size: 6 * 1024 * 1024, path: "/workspace/.loopyard/uploads/big.png"}
+          %{
+            @shot
+            | size: 6 * 1024 * 1024,
+              path: "/workspace/.loopyard/uploads/big.png",
+              name: "big.png"
+          }
         ])
 
       assert [%{"type" => "text"}] =
@@ -205,21 +256,29 @@ defmodule Loopyard.AttachmentsTest do
 
     test "prompt_blocks/2 reads the image out of the container when there's no volume" do
       path = "/home/brad/.loopyard/uploads/x-shot.png"
-      FakeContainerIO.seed("loopyard-ws-brad", path, "PNG!")
+      FakeContainerIO.seed("loopyard-ws-brad", path, @png_bytes)
 
       text =
         Attachments.annotate("look", [
-          %{path: path, name: "x-shot.png", mime: "image/png", size: 4}
+          %{path: path, name: "x-shot.png", mime: "image/png", size: 16}
         ])
 
-      assert [%{"type" => "text"}, %{"type" => "image", "data" => data}] =
-               Attachments.prompt_blocks(text, %{
-                 volume: nil,
-                 container: "loopyard-ws-brad",
-                 image?: true
-               })
+      ctx = %{volume: nil, container: "loopyard-ws-brad", cwd: "/home/brad", image?: true}
 
-      assert Base.decode64!(data) == "PNG!"
+      assert [%{"type" => "text"}, %{"type" => "image", "data" => data}] =
+               Attachments.prompt_blocks(text, ctx)
+
+      assert Base.decode64!(data) == @png_bytes
+
+      # Confined to that home's uploads dir: a marker naming ~/.ssh reads nothing.
+      FakeContainerIO.seed("loopyard-ws-brad", "/home/brad/.ssh/id_rsa", @png_bytes)
+
+      forged =
+        Attachments.annotate("", [
+          %{path: "/home/brad/.ssh/id_rsa", name: "id_rsa", mime: "image/png", size: 16}
+        ])
+
+      assert [%{"type" => "text"}] = Attachments.prompt_blocks(forged, ctx)
     end
 
     test "url/2 with no workspace is the operator's attachment route; container_path guards the name" do
@@ -239,6 +298,69 @@ defmodule Loopyard.AttachmentsTest do
              "Screen-Shot.png"
 
     assert Attachments.display_name("plain.png") == "plain.png"
+  end
+
+  test "sniff_image/1 and heic?/1 read magic numbers" do
+    assert Attachments.sniff_image(@png_bytes) == "image/png"
+    assert Attachments.sniff_image(<<0xFF, 0xD8, 0xFF, 0xE0, 0, 0>>) == "image/jpeg"
+    assert Attachments.sniff_image("GIF89a....") == "image/gif"
+    assert Attachments.sniff_image("RIFF" <> <<0, 0, 0, 0>> <> "WEBPVP8 ") == "image/webp"
+    assert Attachments.sniff_image("<svg xmlns=") == nil
+    assert Attachments.sniff_image("") == nil
+    assert Attachments.heic?(<<0, 0, 0, 24, "ftypheic", 0, 0>>)
+    refute Attachments.heic?(@png_bytes)
+  end
+
+  test "the stored type is what the bytes are, not the browser's label" do
+    tmp = Path.join(System.tmp_dir!(), "att-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(tmp)
+    on_exit(fn -> File.rm_rf!(tmp) end)
+    jpg = Path.join(tmp, "upload.tmp")
+    File.write!(jpg, <<0xFF, 0xD8, 0xFF, 0xE0>> <> "not really a jpeg body")
+
+    # Labelled png by the client, actually JPEG bytes: stored as JPEG.
+    assert {:ok, [att]} =
+             Attachments.store("att-ws-3", [
+               %{path: jpg, client_name: "shot.png", client_type: "image/png"}
+             ])
+
+    assert att.mime == "image/jpeg"
+  end
+
+  test "a HEIC upload is stored as a JPEG the model can see (macOS sips)" do
+    sips = System.find_executable("sips")
+
+    if sips do
+      tmp = Path.join(System.tmp_dir!(), "att-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(tmp)
+      on_exit(fn -> File.rm_rf!(tmp) end)
+      png = Path.join(tmp, "dot.png")
+
+      File.write!(
+        png,
+        Base.decode64!(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+        )
+      )
+
+      heic = Path.join(tmp, "photo.heic")
+
+      {_, 0} =
+        System.cmd(sips, ["-s", "format", "heic", png, "--out", heic], stderr_to_stdout: true)
+
+      assert Attachments.heic?(File.read!(heic))
+
+      assert {:ok, [att]} =
+               Attachments.store("att-ws-heic", [
+                 %{path: heic, client_name: "IMG_0001.HEIC", client_type: "image/heic"}
+               ])
+
+      assert att.mime == "image/jpeg"
+      assert att.name =~ ~r/-IMG_0001\.jpg$/
+      volume = Loopyard.Workspace.volume_name_for("att-ws-heic")
+      assert Attachments.sniff_image(FakeAttachmentWriter.read(volume, att.path)) == "image/jpeg"
+      assert File.exists?(heic)
+    end
   end
 
   test "image?/1 is by mime, and svg is not inlined" do

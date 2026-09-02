@@ -33,11 +33,12 @@ defmodule Loopyard.Harness.ACPImagePromptTest do
     end
   end
 
+  @png_bytes <<137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82>>
   @shot %{
     path: "/workspace/.loopyard/uploads/20260901T1-ab-shot.png",
     name: "20260901T1-ab-shot.png",
     mime: "image/png",
-    size: 4
+    size: 16
   }
 
   setup do
@@ -72,7 +73,7 @@ defmodule Loopyard.Harness.ACPImagePromptTest do
   end
 
   test "Harness.ACP.stream sends the screenshot inline as an image block" do
-    FakeVolumeIO.seed("loopyard-imgws-code", [{@shot.path, "PNG!"}])
+    FakeVolumeIO.seed("loopyard-imgws-code", [{@shot.path, @png_bytes}])
     conn = ready_conn(true)
     text = Attachments.annotate("What's wrong here?", [@shot])
 
@@ -88,14 +89,14 @@ defmodule Loopyard.Harness.ACPImagePromptTest do
              %{"type" => "image", "data" => data, "mimeType" => "image/png"}
            ] = frame["params"]["prompt"]
 
-    assert Base.decode64!(data) == "PNG!"
+    assert Base.decode64!(data) == @png_bytes
 
     send(conn, {:acp_msg, %{"id" => id, "result" => %{"stopReason" => "end_turn"}}})
     assert is_list(Task.await(task, 1_000))
   end
 
   test "an adapter without image support gets the text (marker line) only" do
-    FakeVolumeIO.seed("loopyard-imgws-code", [{@shot.path, "PNG!"}])
+    FakeVolumeIO.seed("loopyard-imgws-code", [{@shot.path, @png_bytes}])
     conn = ready_conn(false)
     text = Attachments.annotate("What's wrong here?", [@shot])
 

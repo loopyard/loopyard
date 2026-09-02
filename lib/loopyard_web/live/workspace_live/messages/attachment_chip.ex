@@ -24,15 +24,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.AttachmentChip do
       title={"#{Loopyard.Attachments.display_name(@att)} · #{Loopyard.Attachments.human_size(@att.size)}"}
       class="focus-ring block rounded-sm border border-violet-300/60 dark:border-violet-400/25 bg-white/70 dark:bg-black/20 overflow-hidden hover:border-violet-500 transition-colors"
     >
+      <%!-- onerror: the file can vanish from the volume (an agent's rm, a
+      fresh clone) — a broken-image icon says nothing, the name chip does. --%>
       <img
         :if={@image?}
         src={@url}
         alt={Loopyard.Attachments.display_name(@att)}
         loading="lazy"
         class="block h-24 w-auto max-w-[220px] object-cover"
+        onerror="this.hidden = true; this.nextElementSibling.hidden = false"
       />
       <span
-        :if={!@image?}
+        hidden={@image?}
         class="inline-flex items-center gap-1.5 px-2 py-1.5 text-body text-zinc-700 dark:text-zinc-200"
       >
         <.icon name={:paper_clip} class="w-3.5 h-3.5 flex-none text-violet-500" />

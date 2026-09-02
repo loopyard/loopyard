@@ -695,7 +695,7 @@ defmodule LoopyardWeb.WorkspaceLive do
           {:ok, socket, atts} ->
             Composer.deliver(socket, Loopyard.Attachments.annotate(message, atts))
 
-          {:error, note} ->
+          {:error, socket, note} ->
             {:reply, %{ok: false, note: note}, socket}
         end
 

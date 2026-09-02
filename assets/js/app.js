@@ -942,17 +942,46 @@ Hooks.ChatForm = {
     ta.addEventListener("paste", (e) => {
       const files = Array.from((e.clipboardData && e.clipboardData.files) || [])
       if (files.length === 0) return
-      e.preventDefault()
+      // Rich pastes (Word, Docs, a web page) carry BOTH an image rendition and
+      // the text. Take the files, and only swallow the default paste when
+      // there's no text to keep — otherwise the words paste as usual too.
+      const hasText = !!(e.clipboardData.getData && e.clipboardData.getData("text/plain"))
+      if (!hasText) e.preventDefault()
       this.upload("attachments", files)
     })
+    // Dragging TEXT into the box: LiveView's drop handler claims every drop
+    // inside the phx-drop-target pane (it's after files), which would block a
+    // plain text drop into the textarea. No files → keep it from LiveView so
+    // the browser's default text drop happens.
+    ta.addEventListener("drop", (e) => {
+      const files = e.dataTransfer && e.dataTransfer.files
+      if (!files || files.length === 0) e.stopPropagation()
+    })
+    const note = (text, tone) => {
+      const s = statusEl()
+      if (!s) return
+      s.textContent = text
+      s.className = "mt-1.5 text-sm " +
+        (tone === "error" ? "text-red-500 dark:text-red-400" : "text-zinc-400 dark:text-zinc-500")
+    }
     // A Send while a file is still uploading is HELD, not refused: the tray
     // pings on every render, and the moment no chip is mid-upload the held
     // send fires by itself — no "try again in a moment" for the human to obey.
+    // The hold remembers how many files it's waiting on: if the tray shrinks
+    // (a reconnect cancels in-flight uploads), the send does NOT fire without
+    // them — that would ship the words and silently lose the file.
     const uploading = () => !!document.querySelector("#chat-attachments [data-uploading]")
-    let sendWhenUploaded = false
+    let sendWhenUploaded = 0
     window.addEventListener("loopyard:attachments", () => {
       updateSend()
-      if (sendWhenUploaded && !uploading()) { sendWhenUploaded = false; send() }
+      if (sendWhenUploaded === 0) return
+      if (attachmentCount() < sendWhenUploaded) {
+        sendWhenUploaded = 0
+        note("The upload was interrupted — add the file again, then Send. Your text is kept.", "error")
+      } else if (!uploading()) {
+        sendWhenUploaded = 0
+        send()
+      }
     })
 
     // Draft persistence — the LAST line of defense for a half-typed message.
@@ -1060,12 +1089,8 @@ Hooks.ChatForm = {
       const files = attachmentCount()
       if (!text && files === 0) return
       if (files > 0 && uploading()) {
-        sendWhenUploaded = true
-        const s = statusEl()
-        if (s) {
-          s.textContent = "Uploading… sending as soon as it's done."
-          s.className = "mt-1.5 text-sm text-zinc-400 dark:text-zinc-500"
-        }
+        sendWhenUploaded = files
+        note("Uploading… sending as soon as it's done.")
         return
       }
       sending = true

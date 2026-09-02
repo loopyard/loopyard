@@ -221,12 +221,18 @@ defmodule Loopyard.Harness.ACP.ConnectionTest do
       assert Connection.prompt_context(conn) == %{
                image?: true,
                volume: "loopyard-ws-code",
-               container: nil
+               container: nil,
+               cwd: "/workspace"
              }
     end
 
     test "prompt_context is text-only when the adapter never said it takes images", %{conn: conn} do
-      assert Connection.prompt_context(conn) == %{image?: false, volume: nil, container: nil}
+      assert Connection.prompt_context(conn) == %{
+               image?: false,
+               volume: nil,
+               container: nil,
+               cwd: "/workspace"
+             }
     end
 
     test "the prompt result's usage reaches SessionResult", %{conn: conn} do

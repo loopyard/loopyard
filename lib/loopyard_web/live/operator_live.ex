@@ -271,7 +271,7 @@ defmodule LoopyardWeb.OperatorLive do
                ) do
           {:reply, %{ok: true}, socket}
         else
-          {:error, note} when is_binary(note) ->
+          {:error, %Phoenix.LiveView.Socket{} = socket, note} ->
             {:reply, %{ok: false, note: note}, socket}
 
           {:error, :queue_full} ->

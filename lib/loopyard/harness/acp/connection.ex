@@ -235,8 +235,12 @@ defmodule Loopyard.Harness.ACP.Connection do
     # Map.get: a connection that was booted before this key existed (hot code
     # reload mid-session) answers text-only instead of crashing the session.
     {:reply,
-     %{image?: image?, volume: Map.get(state, :volume), container: Map.get(state, :container)},
-     state}
+     %{
+       image?: image?,
+       volume: Map.get(state, :volume),
+       container: Map.get(state, :container),
+       cwd: state.cwd
+     }, state}
   end
 
   # Liveness probe. Only a :ready session gets the wire round-trip; anything

@@ -79,6 +79,38 @@ defmodule Loopyard.Attachments do
   # image at 5 MB; anything bigger stays path-only (the agent can still Read
   # it — Claude Code downscales on read).
   @max_inline_bytes 5 * 1024 * 1024
+  # Total inline image bytes per prompt. Ten 5 MB screenshots would be a
+  # ~67 MB JSON-RPC frame over the adapter's stdio; past this, images stay
+  # path-only for that turn.
+  @max_inline_total 20 * 1024 * 1024
+  # The image formats the model takes inline (and every browser renders).
+  # Anything else — SVG, TIFF, BMP, HEIC that couldn't be converted — is
+  # path-only: the agent can still Read it.
+  @inline_mimes ~w(image/png image/jpeg image/gif image/webp)
+
+  @doc """
+  What the bytes actually are, for the formats we inline — by magic number.
+  The browser's declared type is a claim (a renamed file, a HEIC labelled
+  png, a zero-byte file); the API rejects a mislabelled image and the whole
+  turn fails with it, so nothing is inlined on the label alone.
+  """
+  @spec sniff_image(binary()) :: String.t() | nil
+  def sniff_image(<<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A, _::binary>>), do: "image/png"
+  def sniff_image(<<0xFF, 0xD8, 0xFF, _::binary>>), do: "image/jpeg"
+  def sniff_image(<<"GIF87a", _::binary>>), do: "image/gif"
+  def sniff_image(<<"GIF89a", _::binary>>), do: "image/gif"
+  def sniff_image(<<"RIFF", _::32, "WEBP", _::binary>>), do: "image/webp"
+  def sniff_image(_), do: nil
+
+  @doc "HEIC/HEIF (an iPhone photo) by its ISO-BMFF `ftyp` brand."
+  @spec heic?(binary()) :: boolean()
+  def heic?(<<_::32, "ftyp", brand::binary-size(4), _::binary>>),
+    do: brand in ~w(heic heix hevc hevx heim heis mif1 msf1)
+
+  def heic?(_), do: false
+
+  @doc "Formats sent inline as prompt image blocks."
+  def inline_mimes, do: @inline_mimes
 
   @doc "Absolute in-container directory uploads land in."
   def dir, do: @dir
@@ -108,6 +140,7 @@ defmodule Loopyard.Attachments do
   @spec prompt_blocks(String.t(), %{
           optional(:volume) => String.t() | nil,
           optional(:container) => String.t() | nil,
+          optional(:cwd) => String.t() | nil,
           optional(:image?) => boolean()
         }) :: [map()]
   def prompt_blocks(text, ctx) when is_binary(text) do
@@ -124,29 +157,43 @@ defmodule Loopyard.Attachments do
       end
 
     if read do
+      # Only files IN the session's uploads dir are ever read for inlining. A
+      # marker line is just text — anyone can type one — so a path outside
+      # `<cwd>/.loopyard/uploads` (or a name that isn't a stored name) is
+      # left alone. This is the confinement; the reader has none of its own.
+      uploads_dir = Path.join(ctx[:cwd] || "/workspace", @rel_dir)
+
       {_body, atts} = parse(text)
-      [text_block | Enum.flat_map(atts, &image_block(read, &1))]
+
+      {blocks, _total} =
+        atts
+        |> Enum.filter(&(Path.dirname(&1.path) == uploads_dir and safe_name?(&1.name)))
+        |> Enum.reduce({[], 0}, fn att, {blocks, total} ->
+          case image_block(read, att, total) do
+            {block, bytes} -> {[block | blocks], total + bytes}
+            nil -> {blocks, total}
+          end
+        end)
+
+      [text_block | Enum.reverse(blocks)]
     else
       [text_block]
     end
   end
 
-  defp image_block(read, %{size: size} = att) do
-    cond do
-      not image?(att) ->
-        []
-
-      size > @max_inline_bytes ->
-        []
-
-      true ->
-        case read.(att.path) do
-          {:ok, bytes} when byte_size(bytes) <= @max_inline_bytes ->
-            [%{"type" => "image", "data" => Base.encode64(bytes), "mimeType" => att.mime}]
-
-          _ ->
-            []
-        end
+  # One inline image block, or nil when the file is not an image we inline
+  # (by its BYTES, not its label), is over the per-image cap, would push the
+  # prompt over the total budget, or can't be read. Returns the block with
+  # its byte size so the caller can keep the running total.
+  defp image_block(read, %{size: size} = att, total) do
+    with true <- image?(att) and size <= @max_inline_bytes,
+         true <- total + size <= @max_inline_total,
+         {:ok, bytes} when byte_size(bytes) <= @max_inline_bytes <- read.(att.path),
+         mime when is_binary(mime) <- sniff_image(bytes),
+         true <- mime in @inline_mimes do
+      {%{"type" => "image", "data" => Base.encode64(bytes), "mimeType" => mime}, byte_size(bytes)}
+    else
+      _ -> nil
     end
   end
 
@@ -170,18 +217,17 @@ defmodule Loopyard.Attachments do
 
     with :ok <- ensure_gitignore(io, handle, dir) do
       Enum.reduce_while(uploads, {:ok, []}, fn upload, {:ok, acc} ->
+        # Sniff first: the stored type is what the bytes are, and an iPhone
+        # HEIC becomes a JPEG the model (and the browser) can actually see.
+        {upload, mime, converted?} = normalize(upload)
         name = stored_name(upload.client_name)
         dest = Path.join(dir, name)
+        result = io.copy_in(handle, upload.path, dest)
+        if converted?, do: File.rm(upload.path)
 
-        case io.copy_in(handle, upload.path, dest) do
+        case result do
           :ok ->
-            att = %{
-              path: dest,
-              name: name,
-              mime: mime_for(upload),
-              size: upload[:client_size] || file_size(upload.path)
-            }
-
+            att = %{path: dest, name: name, mime: mime, size: file_size(upload.path, upload)}
             {:cont, {:ok, [att | acc]}}
 
           {:error, reason} ->
@@ -330,13 +376,67 @@ defmodule Loopyard.Attachments do
     stem <> ext
   end
 
+  # The upload as stored: `{upload, mime, converted?}`. Images are typed by
+  # their bytes; a HEIC is converted to JPEG (macOS `sips`) into a temp file
+  # the caller removes; everything else keeps the declared/extension type.
+  defp normalize(upload) do
+    head = read_head(upload.path)
+
+    cond do
+      mime = sniff_image(head) ->
+        {upload, mime, false}
+
+      heic?(head) ->
+        case convert_heic(upload.path) do
+          {:ok, jpg} ->
+            {%{upload | path: jpg, client_name: Path.rootname(upload.client_name) <> ".jpg"},
+             "image/jpeg", true}
+
+          :error ->
+            {upload, mime_for(upload), false}
+        end
+
+      true ->
+        {upload, mime_for(upload), false}
+    end
+  end
+
+  defp read_head(path) do
+    case File.open(path, [:read, :binary]) do
+      {:ok, io} ->
+        head = IO.binread(io, 32)
+        File.close(io)
+        if is_binary(head), do: head, else: ""
+
+      _ ->
+        ""
+    end
+  end
+
+  defp convert_heic(path) do
+    out = Path.join(System.tmp_dir!(), "loopyard-heic-#{System.unique_integer([:positive])}.jpg")
+
+    with sips when is_binary(sips) <- System.find_executable("sips"),
+         {_, 0} <-
+           System.cmd(sips, ["-s", "format", "jpeg", path, "--out", out], stderr_to_stdout: true),
+         true <- File.regular?(out) do
+      {:ok, out}
+    else
+      _ ->
+        File.rm(out)
+        :error
+    end
+  end
+
   defp mime_for(%{client_type: type}) when is_binary(type) and type != "", do: type
   defp mime_for(%{client_name: name}), do: MIME.from_path(name)
 
-  defp file_size(path) do
+  # The stored file's size: measured when we can (a converted HEIC is a new
+  # file), the client's figure only as a fallback.
+  defp file_size(path, upload) do
     case File.stat(path) do
       {:ok, %{size: s}} -> s
-      _ -> 0
+      _ -> upload[:client_size] || 0
     end
   end
 

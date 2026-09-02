@@ -61,7 +61,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Attachments do
   """
   @spec consume(Phoenix.LiveView.Socket.t()) ::
           {:ok, Phoenix.LiveView.Socket.t(), [Loopyard.Attachments.attachment()]}
-          | {:error, String.t()}
+          | {:error, Phoenix.LiveView.Socket.t(), String.t()}
   def consume(socket) do
     if socket.assigns[:uploads] do
       # Refused entries (too large / too many) never upload, so they'd sit in
@@ -74,7 +74,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Attachments do
           {:ok, socket, []}
 
         {_done, [_ | _]} ->
-          {:error, "Still uploading your attachment(s) — try Send again in a moment."}
+          {:error, socket, "Still uploading your attachment(s) — try Send again in a moment."}
 
         {_done, []} ->
           # Pass 1 gathers the temp paths WITHOUT consuming (postpone keeps every
@@ -96,12 +96,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Attachments do
               consume_uploaded_entries(socket, :attachments, fn _, _ -> {:ok, :consumed} end)
               {:ok, socket, atts}
 
+            {:error, :enoent} ->
+              # The temp upload is gone (a long-idle tab; the OS swept it). A
+              # retry can't succeed, so the entries go too — the note says what
+              # to do, the text stays.
+              {:error, drop_all(socket),
+               "The upload expired before it was sent — add the file(s) again. Your text is kept."}
+
             {:error, reason} ->
               Logger.warning(
                 "[Attachments] store failed for #{inspect(target(socket))}: #{inspect(reason)}"
               )
 
-              {:error,
+              {:error, socket,
                "Couldn't save the attachment(s) into the agent's container — " <>
                  "make sure it's running, then Send again. Your text and files are kept."}
           end
@@ -109,6 +116,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Attachments do
     else
       {:ok, socket, []}
     end
+  end
+
+  defp drop_all(socket) do
+    socket.assigns.uploads.attachments.entries
+    |> Enum.reduce(socket, fn entry, sock -> cancel_upload(sock, :attachments, entry.ref) end)
   end
 
   defp drop_invalid(socket) do

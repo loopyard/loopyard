@@ -38,6 +38,9 @@ defmodule Loopyard.StateKeeper do
     # starving the LV process and timing out user sends. Content is immutable,
     # so a hit is always correct. Read-heavy; reads go direct.
     {:markdown_cache, [:named_table, :public, :set, {:read_concurrency, true}]},
+    # Chat attachment bytes by unique name (Attachments.Cache) — a thumbnail
+    # for a stopped workspace otherwise costs a throwaway container per view.
+    {:attachment_cache, [:named_table, :public, :set, {:read_concurrency, true}]},
     {:project_registry, [:named_table, :public, :set]},
     {:workspace_registry, [:named_table, :public, :set]},
     {:event_log, [:named_table, :public, :ordered_set]},
