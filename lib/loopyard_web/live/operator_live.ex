@@ -646,10 +646,6 @@ defmodule LoopyardWeb.OperatorLive do
   def handle_info(%Events.ChatAgent.StatusChanged{} = e, socket) do
     {:noreply, socket} = AgentEvents.handle_status_changed(e, socket)
 
-    # The operator's OWN status drives the ambient bed — it swells while the
-    # operator works, settles when idle. Best-effort; sound never blocks the page.
-    if e.id == socket.assigns.agent_id, do: drive_sound(e.status)
-
     # Any agent's status change can move the board AND change what's blocking.
     socket = refresh_rail(socket)
 
@@ -670,17 +666,6 @@ defmodule LoopyardWeb.OperatorLive do
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
-
-  # Operator activity → ambient loudness (Aural continuous level, 0..1).
-  defp drive_sound(status) do
-    level = if status in [:thinking, :backoff, :compacting], do: 0.7, else: 0.12
-    Aural.Channel.set_activity("activity", level)
-    :ok
-  rescue
-    _ -> :ok
-  catch
-    _, _ -> :ok
-  end
 
   @impl true
   def render(assigns) do

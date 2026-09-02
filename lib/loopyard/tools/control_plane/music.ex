@@ -11,14 +11,17 @@ defmodule Loopyard.Tools.ControlPlane.Music do
       "Control the ambient sound. action=status shows the current track + level; " <>
         "action=list shows the available tracks; action=track (with `track`) " <>
         "switches the bed (crossfades for everyone); action=play/pause toggles " <>
-        "playback; action=volume (with `level` 0.0–1.0) sets loudness. The sound " <>
-        "pill reflects these.",
+        "playback; action=volume (with `level` 0.0–1.0) sets loudness; " <>
+        "action=chime (with `chime` done|attention|alert) rings a bell for everyone " <>
+        "listening. The sound pill reflects these.",
     busy_words: ["working the music"],
     params: [
       agent_id: {:string, required: true},
       action:
-        {:string, required: true, description: "status | list | track | play | pause | volume"},
+        {:string,
+         required: true, description: "status | list | track | play | pause | volume | chime"},
       track: {:string, description: "For action=track: the track name (see action=list)."},
+      chime: {:string, description: "For action=chime: done | attention | alert."},
       level: {:number, description: "For action=volume: 0.0–1.0."}
     ]
 
@@ -44,8 +47,12 @@ defmodule Loopyard.Tools.ControlPlane.Music do
       "volume" ->
         volume(params[:level])
 
+      "chime" ->
+        chime(params[:chime])
+
       other ->
-        {:error, "Unknown action '#{other}'. Use status, list, track, play, pause, or volume."}
+        {:error,
+         "Unknown action '#{other}'. Use status, list, track, play, pause, volume, or chime."}
     end
   rescue
     e -> {:error, "music failed: #{inspect(e)}"}
@@ -76,6 +83,13 @@ defmodule Loopyard.Tools.ControlPlane.Music do
   end
 
   defp volume(_), do: {:error, "action=volume needs a `level` between 0.0 and 1.0."}
+
+  defp chime(kind) when kind in ["done", "attention", "alert"] do
+    Aural.Channel.fire(@channel, kind)
+    {:ok, "Rang the '#{kind}' chime for everyone listening."}
+  end
+
+  defp chime(_), do: {:error, "action=chime needs `chime`: done, attention, or alert."}
 
   defp command(action, value, msg) do
     Loopyard.Events.Aural.command(action, value)
