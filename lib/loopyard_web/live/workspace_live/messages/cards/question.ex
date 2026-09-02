@@ -216,27 +216,57 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
           "mt-3 flex flex-col sm:flex-row sm:items-center gap-2",
           (@q[:multi] && "sm:justify-end") || "sm:justify-between"
         ]}>
-          <%!-- Skip is now the SAME size as Answer, so size can no longer be
-      what stops a mis-tap — DISTANCE has to carry it alone. Hence the
-      generous mt-6 on mobile (24px, 3x the 8px between the ghosts
-      themselves) and Skip sitting LAST, furthest from the primary. A
-      confirm-tap would be the alternative, and it punishes every
-      correct use to guard a rare wrong one. --%>
+          <%!-- Dismiss is the SAME size as Answer, so size can't stop a mis-tap.
+      It used to be DISTANCE (a 24px gap on mobile) — which read as two
+      controls that had nothing to do with each other. Now it's a CONFIRM:
+      the first tap arms it (it lights up orange and says exactly what it
+      will do), the second does it, and a tap anywhere else disarms it.
+      Declarative JS commands, per viewer, no round-trip — a rare, final
+      action earns the second tap, and it's what lets the two buttons sit
+      together. "Skip" promised "later"; it means "I'm doing nothing about
+      this" — the agent proceeds unanswered. Say that. --%>
           <div
             :if={!@q[:multi]}
-            class="flex flex-col sm:flex-row sm:items-center gap-2 mt-6 sm:mt-0 order-last sm:ml-auto"
+            class="flex flex-col sm:flex-row sm:items-center gap-2 mt-2 sm:mt-0 order-last sm:ml-auto"
           >
             <button
               :if={!@q[:multi]}
               type="button"
+              id={"dismiss-#{@msg[:id] || @msg.question_id}-#{@q.id}"}
+              phx-click={
+                Phoenix.LiveView.JS.hide()
+                |> Phoenix.LiveView.JS.show(
+                  to: "#confirm-dismiss-#{@msg[:id] || @msg.question_id}-#{@q.id}",
+                  display: "inline-flex"
+                )
+                |> Phoenix.LiveView.JS.focus(
+                  to: "#confirm-dismiss-#{@msg[:id] || @msg.question_id}-#{@q.id}"
+                )
+              }
+              class={["w-full sm:w-auto order-last sm:order-first", StreamCard.action_class()]}
+            >
+              Dismiss
+            </button>
+            <button
+              :if={!@q[:multi]}
+              type="button"
+              id={"confirm-dismiss-#{@msg[:id] || @msg.question_id}-#{@q.id}"}
               phx-click="skip_question"
               phx-value-question_id={@msg.question_id}
               phx-value-q={@q.id}
-              class={["w-full sm:w-auto order-last sm:order-first", StreamCard.action_class()]}
+              phx-click-away={
+                Phoenix.LiveView.JS.hide()
+                |> Phoenix.LiveView.JS.show(
+                  to: "#dismiss-#{@msg[:id] || @msg.question_id}-#{@q.id}",
+                  display: "inline-flex"
+                )
+              }
+              class={[
+                "hidden w-full sm:w-auto order-last sm:order-first",
+                StreamCard.action_class(variant: :primary)
+              ]}
             >
-              <%!-- "Skip" promised "later"; it actually means "I'm doing nothing
-              about this" — the agent proceeds unanswered. Say that. --%>
-              Dismiss
+              Confirm dismiss — the agent moves on without an answer
             </button>
             <.link
               :if={!@q[:multi] && @chat_path}
