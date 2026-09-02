@@ -628,6 +628,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         <li
           :for={entry <- @uploads.attachments.entries}
           data-attachment
+          data-uploading={entry.valid? && entry.progress < 100}
           class="flex items-center gap-2 rounded-sm border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 p-1 max-w-[240px]"
         >
           <.live_img_preview

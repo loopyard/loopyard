@@ -169,6 +169,21 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AttachmentsTest do
     refute render(view) =~ "Too large"
   end
 
+  test "a chip is marked uploading until its bytes are all in", %{conn: conn, path: path} do
+    {:ok, view, _html} = live(conn, path)
+
+    shot =
+      file_input(view, "#chat-attachments", :attachments, [
+        %{name: "slow.png", content: @png, type: "image/png"}
+      ])
+
+    render_upload(shot, "slow.png", 50)
+    assert has_element?(view, "#chat-attachments [data-attachment][data-uploading]")
+
+    render_upload(shot, "slow.png", 50)
+    refute has_element?(view, "#chat-attachments [data-uploading]")
+  end
+
   test "a removed chip is not sent", %{conn: conn, path: path, agent_id: agent_id} do
     {:ok, view, _html} = live(conn, path)
 

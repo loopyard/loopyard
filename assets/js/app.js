@@ -945,7 +945,15 @@ Hooks.ChatForm = {
       e.preventDefault()
       this.upload("attachments", files)
     })
-    window.addEventListener("loopyard:attachments", () => updateSend())
+    // A Send while a file is still uploading is HELD, not refused: the tray
+    // pings on every render, and the moment no chip is mid-upload the held
+    // send fires by itself — no "try again in a moment" for the human to obey.
+    const uploading = () => !!document.querySelector("#chat-attachments [data-uploading]")
+    let sendWhenUploaded = false
+    window.addEventListener("loopyard:attachments", () => {
+      updateSend()
+      if (sendWhenUploaded && !uploading()) { sendWhenUploaded = false; send() }
+    })
 
     // Draft persistence — the LAST line of defense for a half-typed message.
     // phx-update="ignore" already protects the box from LiveView patches, but a
@@ -1051,6 +1059,15 @@ Hooks.ChatForm = {
       const text = ta.value.trim()
       const files = attachmentCount()
       if (!text && files === 0) return
+      if (files > 0 && uploading()) {
+        sendWhenUploaded = true
+        const s = statusEl()
+        if (s) {
+          s.textContent = "Uploading… sending as soon as it's done."
+          s.className = "mt-1.5 text-sm text-zinc-400 dark:text-zinc-500"
+        }
+        return
+      }
       sending = true
       if (btn) btn.disabled = true
 
