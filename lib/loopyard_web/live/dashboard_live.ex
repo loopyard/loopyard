@@ -282,7 +282,7 @@ defmodule LoopyardWeb.DashboardLive do
       <div>
         <.start_here :if={@first_run_step} step={@first_run_step} workstation={@operator} />
 
-        <div class="mt-6 grid gap-4 md:grid-cols-3 md:auto-rows-fr lg:min-h-[26rem]">
+        <div class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4 md:auto-rows-fr lg:min-h-[26rem]">
           <%!-- ── WORKSPACES ─────────────────────────────────────────────── --%>
           <.dash_card title="Workspaces" navigate="/workspaces">
             <:icon>
@@ -321,14 +321,25 @@ defmodule LoopyardWeb.DashboardLive do
             </div>
           </.dash_card>
 
-          <%!-- ── OPERATOR ───────────────────────────────────────────────── --%>
-          <.dash_card title="Operator" navigate="/operator">
+          <%!-- ── NOTIFICATIONS ──────────────────────────────────────────── --%>
+          <.dash_card title="Notifications" navigate="/notifications">
             <:icon>
-              <span class="text-violet-600 dark:text-violet-400"><Brand.mark class="w-5 h-5" /></span>
+              <svg
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                class="w-5 h-5 text-violet-600 dark:text-violet-400"
+                aria-hidden="true"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M1 11.27c0-.246.033-.492.099-.73l1.523-5.521A2.75 2.75 0 0 1 5.273 3h9.454a2.75 2.75 0 0 1 2.651 2.019l1.523 5.52c.066.239.099.485.099.732V15a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-3.73Zm3.068-5.852A1.25 1.25 0 0 1 5.273 4.5h9.454a1.25 1.25 0 0 1 1.205.918l1.523 5.52c.006.02.01.041.015.062H14a1 1 0 0 0-.86.49l-.606 1.02a1 1 0 0 1-.86.49H8.236a1 1 0 0 1-.894-.553l-.448-.894A1 1 0 0 0 6 11H2.53l.015-.062 1.523-5.52Z"
+                  clip-rule="evenodd"
+                />
+              </svg>
             </:icon>
             <%!-- The gauge NAMES what's waiting. "6 waiting on you" prompts the
                  only question that matters — six WHAT? — and answers none of
-                 them; the breakdown by kind does. --%>
+                 them; the noun does. --%>
             <.gauge
               navigate="/notifications"
               tone={(!@attention_loaded? && :calm) || (@waiting > 0 && :needs_you) || :calm}
@@ -338,7 +349,10 @@ defmodule LoopyardWeb.DashboardLive do
                 @waiting > 0 -> attention_headline(@attention)
                 true -> "No decisions waiting"
               end}
-              <:detail>Running the shop as {@operator}</:detail>
+              <:detail>
+                {(@digest != [] && "#{length(@digest)} finished — keep going?") ||
+                  "The team's inbox — anyone can act"}
+              </:detail>
             </.gauge>
 
             <div class="relative z-10 mt-4 space-y-1">
@@ -371,33 +385,45 @@ defmodule LoopyardWeb.DashboardLive do
                 +{length(@attention) - 4} more to decide →
               </.link>
 
-              <.link
-                :if={@attention == []}
-                navigate="/operator"
-                class="flex items-center gap-2 -mx-2 px-2 py-3 md:py-1.5 text-body text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
-              >
-                Chat with the operator
-              </.link>
-
-              <%!-- What actually happened while you were away — the agent's own
-                   closing line, not "finished a turn" (true of every entry, so
-                   it tells you nothing). Hidden on phones. --%>
+              <%!-- What finished while you were away — the agent's own closing
+                   line, each a tap from Keep going / Open / Dismiss. --%>
               <div
                 :if={@digest != []}
-                class="hidden md:block pt-3 mt-2 border-t border-zinc-200/70 dark:border-zinc-800"
+                class={[
+                  "pt-3 mt-2",
+                  @attention != [] && "border-t border-zinc-200/70 dark:border-zinc-800"
+                ]}
               >
                 <p class="text-body text-zinc-400 dark:text-zinc-500 mb-1">Finished — keep going?</p>
                 <.link
                   :for={e <- Enum.take(@digest, if(@attention == [], do: 5, else: 3))}
                   navigate={digest_path(e)}
-                  class="block -mx-2 px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+                  class="block -mx-2 px-2 py-3 md:py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
                 >
                   <span class="text-body text-zinc-600 dark:text-zinc-400 line-clamp-2">
                     {e[:summary]}
                   </span>
                 </.link>
               </div>
+
+              <p
+                :if={@attention_loaded? and @attention == [] and @digest == []}
+                class="py-3 md:py-1.5 text-body text-zinc-500 dark:text-zinc-400"
+              >
+                Nothing waiting on you.
+              </p>
             </div>
+          </.dash_card>
+
+          <%!-- ── OPERATOR ───────────────────────────────────────────────── --%>
+          <.dash_card title="Operator" navigate="/operator">
+            <:icon>
+              <span class="text-violet-600 dark:text-violet-400"><Brand.mark class="w-5 h-5" /></span>
+            </:icon>
+            <.gauge navigate="/operator" tone={:calm}>
+              Chat with the operator
+              <:detail>Running the shop as {@operator}</:detail>
+            </.gauge>
           </.dash_card>
 
           <%!-- ── SYSTEM ─────────────────────────────────────────────────── --%>
