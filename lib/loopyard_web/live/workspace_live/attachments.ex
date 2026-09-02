@@ -74,7 +74,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Attachments do
                }}
             end)
 
-          case Loopyard.Attachments.store(socket.assigns.workspace.id, uploads) do
+          case safe_store(socket.assigns.workspace.id, uploads) do
             {:ok, atts} ->
               consume_uploaded_entries(socket, :attachments, fn _, _ -> {:ok, :consumed} end)
               {:ok, atts}
@@ -92,6 +92,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Attachments do
     else
       {:ok, []}
     end
+  end
+
+  # The Docker boundary: a raise here must not crash the LiveView (that drops
+  # the tray AND the typed text) — it's the same "kept for retry" outcome as
+  # an {:error, _}.
+  defp safe_store(workspace_id, uploads) do
+    Loopyard.Attachments.store(workspace_id, uploads)
+  rescue
+    e -> {:error, {:exception, Exception.message(e)}}
   end
 
   @doc "Copy for an upload error atom, shown on the tray."
