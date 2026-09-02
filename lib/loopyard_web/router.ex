@@ -44,9 +44,11 @@ defmodule LoopyardWeb.Router do
       live "/workspaces", ProjectListLive, :index
       # Opens (creating on first visit) the operating identity's operator agent.
       live "/operator", OperatorLive, :index
-      # DECISIONS — every pending question/secret/approval across all agents,
-      # one deck (Loopyard.Attention). `/decisions/:agent/:msg` is one decision
-      # with its discussion thread. `/review*` is the old name, kept so pasted
+      # DECISIONS — its own root, a peer of the operator, not a tab under it:
+      # the TEAM's inbox of every pending question/secret/approval across all
+      # agents, one deck (Loopyard.Attention), anyone can answer.
+      # `/decisions/:agent/:msg` is one decision with its discussion thread.
+      # `/operator/decisions*` and `/review*` are old names, kept so pasted
       # links keep working.
       live "/operator/decisions", ReviewLive, :index
       live "/operator/decisions/history", ReviewLive, :history

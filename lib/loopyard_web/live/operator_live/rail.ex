@@ -85,7 +85,7 @@ defmodule LoopyardWeb.OperatorLive.Rail do
   defp attention_row(assigns) do
     ~H"""
     <.link
-      navigate={(@item.msg && "/operator/decisions/#{@item.agent_id}/#{@item.msg.id}") || @fallback}
+      navigate={(@item.msg && "/decisions/#{@item.agent_id}/#{@item.msg.id}") || @fallback}
       class="block rounded-sm px-2 py-2 lg:py-1.5 text-body text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
     >
       <span class="line-clamp-2">{attention_summary(@item)}</span>
@@ -106,7 +106,7 @@ defmodule LoopyardWeb.OperatorLive.Rail do
           <.attention_row
             :for={item <- @operator_attention}
             item={item}
-            fallback="/operator/decisions"
+            fallback="/decisions"
           />
         </div>
       </section>

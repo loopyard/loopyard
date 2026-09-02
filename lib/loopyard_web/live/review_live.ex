@@ -1,9 +1,12 @@
 defmodule LoopyardWeb.ReviewLive do
   @moduledoc """
-  `/decisions` — every decision waiting on you, one DECK you swipe through
-  (plans/decisions.md). A multi-question ask fans out into one slide per
-  question; approvals and secrets are one slide each. Newest first. Live:
-  leave it open and new decisions join as agents ask.
+  `/decisions` — the TEAM's inbox: every decision waiting on a human, one
+  DECK you swipe through (plans/decisions.md). Its own root, a peer of the
+  operator (not a tab under it): agents raise decisions with their own tools
+  (`ask_user`, approvals, `request_secret`) — each shows in that agent's chat
+  AND here — and anyone can answer. A multi-question ask fans out into one
+  slide per question; approvals and secrets are one slide each. Newest
+  first. Live: leave it open and new decisions join as agents ask.
 
   **Two axes, both native scrolling, no JS gestures.** The deck is a
   horizontal CSS scroll-snap carousel: swipe left/right to move between
@@ -28,7 +31,7 @@ defmodule LoopyardWeb.ReviewLive do
   alias Loopyard.{ChatAgent, Events}
   alias Loopyard.ChatAgent.Thread
   alias LoopyardWeb.ReviewLive.{Deck, Slide}
-  alias LoopyardWeb.OperatorLive.Shell
+  alias LoopyardWeb.Components.AppShell
 
   @tick_ms 3_000
 
@@ -372,14 +375,10 @@ defmodule LoopyardWeb.ReviewLive do
   attr :user_label, :string, default: "You"
 
   def review_deck(assigns) do
-    assigns =
-      assign(assigns,
-        total: length(assigns.cards),
-        needs_count: Enum.count(assigns.cards, &(&1.msg.status == :pending))
-      )
+    assigns = assign(assigns, :total, length(assigns.cards))
 
     ~H"""
-    <Shell.shell active={:decisions} needs_count={@needs_count}>
+    <AppShell.shell title="Decisions" mode={:decisions} mode_id="mode-decisions">
       <div class="flex-1 min-w-0 min-h-0 flex flex-col">
         <%!-- PAST decisions is the same deck with a different source; one quiet
       line says so, and the way back to the pending ones. --%>
@@ -389,7 +388,7 @@ defmodule LoopyardWeb.ReviewLive do
         >
           <span class="font-medium text-zinc-700 dark:text-zinc-200">Past decisions</span>
           <.link
-            navigate="/operator/decisions"
+            navigate="/decisions"
             class="ml-auto text-violet-600 dark:text-violet-400 hover:underline"
           >
             ← Back to pending
@@ -434,7 +433,7 @@ defmodule LoopyardWeb.ReviewLive do
             </p>
             <.link
               :if={!@history?}
-              navigate="/operator/decisions/history"
+              navigate="/decisions/history"
               class="text-body font-medium inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
             >
               Past decisions →
@@ -442,7 +441,7 @@ defmodule LoopyardWeb.ReviewLive do
           </div>
         </div>
       </div>
-    </Shell.shell>
+    </AppShell.shell>
     """
   end
 

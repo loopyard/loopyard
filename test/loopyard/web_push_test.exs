@@ -47,6 +47,6 @@ defmodule Loopyard.WebPushTest do
 
   test "notify_question with no subscriptions is a cheap no-op" do
     File.rm(WebPush.path())
-    assert :ok = WebPush.notify_question("t", "b", "/operator/decisions")
+    assert :ok = WebPush.notify_question("t", "b", "/decisions")
   end
 end

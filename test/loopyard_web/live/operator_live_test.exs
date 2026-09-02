@@ -4,14 +4,15 @@ defmodule LoopyardWeb.OperatorLiveTest do
 
   import Phoenix.LiveViewTest
 
-  test "mounts, and the mobile Decisions tab is a PLACE (/operator/decisions), not a pane toggle",
+  test "mounts as ONE chat — no tabs; Decisions is its own root, linked from the bar",
        %{conn: conn} do
     {:ok, view, html} = live(conn, "/operator")
 
-    # The tab used to flip an in-page pane whose state was lost on back —
-    # tapping a decision and coming back landed on Chat. A URL can't lose its
-    # place, so the tab navigates to the deck.
-    assert has_element?(view, "a[href='/operator/decisions']", "Decisions")
+    # Decisions used to be a tab under the operator; the row read as two
+    # chats. It's a peer now: the mode nav links to /decisions, and nothing on
+    # this page is a pane toggle.
+    assert has_element?(view, "a[href='/decisions'][aria-label='Decisions']")
+    refute html =~ "/operator/decisions"
     refute html =~ "phx-value-v=\"rail\""
     assert Process.alive?(view.pid)
   end

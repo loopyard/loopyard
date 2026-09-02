@@ -1,0 +1,46 @@
+defmodule LoopyardWeb.Components.AppShell do
+  @moduledoc """
+  The app-shell page: ONE bar ("Loopyard › <page>", mode nav) over content
+  that scrolls INSIDE it. The two roots that are single pages use it — the
+  operator (`/operator`, your private chat into Loopyard) and decisions
+  (`/decisions`, the team's inbox). Each is its own place with one bar; there
+  are no tabs between them, because they are peers, not siblings under one
+  thing. The bar never moves; only the content under it does.
+  """
+  use Phoenix.Component
+
+  alias LoopyardWeb.Components.Nav
+  import LoopyardWeb.Components.Breadcrumbs, only: [breadcrumbs: 1]
+
+  attr :title, :string, required: true, doc: "the current crumb, e.g. \"Operator\""
+  attr :mode, :atom, required: true, doc: "where we are, for the mode nav"
+  attr :mode_id, :string, required: true, doc: "unique mode-nav placement id"
+  attr :rest, :global, doc: "id / phx-hook for the page root (the chat's ScrollBottom)"
+  slot :inner_block, required: true
+
+  def shell(assigns) do
+    ~H"""
+    <%!-- APP SHELL: exactly the visible viewport (h-dvh, not h-screen — on iOS
+    100vh is the height with Safari's toolbar hidden, so with it showing the
+    page was taller than the screen and a pull chained into the DOCUMENT and
+    dragged both bars off). `data-app-shell` locks the document (app.css) so
+    only the panels inside scroll. --%>
+    <div
+      data-app-shell
+      class="h-dvh flex flex-col bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x safe-area-top"
+      {@rest}
+    >
+      <Nav.bar height="h-14" gap="gap-3">
+        <.breadcrumbs crumbs={[{"Loopyard", "/"}, {@title, nil}]} />
+        <:actions>
+          <LoopyardWeb.Components.Common.mode_nav id={@mode_id} active={@mode} />
+        </:actions>
+      </Nav.bar>
+
+      <div class="flex-1 min-h-0 flex">
+        {render_slot(@inner_block)}
+      </div>
+    </div>
+    """
+  end
+end

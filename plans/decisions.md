@@ -431,3 +431,37 @@ question, tap → back to the top) the moment the card scrolls away
 (`StickyShadow` sets `data-stuck`; CSS switches the look). A permalink opens
 the deck at its decision by focusing the slide on mount. Each slide has its
 own composer; `ChatForm` sends `re` from the form's `data-re`.
+
+## Sep 2 (afternoon) — Decisions leaves the Operator
+
+Brad, on the desktop: the Chat | Decisions tab row under "Operator" read as
+two chats, and a decision with its own conversation beside it (tried, reverted)
+made it worse. His resolution, and the model we build to now:
+
+- **Workspaces** — people (and agents) minding their own business.
+- **Decisions** (`/decisions`) — its OWN root, the TEAM's inbox. Multiplayer:
+  anyone can answer. Fed by the agents' existing tools (`ask_user`, approvals,
+  `request_secret`): each decision shows in that agent's chat AND here. Not a
+  tab under the operator; reached from the mode nav in every bar and from the
+  home dashboard. May later also carry "this finished — keep going?" items
+  (held).
+- **The operator** (`/operator`) — YOUR private chat into Loopyard, for asking
+  what's going on in the workspaces or with the decisions. One bar, no tabs.
+  Brad dislikes the name; when login lands it becomes "Brad" (your chat). Routes
+  and modules keep `operator` until then.
+
+Shipped: tabs removed; `AppShell` is the shared one-bar shell for both roots;
+`/decisions` canonical (`/operator/decisions*` and `/review*` still resolve);
+`mode_nav` gains the Decisions link (hidden on `/decisions`). The per-decision
+thread on the phone stays (scroll down under a decision to talk it over).
+
+Where it's heading (Brad, same afternoon): Decisions is really a
+**notifications center** — "something happened" (a workspace finished, an
+agent went idle) lands there too, something PRIORITISES the pile, and each
+item carries its actions (answer / approve / keep going). You keep tabs on
+it; the surfacing is what makes you respond. Name stays "Decisions" until the
+finished/idle items exist to earn the broader word.
+
+Open: the DESKTOP shape of `/decisions`. The deck is a phone idea; a wide
+screen wants master-detail (pending list left, the chosen decision + its
+thread right; click, not swipe). Not built yet.

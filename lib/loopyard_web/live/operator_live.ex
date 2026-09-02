@@ -25,7 +25,7 @@ defmodule LoopyardWeb.OperatorLive do
   alias Loopyard.{ChatAgent, Operator, StreamBuffer}
   alias Loopyard.Events
   alias LoopyardWeb.Live.WorkspaceLive.AgentEvents
-  alias LoopyardWeb.OperatorLive.Shell
+  alias LoopyardWeb.Components.AppShell
   import LoopyardWeb.Live.WorkspaceLive.Components.Chat, only: [chat_panel: 1]
 
   alias LoopyardWeb.Live.WorkspaceLive.Attachments, as: ComposerAttachments
@@ -407,7 +407,7 @@ defmodule LoopyardWeb.OperatorLive do
           sub,
           "Notifications on",
           "You'll get decisions here — tapping one opens it.",
-          "/operator/decisions"
+          "/decisions"
         )
 
         {:reply, %{ok: true}, socket}
@@ -684,7 +684,7 @@ defmodule LoopyardWeb.OperatorLive do
 
   @impl true
   def render(assigns) do
-    # Badge on the mobile "For you" tab: how many blocking items are waiting.
+    # The app badge (installed PWA icon): how many decisions are waiting.
     assigns =
       assign(
         assigns,
@@ -695,7 +695,13 @@ defmodule LoopyardWeb.OperatorLive do
 
     ~H"""
     <div id="app-badge" phx-hook="AppBadge" data-count={@needs_count} class="hidden"></div>
-    <Shell.shell active={:chat} needs_count={@needs_count} id="operator-page" phx-hook="ScrollBottom">
+    <AppShell.shell
+      title="Operator"
+      mode={:operator}
+      mode_id="mode-operator"
+      id="operator-page"
+      phx-hook="ScrollBottom"
+    >
       <%!-- Chat is PRIMARY — mostly you just talk to the operator. --%>
       <div class="flex-1 min-w-0 flex flex-col min-h-0">
         <.chat_panel
@@ -729,7 +735,7 @@ defmodule LoopyardWeb.OperatorLive do
         </div>
         <.sound_player id="rail-sound" tracks={@tracks} current_track={@current_track} />
       </aside>
-    </Shell.shell>
+    </AppShell.shell>
     """
   end
 end

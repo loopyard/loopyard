@@ -213,12 +213,12 @@ defmodule LoopyardWeb.DesignSystemTest do
     # is all fucked"). New page shell → add its file here deliberately.
     allowed =
       MapSet.new([
+        "lib/loopyard_web/components/app_shell.ex",
         "lib/loopyard_web/components/common.ex",
         "lib/loopyard_web/components/focused_view.ex",
         "lib/loopyard_web/live/dashboard_live.ex",
         "lib/loopyard_web/live/message_live.ex",
         "lib/loopyard_web/live/operator_live.ex",
-        "lib/loopyard_web/live/operator_live/shell.ex",
         "lib/loopyard_web/live/review_live.ex",
         "lib/loopyard_web/live/sound_live.ex",
         "lib/loopyard_web/live/workspace_live.ex"

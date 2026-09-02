@@ -328,16 +328,16 @@ defmodule LoopyardWeb.ReviewLive.Slide do
           {(@history? && "That's every past decision.") || "That's everything waiting on you."}
         </p>
         <.link
-          navigate={(@history? && "/operator/decisions") || "/operator/decisions/history"}
+          navigate={(@history? && "/decisions") || "/decisions/history"}
           class="text-body font-medium inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
         >
           {(@history? && "← Back to pending") || "Past decisions →"}
         </.link>
         <.link
-          navigate="/operator"
+          navigate="/"
           class="text-body font-medium inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
         >
-          ← Back to the operator
+          ← Home
         </.link>
       </div>
     </section>

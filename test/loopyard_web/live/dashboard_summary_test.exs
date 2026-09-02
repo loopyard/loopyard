@@ -26,7 +26,7 @@ defmodule LoopyardWeb.DashboardSummaryTest do
       refute html =~ ~r/\d+ (questions?|approvals?|secrets?) waiting on you/
 
       if html =~ ~r/\d+ decisions? waiting on you/ do
-        assert html =~ ~s|href="/operator/decisions"|
+        assert html =~ ~s|href="/decisions"|
       end
     end
 
@@ -35,7 +35,7 @@ defmodule LoopyardWeb.DashboardSummaryTest do
       # badges were bare <span>s floated with ml-auto inside the heading row,
       # so the test that matters is: the health word lives INSIDE the link.
       assert html =~ ~r{<a[^>]+href="/system"[^>]*>.*?(healthy|degraded|down|not ready)}s
-      assert html =~ ~s|href="/operator/decisions"|
+      assert html =~ ~s|href="/decisions"|
     end
   end
 

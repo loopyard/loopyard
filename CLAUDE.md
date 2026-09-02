@@ -473,7 +473,10 @@ answer). `LoopyardWeb.Components.FocusedView` is the shared full-screen shell
 - **IA: an ALTITUDE, not a tab bar** (`plans/ia-two-modes.md`): the Operator
   sits ABOVE the workspaces. `Common.mode_nav` is ONE control that always
   points away from where you are — UP to the Operator from anywhere else, DOWN
-  to the workspaces from the Operator. A flat row of peer icons said these were
+  to the workspaces from the Operator. **Decisions (`/decisions`) is its own
+  ROOT beside them** — the team's inbox, multiplayer, with its own link in
+  `mode_nav` — never a tab under the Operator (the Chat | Decisions tab row
+  was tried and read as two chats). A flat row of peer icons said these were
   siblings, which is not how the product is organised. System is NOT a mode: it
   is a deliberate destination reached from the home dashboard (the brand crumb
   always gets you there), never a gear one tap from every screen. Keep the
