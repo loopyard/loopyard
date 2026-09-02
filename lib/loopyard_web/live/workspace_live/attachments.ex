@@ -22,23 +22,34 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Attachments do
 
   def max_entries, do: @max_entries
 
+  @doc "Per-file cap in bytes (`:attachment_max_bytes` app env overrides — tests shrink it)."
+  def max_file_size, do: Application.get_env(:loopyard, :attachment_max_bytes, @max_file_size)
+
   @doc "Declare the upload on mount. `accept: :any` — logs and mockups count too."
   def allow(socket) do
     allow_upload(socket, :attachments,
       accept: :any,
       max_entries: @max_entries,
-      max_file_size: @max_file_size,
+      max_file_size: max_file_size(),
       auto_upload: true
     )
   end
 
   def cancel(socket, ref), do: cancel_upload(socket, :attachments, ref)
 
-  @doc "True when the tray holds anything — a Send with an empty box is still a send."
-  def pending?(socket) do
+  @doc """
+  True when the tray holds anything SENDABLE — a Send with an empty box is
+  still a send. An entry the client refused (too large, too many) shows its
+  error in the tray but is never pending: it can't upload, so it must not
+  hold a Send hostage.
+  """
+  def pending?(socket), do: valid_entries(socket) != []
+
+  @doc "The tray's sendable entries (what the chip count and the Send gate see)."
+  def valid_entries(socket) do
     case socket.assigns[:uploads] do
-      %{attachments: %{entries: [_ | _]}} -> true
-      _ -> false
+      %{attachments: %{entries: entries}} -> Enum.filter(entries, & &1.valid?)
+      _ -> []
     end
   end
 
@@ -49,12 +60,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Attachments do
   one line the composer shows under the box.
   """
   @spec consume(Phoenix.LiveView.Socket.t()) ::
-          {:ok, [Loopyard.Attachments.attachment()]} | {:error, String.t()}
+          {:ok, Phoenix.LiveView.Socket.t(), [Loopyard.Attachments.attachment()]}
+          | {:error, String.t()}
   def consume(socket) do
     if socket.assigns[:uploads] do
+      # Refused entries (too large / too many) never upload, so they'd sit in
+      # `in_progress` forever and turn every Send into "still uploading". Drop
+      # them here — their error already showed in the tray — and send the rest.
+      socket = drop_invalid(socket)
+
       case uploaded_entries(socket, :attachments) do
         {[], []} ->
-          {:ok, []}
+          {:ok, socket, []}
 
         {_done, [_ | _]} ->
           {:error, "Still uploading your attachment(s) — try Send again in a moment."}
@@ -77,7 +94,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Attachments do
           case safe_store(target(socket), uploads) do
             {:ok, atts} ->
               consume_uploaded_entries(socket, :attachments, fn _, _ -> {:ok, :consumed} end)
-              {:ok, atts}
+              {:ok, socket, atts}
 
             {:error, reason} ->
               Logger.warning(
@@ -90,8 +107,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Attachments do
           end
       end
     else
-      {:ok, []}
+      {:ok, socket, []}
     end
+  end
+
+  defp drop_invalid(socket) do
+    socket.assigns.uploads.attachments.entries
+    |> Enum.reject(& &1.valid?)
+    |> Enum.reduce(socket, fn entry, sock -> cancel_upload(sock, :attachments, entry.ref) end)
   end
 
   # The Docker boundary: a raise here must not crash the LiveView (that drops

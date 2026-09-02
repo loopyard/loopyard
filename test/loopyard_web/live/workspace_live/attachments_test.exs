@@ -135,6 +135,55 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AttachmentsTest do
     assert last_user_message(agent_id) == nil
   end
 
+  test "a refused (too large) file shows its error, never counts, and never blocks Send", %{
+    conn: conn,
+    path: path,
+    agent_id: agent_id
+  } do
+    prev = Application.get_env(:loopyard, :attachment_max_bytes)
+    Application.put_env(:loopyard, :attachment_max_bytes, 8)
+
+    on_exit(fn ->
+      if prev,
+        do: Application.put_env(:loopyard, :attachment_max_bytes, prev),
+        else: Application.delete_env(:loopyard, :attachment_max_bytes)
+    end)
+
+    {:ok, view, _html} = live(conn, path)
+
+    big =
+      file_input(view, "#chat-attachments", :attachments, [
+        %{name: "big.png", content: @png, type: "image/png"}
+      ])
+
+    assert {:error, [[_, :too_large]]} = render_upload(big, "big.png")
+
+    html = render(view)
+    assert html =~ "Too large"
+    assert has_element?(view, "#chat-attachments[data-count='0']")
+
+    # Send goes through with the text alone; the refused entry is dropped, not
+    # reported as "still uploading".
+    render_submit(form(view, "#chat-form", %{message: "just words"}))
+    assert last_user_message(agent_id).content == "just words"
+    refute render(view) =~ "Too large"
+  end
+
+  test "a chip is marked uploading until its bytes are all in", %{conn: conn, path: path} do
+    {:ok, view, _html} = live(conn, path)
+
+    shot =
+      file_input(view, "#chat-attachments", :attachments, [
+        %{name: "slow.png", content: @png, type: "image/png"}
+      ])
+
+    render_upload(shot, "slow.png", 50)
+    assert has_element?(view, "#chat-attachments [data-attachment][data-uploading]")
+
+    render_upload(shot, "slow.png", 50)
+    refute has_element?(view, "#chat-attachments [data-uploading]")
+  end
+
   test "a removed chip is not sent", %{conn: conn, path: path, agent_id: agent_id} do
     {:ok, view, _html} = live(conn, path)
 

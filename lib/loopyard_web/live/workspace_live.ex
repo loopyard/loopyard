@@ -692,7 +692,7 @@ defmodule LoopyardWeb.WorkspaceLive do
         # agent sees a path it can Read. A failed copy is the ONE case where the
         # box must keep its text: reply ok:false + note, nothing consumed.
         case ComposerAttachments.consume(socket) do
-          {:ok, atts} ->
+          {:ok, socket, atts} ->
             Composer.deliver(socket, Loopyard.Attachments.annotate(message, atts))
 
           {:error, note} ->
