@@ -282,7 +282,7 @@ defmodule LoopyardWeb.DashboardLive do
       <div>
         <.start_here :if={@first_run_step} step={@first_run_step} workstation={@operator} />
 
-        <div class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4 md:auto-rows-fr lg:min-h-[26rem]">
+        <div class="mt-6 grid gap-4 md:grid-cols-2 md:auto-rows-fr">
           <%!-- ── WORKSPACES ─────────────────────────────────────────────── --%>
           <.dash_card title="Workspaces" navigate="/workspaces">
             <:icon>
