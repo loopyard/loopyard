@@ -646,7 +646,11 @@ defmodule LoopyardWeb.ReviewLive do
             </a>
           </div>
 
-          <div id={"thread-" <> @card.dom_id}>
+          <%!-- At least a screen tall, so the card can ALWAYS be scrolled away and
+          the band above collapse — a two-message thread used to stop the
+          scroll with the card still half on screen. An empty chat area with
+          the composer at its foot is what a fresh thread should look like. --%>
+          <div id={"thread-" <> @card.dom_id} class="min-h-screen">
             <p
               :if={@thread == [] and !@blocked?}
               class="px-1 py-2 text-body text-zinc-500 dark:text-zinc-400"
