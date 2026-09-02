@@ -207,7 +207,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
             <AttachmentChip.chip
               :for={att <- @attachments}
               att={att}
-              url={Loopyard.Attachments.url(assigns[:workspace_id], att)}
+              url={
+                Loopyard.Attachments.url(assigns[:workspace_id] || {:agent, assigns[:agent_id]}, att)
+              }
             />
           </div>
         </div>

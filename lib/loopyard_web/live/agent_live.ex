@@ -514,7 +514,7 @@ defmodule LoopyardWeb.AgentLive do
     ~H"""
     <AppShell.shell
       title={@agent_name}
-      mode={:operator}
+      mode={:agents}
       mode_id="mode-agent"
       id="agent-page"
       phx-hook="ScrollBottom"

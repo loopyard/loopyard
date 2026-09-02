@@ -70,7 +70,7 @@ defmodule LoopyardWeb.MessageLive do
         state: (pending? && :needs_you) || :done
       }
     else
-      _ -> %{project: "Operator", workspace: nil, state: :done}
+      _ -> %{project: "System", workspace: agent_name(agent_id), state: :done}
     end
   rescue
     _ -> nil
@@ -84,7 +84,14 @@ defmodule LoopyardWeb.MessageLive do
         "/projects/#{proj || ws}/workspaces/#{ws}/agents/#{agent_id}#mr-#{msg_id}"
 
       _ ->
-        "/operator"
+        "/agents/#{agent_id}#mr-#{msg_id}"
+    end
+  end
+
+  defp agent_name(agent_id) do
+    case Loopyard.Agents.get(agent_id) do
+      %{name: name} when is_binary(name) -> name
+      _ -> nil
     end
   end
 

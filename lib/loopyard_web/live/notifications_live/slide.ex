@@ -55,7 +55,7 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
         awaiting?: awaiting_reply?(assigns.thread),
         blocked?: operator_blocked?(assigns.operator_id, assigns.card),
         who: Deck.who_asked(assigns.card.slide),
-        operator_source?: Deck.operator?(assigns.card.slide)
+        system_source?: Deck.system?(assigns.card.slide)
       )
 
     ~H"""
@@ -95,7 +95,7 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
         while the deck is short enough; "n of N" past that. --%>
           <div class="flex items-center gap-2 min-w-0 mb-1 text-lead text-zinc-500 dark:text-zinc-400">
             <span
-              :if={@operator_source?}
+              :if={@system_source?}
               class={[
                 "flex-none",
                 (@pending? && "text-orange-500") || "text-zinc-400 dark:text-zinc-500"
@@ -104,11 +104,13 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
             >
               <Brand.mark class="w-5 h-5" />
             </span>
-            <span :if={@operator_source?} class="min-w-0 truncate">
-              <span class="font-semibold text-zinc-800 dark:text-zinc-100">Operator</span>
+            <span :if={@system_source?} class="min-w-0 truncate">
+              <span class="font-semibold text-zinc-800 dark:text-zinc-100">
+                {@card.slide.agent_name || "System"}
+              </span>
               <span :if={@card.slide.asked_at}>{@verb} {Deck.ago_words(@card.slide.asked_at)}</span>
             </span>
-            <span :if={!@operator_source?} class="min-w-0 flex items-center gap-1.5 truncate">
+            <span :if={!@system_source?} class="min-w-0 flex items-center gap-1.5 truncate">
               <Common.workspace_identity
                 project={@card.slide.project_name}
                 workspace={@card.slide.workspace_name}
@@ -231,10 +233,10 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
         has its own chrome. --%>
           <div id={"thread-" <> @card.dom_id} class="scroll-mt-24">
             <p :if={@blocked?} class="px-1 py-3 text-body text-zinc-500 dark:text-zinc-400">
-              This is the operator's own question, and it's waiting on your answer
-              before it can do anything else — including discuss it. Answer it
-              above, or ask in a moment: anything you send now is queued until
-              it's free.
+              This is {@card.slide.agent_name || "the agent"}'s own question, and it's
+              waiting on your answer before it can do anything else — including
+              discuss it. Answer it above, or ask in a moment: anything you send
+              now is queued until it's free.
             </p>
 
             <div :for={{msg, idx} <- Enum.with_index(@thread)} :key={msg[:id] || idx}>
@@ -242,7 +244,7 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
                 msg={msg}
                 idx={idx}
                 messages={@thread}
-                agent_id={@operator_id || "operator"}
+                agent_id={@operator_id || @card.slide.agent_id}
                 host="localhost"
                 detail_level={:chat}
                 user_label={@user_label}
@@ -258,7 +260,7 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
               class="mt-3 px-3 py-2 border-l-2 border-violet-400/60 bg-violet-500/5 text-lead text-zinc-700 dark:text-zinc-300"
             >
               <span class="block text-meta text-violet-600 dark:text-violet-400">
-                Queued — the operator is busy; this sends when it's free
+                Queued — the agent is busy; this sends when it's free
               </span>
               {text}
             </div>
@@ -471,10 +473,10 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
   # What the operator is doing while you wait — the honest word, not a
   # generic spinner. A queued send while it's idle means it's about to take it.
   defp waiting_line(status) when status in [:booting, :starting, :restarting],
-    do: "Waking the operator…"
+    do: "Waking the agent…"
 
-  defp waiting_line(:compacting), do: "The operator is tidying its context first…"
-  defp waiting_line(:rate_limited), do: "The operator is rate-limited — it retries on its own"
+  defp waiting_line(:compacting), do: "The agent is tidying its context first…"
+  defp waiting_line(:rate_limited), do: "The agent is rate-limited — it retries on its own"
   defp waiting_line(_), do: "Working on it…"
 
   defp awaiting_reply?(thread) do

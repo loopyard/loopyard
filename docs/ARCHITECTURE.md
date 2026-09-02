@@ -345,6 +345,26 @@ All owned by `StateKeeper`. Created once in `init/1`.
 | `:docker_observer` | set | Container/volume snapshot from Docker.Observer |
 | `:loopyard_evals` | set | Eval run state |
 
+## What an agent is — the template
+
+An agent is four things brought together (`Loopyard.Agents.Template`):
+**compute** (a container: the workspace's work container on the code volume,
+or the identity's workstation container), **tools** (an MCP scope:
+`:workspace` — the container toolkit; `:system` — `Tools.ControlPlane`),
+**loop + model** (`:acp` today — a coding harness in the container; `:direct`
+next — a model API loop in the BEAM), and **context** (shared doctrine blocks
+under `priv/agents/_shared/` + the template's `agent.md` body + its on-demand
+file catalog + runtime facts, composed by `ChatAgent.Prompt` for every agent).
+Two presets exist, as code: `coding` (a workspace agent) and `system` (the
+operator and its peers). `template_id` + `scope` persist on the agent record.
+
+`Loopyard.Agents.Spawn` is the one spawn path (via `Onboarding.spawn_agent/2`);
+`AgentBoot` picks its saga steps by scope; a workspace agent lands under its
+`WorkspaceGroup`, a system agent under its identity's `Agents.SystemGroup`
+(agent supervisor + `RestartController` keyed `{:system, identity}` +
+`Checkpointer` on `<workstation>/agents.log`). `Loopyard.Agents` is the
+registry of system agents and the flat read of all of them.
+
 ## Notifications — the inbox store
 
 `Loopyard.Notifications` is ONE durable store of everything waiting on a human

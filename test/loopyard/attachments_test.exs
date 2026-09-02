@@ -282,7 +282,11 @@ defmodule Loopyard.AttachmentsTest do
     end
 
     test "url/2 with no workspace is the operator's attachment route; container_path guards the name" do
-      assert Attachments.url(nil, "x-shot.png") == "/operator/attachments/x-shot.png"
+      # A workspace-less (system) agent's attachments are served by agent id.
+      assert Attachments.url({:agent, "op-1"}, "x-shot.png") ==
+               "/agents/op-1/attachments/x-shot.png"
+
+      assert Attachments.url(nil, "x-shot.png") == nil
 
       assert Attachments.container_path("/home/brad", "x-shot.png") ==
                {:ok, "/home/brad/.loopyard/uploads/x-shot.png"}

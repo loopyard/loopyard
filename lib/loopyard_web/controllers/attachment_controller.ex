@@ -5,7 +5,8 @@ defmodule LoopyardWeb.AttachmentController do
 
   Routes:
     * GET /projects/:project_id/workspaces/:workspace_id/attachments/:name — code volume
-    * GET /operator/attachments/:name — the operator's workstation `$HOME`
+    * GET /agents/:id/attachments/:name — a system agent's workstation `$HOME`
+    * GET /operator/attachments/:name — the default system agent's, old URL shape
 
   `name` must be a stored attachment basename (`Attachments.volume_path/1` /
   `container_path/2` reject anything else — no traversal, no dotfiles).
@@ -37,12 +38,25 @@ defmodule LoopyardWeb.AttachmentController do
     end
   end
 
-  @doc "The operator's attachments: read out of its workstation container's $HOME."
+  @doc "A system agent's attachments: read out of its workstation container's $HOME."
+  def agent(conn, %{"id" => id, "name" => name}) do
+    case Loopyard.Agents.attachment_target(id) do
+      {:container, container, home} -> serve_from_container(conn, container, home, name)
+      {:workspace, ws} -> show(conn, %{"workspace_id" => ws, "name" => name})
+      _ -> not_found(conn)
+    end
+  end
+
+  @doc "The default system agent's attachments under the old URL shape."
   def operator(conn, %{"name" => name}) do
     {:container, container, home} =
       Loopyard.Agents.attachment_target(Loopyard.Agents.default_id()) ||
         Loopyard.Agents.default_attachment_target()
 
+    serve_from_container(conn, container, home, name)
+  end
+
+  defp serve_from_container(conn, container, home, name) do
     with {:ok, path} <- Attachments.container_path(home, name),
          {:ok, content} <-
            Attachments.Cache.fetch({:container, container, path}, fn ->

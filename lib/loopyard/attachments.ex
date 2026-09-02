@@ -315,8 +315,11 @@ defmodule Loopyard.Attachments do
     end
   end
 
-  # No workspace = the operator (the one workspace-less agent).
-  def url(nil, name) when is_binary(name), do: "/operator/attachments/#{name}"
+  # A workspace-less agent (a system agent): its attachments live in its
+  # workstation container and are served by agent id.
+  def url({:agent, agent_id}, name) when is_binary(agent_id) and is_binary(name),
+    do: "/agents/#{agent_id}/attachments/#{name}"
+
   def url(_, _), do: nil
 
   @doc "Volume-relative path of a stored attachment by name, or `:error` for an unsafe name."

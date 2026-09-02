@@ -396,7 +396,7 @@ boots the cloned config once cloning is done — not just forks.
   ONLY from `<cwd>/.loopyard/uploads` (a marker line is text anyone can type).
   Inline images are decided by magic bytes (`sniff_image/1`), never the
   browser's label; HEIC converts to JPEG at store time; 20 MB per prompt.
-  `/operator/attachments/:name` serves the operator's. The route serves
+  `/agents/:id/attachments/:name` serves a system agent's (`/operator/attachments/:name` still resolves the default one's old URLs). The route serves
   sniffed images inline and everything else as a sandboxed download — see
   docs/SECURITY.md §9 before touching it.
 - **Composer queue is ONE card.** Messages queued while the agent is
@@ -408,39 +408,58 @@ boots the cloned config once cloning is done — not just forks.
   a newline — `preventDefault` is unconditional); on mobile Enter is a
   no-op (tap Send); Shift+Enter newlines, ⌘/Ctrl+Enter always sends.
 
-## The Operator — the cockpit (plans/operator-hub.md)
+## Agents — templates, scopes, the Agents root (plans/notifications-and-agents.md)
 
-`/operator` (`OperatorLive`) is the one place to run and watch all of Loopyard.
-The **operator agent** (`Loopyard.Operator`, a workspace-less ChatAgent in the
-workstation container) is a **chief of staff**: it reads status, dispatches work,
-and pulls detail on demand — it does NOT hold everything in context.
+**An agent is four things brought together:** compute (a container), MCP tools
+(a scope), a loop + model, and context. `Loopyard.Agents.Template` is the STAMP:
+`coding/0` (a workspace agent — the work container on the code volume, the
+container toolkit, `priv/agents/coding/agent.md`) and `system/0` (a system
+agent — the workstation container, `Tools.ControlPlane`,
+`priv/agents/system/agent.md`). Today the templates are CODE presets; when the
+UI grows a way to configure them they become data. Context is composed by
+`ChatAgent.Prompt` for EVERY agent, no override path: runtime facts + shared
+doctrine blocks (`priv/agents/_shared/decisions.md`, `phone-screen.md`,
+`workspace-tools.md` — the ask_user/stateless-reader doctrine lives ONCE) + the
+template's body + its on-demand file catalog + workspace/service context. The
+stamp persists: `template_id` and `scope` ride the summary and the `{:agent, …}`
+record, so a restart re-stamps the same agent.
 
-**Operator toolset** (`Tools.ControlPlane`, ACP `:operator` scope). Curated + terse
-+ pull-on-demand — tool COUNT is cheap, tool OUTPUT is the context cost, so reads
-are capped and detail is fetched only when needed:
-- `overview` — one compact read of every project → workspace → agents/status →
-  ports (the default "what's here / running"). `peek_workspace(target)` pulls one
-  workspace's status + recent chat. `system_status` — read-only host snapshot
-  (memory via `:os_mon`, `Health` map, agent counts; NEVER a host shell — the
-  operator's `exec` stays in its container; containment holds). `recent_activity`
-  — the completion digest.
-- `ports(target, action)` toggles a workspace's network exposure; `dispatch(target,
-  message)` hands a task to a workspace agent (`enqueue_message`); the create tools
-  stay approval-gated (`Harness.Approvals`).
-- `resolve_agent/1` + `resolve_workspace/1` (in the toolkit) let the operator name
-  a target by agent id / workspace id / workspace name.
+**Scope, not kind.** `Loopyard.Agents.scope/1` is the ONE derivation:
+`:workspace` (bound to a project workspace — its group, its `agents.log`) or
+`:system` (workspace-less, bound to a workstation identity — the identity's
+`Agents.SystemGroup`, its `<workstation>/agents.log`). The operator is the
+FIRST system agent, not a singleton: `Loopyard.Agents` is the registry
+(`summaries/0` the flat read, `system/1`, `default_id/1`, `ensure_default/1`,
+`ensure_running/1`, `create_system/1`, `attachment_target/1`, `restore/1`). The
+old `Loopyard.Operator` is gone; `Agents.migrate!/1` carried `operator.json` +
+`operator-agent.log` into `agents.json` + `agents.log` keeping the id + history.
 
-**Told when things finish, without firehosing context:** `Loopyard.Operator.Digest`
-rides `Events.Activity.subscribe_global/0` and appends a compact one-liner to a
-bounded ETS ring (`:operator_digest`) on each workspace agent's turn-end. Nothing
-is injected into the operator's context — it PULLS via `recent_activity` and digs
-in with `peek_workspace`. Config-gated (`:operator_digest_enabled?`).
+**ONE spawn path.** `Loopyard.Agents.Spawn.spawn(template_id, opts)` (via the
+`Onboarding.spawn_agent/2` shim: a workspace id means "a coding agent there")
+registers the booting stub and runs the `AgentBoot` saga, whose steps follow
+the scope (workspace: load config + ensure the work container; system: ensure
+the workstation container). Both land under a `RestartController` keyed by
+scope (`workspace_id` | `{:system, identity}`) — crash history, quarantine,
+boot accounting — and write through the scope's `Checkpointer`. Never spawn an
+agent any other way.
 
-**The surface + sound:** `/operator` is chat-primary with a quiet desktop working
-board (WorkspaceTree + Birdseye dots + ports). The speaker icon everywhere is now
-the **operator icon** (`Common.operator_link`) → `/operator`; the operator is the
-ambient presence, and its own thinking/idle drives the Aural continuous activity
-level (`Aural.Channel.set_activity/2`).
+**The system toolset** (`Tools.ControlPlane`, MCP scope `:system`; a token
+minted under the old `:operator` name still verifies). Curated + terse +
+pull-on-demand — tool COUNT is cheap, tool OUTPUT is the context cost: `overview`,
+`peek_workspace`, `system_status` (NEVER a host shell), `recent_activity`,
+`ports`, `dispatch` (→ `enqueue_message`), `notify_when_done`, `agent`,
+`workspace`, the approval-gated create/delete/rename tools, `exec` (in ITS
+container). `Loopyard.Operator.Digest` still rides `Events.Activity` for the
+`recent_activity` pull (replaced by the Notifications store's finished items in
+time).
+
+**The surface.** `/agents` (`AgentsLive`) lists every agent, flat, system first;
+`/agents/:id` (`AgentLive`) is a system agent's chat (a workspace agent's id
+redirects to its workspace chat); `/operator` redirects to the identity's
+default system agent (a controller — the first visit may boot a container).
+The home card is Agents. There is no rail beside the chat any more: what it
+listed lives on `/notifications`. The sound bed follows fleet busyness
+(`ActivitySound`), not any one agent.
 
 ## Attention & the Reviewer (questions that never get lost)
 
@@ -482,17 +501,15 @@ answer). `LoopyardWeb.Components.FocusedView` is the shared full-screen shell
 
 ## Design system (see also packages/brand)
 
-- **IA: an ALTITUDE, not a tab bar** (`plans/ia-two-modes.md`): the Operator
-  sits ABOVE the workspaces. `Common.mode_nav` is ONE control that always
-  points away from where you are — UP to the Operator from anywhere else, DOWN
-  to the workspaces from the Operator. **Decisions (`/decisions`) is its own
-  ROOT beside them** — the team's inbox, multiplayer, with its own link in
-  `mode_nav` — never a tab under the Operator (the Chat | Decisions tab row
-  was tried and read as two chats). A flat row of peer icons said these were
-  siblings, which is not how the product is organised. System is NOT a mode: it
-  is a deliberate destination reached from the home dashboard (the brand crumb
-  always gets you there), never a gear one tap from every screen. Keep the
-  roots URL-rooted — they're the future native tab bar.
+- **IA: THREE ROOTS** (`plans/notifications-and-agents.md`): Workspaces (the
+  work), Agents (every agent, flat, whatever its scope), Notifications (the
+  team's inbox). `Common.mode_nav` shows the two you are not on. The earlier
+  "altitude" control (UP to one Operator above the workspaces) ended when the
+  operator became one row in Agents; a row of peers is honest now. Tabs UNDER a
+  root were tried (Chat | Decisions) and read as two chats — don't. System is
+  NOT a root: it is a deliberate destination reached from the home dashboard
+  (the brand crumb always gets you there), never a gear one tap from every
+  screen. Keep the roots URL-rooted — they're the future native tab bar.
 - **Brand**: `packages/brand` is the source of truth (mark + motion +
   `colors.brand.*` Tailwind preset). One job per color: paper/ink grounds,
   iris (violet) = interactive/"you", flame (≡ orange-600) = blocked-on-a-human
@@ -588,7 +605,7 @@ Two ways in:
 - **Toolkit** = `Tools.Container` — lists all tool modules in `__tool_server__/0`.
 - Infrastructure files (`Dockerfile`, `docker-compose.yml`) live in `.loopyard/workspace/` and are **tracked in git** — that's how a new branch or fork inherits a working dev environment instead of re-scaffolding one. Which means they must be **workspace-agnostic**: never a literal `loopyard-<id>-code`, always `${CODE_VOLUME}` / `${WORKSPACE_ID}`, resolved at run time by `Compose.process_agent_compose/3`. `Tools.Container.WriteFile` rewrites a hardcoded name back to the placeholder on write (it used to do the opposite, baking one workspace's id into a file git carries to every branch). Metadata (`workspace.json` with project name, system prompt) lives in `.loopyard/repo/`.
 - User-level data in `~/.loopyard/` (overridable with `LOOPYARD_HOME` env var).
-- URLs: `/projects/:project_id/workspaces/:workspace_id/agents/:id`, `/messages/:agent_id/:msg_id`
+- URLs: `/projects/:project_id/workspaces/:workspace_id/agents/:id`, `/agents/:id`, `/agents`, `/notifications`, `/messages/:agent_id/:msg_id`
 
 ## Key modules
 
@@ -632,10 +649,13 @@ Two ways in:
 | `PortExposer` | Per-port TCP proxy GenServer (loopback ↔ network toggle) |
 | `PortStore` | JSON persistence for port assignments (`ports.json`) |
 | `Tools.Container` | MCP toolkit — one file per tool (incl. propose_fork/integrate/delete/rename, ask_user, request_secret, recall_conversation) |
-| `Loopyard.Attention` | The durable "waiting on the human" line (cards ∪ broker) feeding rail/decisions/dashboard |
+| `Loopyard.Agents` + `Agents.Template` + `Agents.Spawn` + `Agents.SystemGroup` | Every agent by scope; the stamp (code presets: coding, system); the one spawn path; a system agent's supervision group |
+| `Loopyard.Notifications` | The inbox store — decisions + finished turns, durable, prioritised, its own log + events |
+| `Loopyard.Attention` | The "waiting on the human" line — a read of the store's decision subset |
 | `ChatAgent.Thread` | Decision threads: the `[[re:agent:msg]]` marker → `re:` on user + reply, so talk ABOUT a card lands on the card |
 | `Loopyard.CardText` | Cards → paste-ready markdown (share/raw) |
-| `LoopyardWeb.NotificationsLive` | `/decisions` — the decisions deck (newest first) + `/decisions/:agent/:msg` (one decision, pinned, with its operator thread) |
+| `LoopyardWeb.NotificationsLive` | `/notifications` — the inbox deck + `/notifications/:agent/:msg` (one item, with its discussion thread) |
+| `LoopyardWeb.AgentsLive` / `AgentLive` | `/agents` — every agent, flat, system first; `/agents/:id` — a system agent's chat (`/operator` redirects to the default one) |
 | `LoopyardWeb.Components.FocusedView` | Full-screen focused-view shell (subject header + slide column) |
 | `LoopyardWeb.Components.StreamCard` | Mini-app card anatomy (band + header) |
 | `LoopyardWeb.Live.ApprovalActions` | The ONE Approve/Deny (blocking + queued models) |

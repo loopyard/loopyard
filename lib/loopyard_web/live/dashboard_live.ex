@@ -68,7 +68,18 @@ defmodule LoopyardWeb.DashboardLive do
     |> assign(:health, safe(&Loopyard.Health.severity/0, :unknown))
     |> assign(:remote_exposed, safe(&Loopyard.Bind.exposed?/0, false))
     |> assign(:bind, safe(&Loopyard.Bind.describe/0, "unknown"))
-    |> assign(:operator, safe(&Loopyard.Workstation.current/0, "—"))
+    |> assign(:workstation, safe(&Loopyard.Workstation.current/0, "—"))
+    |> assign(
+      :agent_rows,
+      safe(fn -> LoopyardWeb.AgentsLive.Row.rows(Loopyard.Agents.summaries()) end, [])
+    )
+    |> then(
+      &assign(
+        &1,
+        :agents_working,
+        LoopyardWeb.AgentsLive.Row.working_count(&1.assigns.agent_rows)
+      )
+    )
     |> assign(:operator_count, safe(fn -> length(Loopyard.Workstation.list()) end, 1))
     |> load_attention_async()
     |> assign(:inference_ready?, safe(&inference_ready?/0, true))
@@ -280,7 +291,7 @@ defmodule LoopyardWeb.DashboardLive do
       flash={@flash}
     >
       <div>
-        <.start_here :if={@first_run_step} step={@first_run_step} workstation={@operator} />
+        <.start_here :if={@first_run_step} step={@first_run_step} workstation={@workstation} />
 
         <div class="mt-6 grid gap-4 md:grid-cols-2 md:items-start">
           <%!-- ── WORKSPACES ─────────────────────────────────────────────── --%>
@@ -415,15 +426,29 @@ defmodule LoopyardWeb.DashboardLive do
             </div>
           </.dash_card>
 
-          <%!-- ── OPERATOR ───────────────────────────────────────────────── --%>
-          <.dash_card title="Operator" navigate="/operator">
+          <%!-- ── AGENTS ─────────────────────────────────────────────────── --%>
+          <.dash_card title="Agents" navigate="/agents">
             <:icon>
               <span class="text-violet-600 dark:text-violet-400"><Brand.mark class="w-5 h-5" /></span>
             </:icon>
-            <.gauge navigate="/operator" tone={:calm}>
-              Chat with the operator
-              <:detail>Running the shop as {@operator}</:detail>
+            <.gauge navigate="/agents" tone={(@agents_working > 0 && :working) || :calm}>
+              {length(@agent_rows)} {plural(length(@agent_rows), "agent")} · {@agents_working} working
+              <:detail>Running the shop as {@workstation}</:detail>
             </.gauge>
+            <div class="relative z-10 mt-4 space-y-1">
+              <LoopyardWeb.AgentsLive.Row.agent_row
+                :for={row <- Enum.take(@agent_rows, 4)}
+                row={row}
+                compact
+              />
+              <.link
+                :if={length(@agent_rows) > 4}
+                navigate="/agents"
+                class="block -mx-2 px-2 py-3 md:py-1.5 text-body font-medium text-violet-600 dark:text-violet-400 hover:underline"
+              >
+                All {length(@agent_rows)} agents →
+              </.link>
+            </div>
           </.dash_card>
 
           <%!-- ── SYSTEM ─────────────────────────────────────────────────── --%>
@@ -486,7 +511,7 @@ defmodule LoopyardWeb.DashboardLive do
                 class="pt-3 mt-2 border-t border-zinc-200/70 dark:border-zinc-800"
               >
                 <.link
-                  navigate={"/workstations/#{@operator}"}
+                  navigate={"/workstations/#{@workstation}"}
                   class="flex items-center gap-2 text-body text-zinc-400 dark:text-zinc-500 mb-1 -mx-2 px-2 py-1 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
                 >
                   Connections

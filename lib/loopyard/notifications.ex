@@ -314,6 +314,7 @@ defmodule Loopyard.Notifications do
       project_id: e.project_id,
       project_name: where(e.workspace_id).project_name,
       path: Item.path(e.workspace_id, e.project_id, e.agent_id),
+      scope: :workspace,
       msg_id: nil,
       label: summary,
       raised_at: e.at || DateTime.utc_now(),

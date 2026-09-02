@@ -1,3 +1,5 @@
+> **Superseded (Sep 2, 2026)** by [notifications-and-agents.md](notifications-and-agents.md): the operator is the first SYSTEM agent, one of many, at `/agents/:id`; its rail retired (its needs-you list is `/notifications`). Kept for the history of the cockpit idea.
+
 # Plan: The Operator — one chief-of-staff agent + surface
 
 > **Build status (branch `operator-hub`, worktree):** Phases 1–4 built + compiling.

@@ -1,3 +1,5 @@
+> **Superseded (Sep 2, 2026)** by [notifications-and-agents.md](notifications-and-agents.md) §4: the "altitude" premise (one Operator ABOVE the workspaces) ended when the operator became one row in Agents. The nav is three peers — Workspaces / Agents / Notifications — with home behind the brand mark. Kept for the reasoning it records.
+
 # IA reset: two modes, not a tree
 
 ## The insight (Brad, Jul 26)

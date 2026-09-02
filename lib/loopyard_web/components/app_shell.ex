@@ -12,7 +12,7 @@ defmodule LoopyardWeb.Components.AppShell do
   alias LoopyardWeb.Components.Nav
   import LoopyardWeb.Components.Breadcrumbs, only: [breadcrumbs: 1]
 
-  attr :title, :string, required: true, doc: "the current crumb, e.g. \"Operator\""
+  attr :title, :string, required: true, doc: "the current crumb, e.g. \"Agents\""
   attr :mode, :atom, required: true, doc: "where we are, for the mode nav"
   attr :mode_id, :string, required: true, doc: "unique mode-nav placement id"
   attr :rest, :global, doc: "id / phx-hook for the page root (the chat's ScrollBottom)"

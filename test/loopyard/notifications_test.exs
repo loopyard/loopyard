@@ -72,7 +72,10 @@ defmodule Loopyard.NotificationsTest do
     Notifications.sync()
 
     item = Enum.find(Loopyard.Attention.line(), &(&1.id == qid))
-    assert %{kind: :question, agent_id: ^aid, agent_name: "Tester", path: "/operator"} = item
+
+    assert %{kind: :question, agent_id: ^aid, agent_name: "Tester", path: "/agents/" <> ^aid} =
+             item
+
     assert item.msg.id == msg.id
     assert %DateTime{} = item.asked_at
     assert Loopyard.Attention.count() >= 1

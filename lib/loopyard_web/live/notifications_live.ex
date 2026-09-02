@@ -326,14 +326,12 @@ defmodule LoopyardWeb.NotificationsLive do
           {:reply, %{ok: true}, socket |> assign(streaming: "", awaiting: ref) |> load_threads()}
 
         _ ->
-          {:reply,
-           %{ok: false, note: "The operator isn't reachable right now — your text is kept."},
+          {:reply, %{ok: false, note: "The agent isn't reachable right now — your text is kept."},
            socket}
       end
     else
       nil ->
-        {:reply,
-         %{ok: false, note: "The operator couldn't start — your text is kept; try again."},
+        {:reply, %{ok: false, note: "The agent couldn't start — your text is kept; try again."},
          socket}
 
       # A finished-turn slide's composer is "what's next" for THAT agent.

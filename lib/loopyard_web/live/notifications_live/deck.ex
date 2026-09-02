@@ -18,6 +18,7 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
           key: {String.t(), String.t(), term()},
           item_id: String.t() | nil,
           kind: atom() | nil,
+          scope: :workspace | :system,
           agent_id: String.t(),
           msg_id: String.t(),
           q_id: term(),
@@ -74,6 +75,7 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
         key: {aid, msg.id, nil},
         item_id: Item.card_id(msg),
         kind: Item.kind_for_role(msg.role),
+        scope: Loopyard.Agents.scope(st),
         agent_id: aid,
         msg_id: msg.id,
         q_id: nil,
@@ -121,12 +123,13 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
   end
 
   def who_asked(%{agent_name: name}) when is_binary(name) and name != "", do: name
-  def who_asked(_), do: "Operator"
+  def who_asked(_), do: "System"
 
-  @doc "Is this item the operator's own (no workspace behind it)?"
-  @spec operator?(slide()) :: boolean()
-  def operator?(%{project_name: project}) when is_binary(project) and project != "", do: false
-  def operator?(_), do: true
+  @doc "Is this a SYSTEM agent's item (a workspace-less agent — the operator, its peers)?"
+  @spec system?(slide()) :: boolean()
+  def system?(%{scope: scope}) when scope in [:workspace, :system], do: scope == :system
+  def system?(%{project_name: project}) when is_binary(project) and project != "", do: false
+  def system?(_), do: true
 
   @doc "Relative age in words for a byline: \"moments ago\", \"3 hours ago\", \"21 days ago\"."
   @spec ago_words(DateTime.t() | term()) :: String.t() | nil
@@ -164,7 +167,7 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
   defp history_path(%{project_id: pid}, st) when is_binary(pid),
     do: "/projects/#{pid}/workspaces/#{st[:workspace_id]}/agents/#{st[:id]}"
 
-  defp history_path(_ws, _st), do: "/operator"
+  defp history_path(_ws, st), do: "/agents/#{st[:id]}"
 
   # A multi-question ask fans out one slide per still-open question.
   defp item_slides(%Item{kind: :question, agent_id: aid, msg_id: mid} = item)
@@ -187,6 +190,7 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
       key: {item.agent_id, msg_id, q_id},
       item_id: item.id,
       kind: item.kind,
+      scope: item.scope || if(is_binary(item.workspace_id), do: :workspace, else: :system),
       agent_id: item.agent_id,
       msg_id: msg_id,
       q_id: q_id,

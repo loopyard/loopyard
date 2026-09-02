@@ -24,7 +24,7 @@ defmodule LoopyardWeb.Components.FocusedView do
   attr :crumbs, :list,
     default: [],
     doc:
-      "breadcrumb trail for the top-left anchor, e.g. [{\"loopyard\", \"/\"}, {\"Operator\", \"/operator\"}]"
+      "breadcrumb trail for the top-left anchor, e.g. [{\"loopyard\", \"/\"}, {\"Agents\", \"/agents\"}]"
 
   attr :snap, :boolean,
     default: false,

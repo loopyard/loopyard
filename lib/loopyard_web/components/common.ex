@@ -533,45 +533,68 @@ defmodule LoopyardWeb.Components.Common do
   end
 
   @doc """
-  The MODE NAV — ONE control, per plans/ia-two-modes.md.
+  The ROOT NAV — the three places Loopyard is: Workspaces (the work),
+  Agents (every agent, flat, whatever its scope), Notifications (the team's
+  inbox). Three peers; the one you're on is not shown. The home dashboard
+  (setup, System) sits behind the brand crumb.
 
-  The Operator sits ABOVE the workspaces, so this is a move in altitude, not a
-  choice between peers: it always points AWAY from where you are — up to the
-  Operator (the trefoil; the operator is loopyard's mind, the brand mark is its
-  face) from anywhere else, down to the workspaces (2×2 grid) from the Operator.
-  There is no "current" state to style, because it never represents where you
-  already are.
+  This used to be an "altitude" control that always pointed away from you —
+  UP to a single Operator above the workspaces, DOWN to the work from it.
+  That premise ended when the operator became one row in Agents
+  (plans/notifications-and-agents.md §4); a row of peers is now honest.
 
-  NOTIFICATIONS ride beside it: the team's inbox (`/notifications`) is its own root —
-  multiplayer, anyone answers — reachable from every bar, hidden only when
-  you're already there.
-
-  System is deliberately absent: it's a destination you visit on purpose, not a
-  mode you toggle, and it lives on the home dashboard.
-
-  Pass a UNIQUE `id` per placement to get the ambient-state indicator (the
-  operator link tints while its bed is playing). Two placements on one page
-  (the desktop bar and the phone header) need two ids.
+  Pass a UNIQUE `id` per placement to get the sound pill and the ambient-state
+  indicator (the Agents mark tints while the bed is playing). Two placements
+  on one page (the desktop bar and the phone header) need two ids.
   """
   attr :active, :atom,
     default: nil,
-    values: [nil, :workspaces, :operator, :notifications, :system]
+    values: [nil, :workspaces, :agents, :operator, :notifications, :system]
 
   attr :id, :string, default: nil
   attr :class, :string, default: nil
 
   def mode_nav(assigns) do
+    # A system agent's page (`:operator`, the old name) is under Agents.
+    assigns =
+      assign(assigns, :here, if(assigns.active == :operator, do: :agents, else: assigns.active))
+
     ~H"""
     <nav class={["flex items-center", @class]} aria-label="Mode">
-      <%!-- The soundtrack rides next to the altitude control in EVERY bar —
-      play/pause (and on desktop the track + volume) reachable from
-      anywhere, so the bed is the app's soundtrack, not a page you visit.
-      Keyed off the placement id like the ambient indicator below. --%>
+      <%!-- The soundtrack rides in EVERY bar — play/pause (and on desktop the
+      track + volume) reachable from anywhere, so the bed is the app's
+      soundtrack, not a page you visit. Keyed off the placement id. --%>
       <LoopyardWeb.Components.Sound.pill :if={@id} id={@id <> "-sound"} class="mr-1" />
-      <%!-- NOTIFICATIONS — the team's inbox, its own root. Not an altitude: a
-      place. Everywhere but on itself. --%>
       <.link
-        :if={@active != :notifications}
+        :if={@here != :workspaces}
+        navigate="/workspaces"
+        aria-label="Workspaces"
+        title="Workspaces — the work"
+        class={mode_btn(false)}
+      >
+        <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5" aria-hidden="true">
+          <path d="M3 3.5A1.5 1.5 0 0 1 4.5 2h3A1.5 1.5 0 0 1 9 3.5v3A1.5 1.5 0 0 1 7.5 8h-3A1.5 1.5 0 0 1 3 6.5v-3ZM3 13.5A1.5 1.5 0 0 1 4.5 12h3A1.5 1.5 0 0 1 9 13.5v3A1.5 1.5 0 0 1 7.5 18h-3A1.5 1.5 0 0 1 3 16.5v-3ZM11 3.5A1.5 1.5 0 0 1 12.5 2h3A1.5 1.5 0 0 1 17 3.5v3A1.5 1.5 0 0 1 15.5 8h-3A1.5 1.5 0 0 1 11 6.5v-3ZM11 13.5a1.5 1.5 0 0 1 1.5-1.5h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3a1.5 1.5 0 0 1-1.5-1.5v-3Z" />
+        </svg>
+      </.link>
+      <%!-- Agents wears the brand mark (Loopyard's mind is its agents) and
+      doubles as the "is the bed playing" indicator: SoundIcon mirrors engine
+      state onto the two data-sound-icon elements. --%>
+      <.link
+        :if={@here != :agents}
+        navigate="/agents"
+        id={@id}
+        phx-hook={@id && "SoundIcon"}
+        aria-label="Agents"
+        title="Agents — every agent, whatever its scope"
+        class={mode_btn(false)}
+      >
+        <span data-sound-icon="off"><Brand.mark class="w-5 h-5" /></span>
+        <span data-sound-icon="on" class="hidden text-violet-500 dark:text-violet-400">
+          <Brand.mark class="w-5 h-5" />
+        </span>
+      </.link>
+      <.link
+        :if={@here != :notifications}
         navigate="/notifications"
         aria-label="Notifications"
         title="Notifications — what's waiting on a human, across every workspace"
@@ -583,48 +606,6 @@ defmodule LoopyardWeb.Components.Common do
             d="M1 11.27c0-.246.033-.492.099-.73l1.523-5.521A2.75 2.75 0 0 1 5.273 3h9.454a2.75 2.75 0 0 1 2.651 2.019l1.523 5.52c.066.239.099.485.099.732V15a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-3.73Zm3.068-5.852A1.25 1.25 0 0 1 5.273 4.5h9.454a1.25 1.25 0 0 1 1.205.918l1.523 5.52c.006.02.01.041.015.062H14a1 1 0 0 0-.86.49l-.606 1.02a1 1 0 0 1-.86.49H8.236a1 1 0 0 1-.894-.553l-.448-.894A1 1 0 0 0 6 11H2.53l.015-.062 1.523-5.52Z"
             clip-rule="evenodd"
           />
-        </svg>
-      </.link>
-      <%!-- ONE altitude control, not a row of peers. The operator sits ABOVE the
-    workspaces — it's where you go to see everything at once — so the move
-    is vertical: UP to the operator from a workspace, DOWN into the work
-    from the operator. A flat row of three icons said these were siblings,
-    which is not how the product is organised.
-
-    System came out of here entirely: it's a destination you visit
-    deliberately, not a mode you toggle between, and a gear one tap from
-    every screen invites the poking-around that a settings page shouldn't
-    get. It lives on the home dashboard, which the brand crumb always
-    reaches. --%>
-      <%!-- The operator is also the AMBIENT presence, so this link doubles as
-    the "is the bed playing" indicator (SoundIcon mirrors engine state onto
-    the two data-sound-icon elements). That used to be a separate
-    `operator_link/1` with its own icon — which drifted to the command GRID,
-    so on a phone the control that goes UP to the operator wore the mark of
-    the thing you were already looking at. One control, one mark. --%>
-      <.link
-        :if={@active != :operator}
-        navigate="/operator"
-        id={@id}
-        phx-hook={@id && "SoundIcon"}
-        aria-label="Up to the Operator"
-        title="Operator — above the workspaces; run and watch everything"
-        class={mode_btn(false)}
-      >
-        <span data-sound-icon="off"><Brand.mark class="w-5 h-5" /></span>
-        <span data-sound-icon="on" class="hidden text-violet-500 dark:text-violet-400">
-          <Brand.mark class="w-5 h-5" />
-        </span>
-      </.link>
-      <.link
-        :if={@active == :operator}
-        navigate="/workspaces"
-        aria-label="Down to the workspaces"
-        title="Workspaces — drop back into the work"
-        class={mode_btn(false)}
-      >
-        <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5" aria-hidden="true">
-          <path d="M3 3.5A1.5 1.5 0 0 1 4.5 2h3A1.5 1.5 0 0 1 9 3.5v3A1.5 1.5 0 0 1 7.5 8h-3A1.5 1.5 0 0 1 3 6.5v-3ZM3 13.5A1.5 1.5 0 0 1 4.5 12h3A1.5 1.5 0 0 1 9 13.5v3A1.5 1.5 0 0 1 7.5 18h-3A1.5 1.5 0 0 1 3 16.5v-3ZM11 3.5A1.5 1.5 0 0 1 12.5 2h3A1.5 1.5 0 0 1 17 3.5v3A1.5 1.5 0 0 1 15.5 8h-3A1.5 1.5 0 0 1 11 6.5v-3ZM11 13.5a1.5 1.5 0 0 1 1.5-1.5h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3a1.5 1.5 0 0 1-1.5-1.5v-3Z" />
         </svg>
       </.link>
     </nav>

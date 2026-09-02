@@ -57,6 +57,7 @@ defmodule Loopyard.Notifications.Item do
     :settled_at,
     :outcome,
     :priority,
+    :scope,
     status: :open,
     meta: %{}
   ]
@@ -99,6 +100,7 @@ defmodule Loopyard.Notifications.Item do
           msg_id: msg[:id],
           label: label(kind, msg),
           raised_at: raised_at(msg),
+          scope: Loopyard.Agents.scope(summary),
           status: :open
         }
     end
@@ -114,7 +116,10 @@ defmodule Loopyard.Notifications.Item do
   def path(ws_id, project_id, agent_id) when is_binary(ws_id) and is_binary(project_id),
     do: "/projects/#{project_id}/workspaces/#{ws_id}/agents/#{agent_id}"
 
-  def path(_ws_id, _project_id, _agent_id), do: "/operator"
+  # A workspace-less agent — a SYSTEM agent — has its own page. This used to
+  # be "/operator": every system agent pointed at one page.
+  def path(_ws_id, _project_id, agent_id) when is_binary(agent_id), do: "/agents/#{agent_id}"
+  def path(_ws_id, _project_id, _agent_id), do: "/agents"
 
   defp label(:question, msg) do
     case msg[:questions] do

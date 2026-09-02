@@ -45,6 +45,8 @@ defmodule LoopyardWeb.Router do
       # AGENTS — one page per system agent (the operator and its peers);
       # `/operator` redirects to the identity's default one, creating it on
       # first visit (a controller: the first visit may boot a container).
+      live "/agents", AgentsLive, :index
+      live "/agents/new", AgentsLive, :new
       live "/agents/:id", AgentLive, :show
       get "/operator", AgentsController, :operator
       # NOTIFICATIONS — its own root, a peer of the operator, not a tab under
@@ -190,6 +192,8 @@ defmodule LoopyardWeb.Router do
         AttachmentController,
         :show
 
+    get "/agents/:id/attachments/:name", AttachmentController, :agent
+    # The system agent's old attachment URLs, baked into stored transcripts.
     get "/operator/attachments/:name", AttachmentController, :operator
 
     get "/launch/:secret", LaunchController, :launch

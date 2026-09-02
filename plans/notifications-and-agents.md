@@ -1,5 +1,7 @@
 # Notifications + Agents
 
+Status (Sep 2, 2026): Track A shipped; Batch 1 of the agents work (templates, one spawn path, system agents, `/agents`, the Agents card, the three-root nav) is on `notifications-and-agents`. Batch 2 (the Loop rename + `Loop.Direct`) next.
+
 Epic: [#111](https://github.com/loopyard/loopyard/issues/111) (sub-issues
 #101–#110, #112–#115). Grew out of [plans/decisions.md](decisions.md) (Sep 2
 sections), where Brad reframed the Operator/Decisions split.

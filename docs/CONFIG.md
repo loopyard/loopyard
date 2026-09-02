@@ -26,6 +26,7 @@ Read via `Application.get_env(:loopyard, key)`. Overridable at runtime in `confi
 | `:mutagen_runner` | `&System.cmd/3` | Injection seam for the Mutagen CLI. Tests override with a fake to avoid shelling out. |
 | `:attachment_max_bytes` | `26_214_400` (25 MB) | Per-file cap for chat attachments (`allow_upload :max_file_size`). Tests shrink it to exercise the too-large path. |
 | (module attrs) `Loopyard.Attachments` | 5 MB / image, 20 MB / prompt, png·jpeg·gif·webp | Inline image limits for prompt blocks (`@max_inline_bytes`, `@max_inline_total`, `@inline_mimes`); `Attachments.Cache` holds ≤32 MB of served bytes (`@max_bytes`). |
+| `:workstation_container` | `Loopyard.Workstation.Container` | Injection seam for ensuring a workstation container is up (a system agent's compute). Tests use `Loopyard.Test.FakeWorkstationContainer`. |
 | `:container_io` | `Loopyard.ContainerIO` | Injection seam for by-container file I/O (`copy_in/3`, `write_file/3`, `read_file/2` against an absolute path in a running container) — the operator's attachment store. Tests use `Loopyard.Test.FakeContainerIO`. |
 | `:attachment_writer` | `Loopyard.VolumeIO` | Injection seam for chat attachments' write path (`copy_in/3` + `write_file/3` into the code volume). Tests use `Loopyard.Test.FakeAttachmentWriter` (on-disk fake volumes). Limits live as module attributes on `LoopyardWeb.Live.WorkspaceLive.Attachments`: 10 files per message, 25 MB each. |
 | `:container_ready_check` | `nil` | Injection seam for SyncMonitor's "is the destination container up" probe. Tests override; production uses the real Docker check. |
@@ -95,6 +96,8 @@ Lives in the code volume under `.loopyard/workspace/`. Agents write these; Loopy
 | `.loopyard/workspace/Dockerfile` | Workspace container image build recipe. |
 | `.loopyard/workspace/docker-compose.yml` | Compose project for the workspace. Processed by `Compose.process_agent_compose/3` — host mounts, privileged, host networking, host port pins, and external networks are rejected. See [SECURITY.md](SECURITY.md). |
 | `.loopyard/workspace/agents.log` | Append-only ETF log of agent events. Compacted at boot when it exceeds 5 MB. |
+| `<workstation dir>/agents.json` | The identity's DEFAULT system agent id (`Loopyard.Agents`). Migrated from `operator.json`. |
+| `<workstation dir>/agents.log` | The identity's system agents' ETF log — every system agent's record + transcript, one writer (the SystemGroup's Checkpointer). Migrated from `operator-agent.log`. |
 | `~/.loopyard/notifications.log` (gated by app config `:notifications_log?`, `false` in test) | The inbox store's own ETF log (`Loopyard.Notifications.Log`): every raised/settled item as an upsert; compacted to one snapshot past 5,000 records. Replayed into the `:notifications` ETS table at boot. |
 
 ## Per-workspace metadata on host
