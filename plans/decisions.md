@@ -418,3 +418,16 @@ until the copy has settled.
   anything past 7 days sinks into an "Older" group below the live ones.
 This is a new `retract_decision` operator tool plus a `:retracted` card
 status — the same shape as `superseded` in §4, so build them together.
+
+**Correction, later on Sep 2: swipe IS in — as CSS, not JS.** Brad, using it
+on the phone: flipping between decisions wants left/right, and discussing one
+wants down. So the deck became a horizontal scroll-snap carousel (`snap-x
+snap-mandatory`, `overscroll-x-contain`), one decision per slide, each slide
+its own vertical scroller. No gesture JS anywhere; the browser's own
+scrolling does both axes. Inside a slide, the "asked by · n of N" row stays
+pinned and the discussion's section header — placed after the card, sticky
+under that row — becomes the collapsed decision (orange band with the
+question, tap → back to the top) the moment the card scrolls away
+(`StickyShadow` sets `data-stuck`; CSS switches the look). A permalink opens
+the deck at its decision by focusing the slide on mount. Each slide has its
+own composer; `ChatForm` sends `re` from the form's `data-re`.
