@@ -293,7 +293,7 @@ defmodule LoopyardWeb.DashboardLive do
       <div>
         <.start_here :if={@first_run_step} step={@first_run_step} workstation={@workstation} />
 
-        <div class="mt-6 grid gap-4 md:grid-cols-2 md:items-start">
+        <div class="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 md:items-start">
           <%!-- ── WORKSPACES ─────────────────────────────────────────────── --%>
           <.dash_card title="Workspaces" navigate="/workspaces">
             <:icon>
@@ -658,7 +658,7 @@ defmodule LoopyardWeb.DashboardLive do
 
   def dash_card(assigns) do
     ~H"""
-    <section class="relative border border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-white/[0.03] p-5 md:p-6">
+    <section class="relative min-w-0 border border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-white/[0.03] p-5 md:p-6">
       <%!-- The whole card is the target; inner links sit above it on z-10. --%>
       <.link navigate={@navigate} class="absolute inset-0 focus-ring" aria-label={@title}></.link>
       <div class="flex items-center gap-2.5 text-zinc-900 dark:text-zinc-50">
