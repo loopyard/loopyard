@@ -284,3 +284,101 @@ The conversation work is last on purpose: it's the only part that changes what a
 decision *is*, and it needs the `superseded` status and the threading decision
 settled first. Clarify ships before reframe — clarify leaves the card alone,
 reframe replaces it.
+
+## Sep 1 — Brad's read from the phone (settles the open questions)
+
+Looked at live, on a 402px phone, with 14 decisions waiting — every one of
+them between 21 and 23 days old, 12 of them asked by the operator itself.
+What he said, translated into decisions for this plan:
+
+**1. They are decisions, not questions.** The vocabulary changes everywhere a
+human reads it: the Reviewer's eyebrow says DECISIONS, not REVIEW; the
+operator tab already does. `:question` stays the card role in code.
+
+**2. The mobile rail dies. The Decisions tab IS the deck.** On a phone the
+"Decisions 11" tab renders the desktop rail: text rows that don't look like
+the thing they point at. That list has no job a phone can use — tap a row and
+you're in the Reviewer anyway. So on a phone the tab opens the deck directly
+(the Reviewer, one decision per screen, swipe between them). Desktop keeps a
+rail, but as a **count + at most three miniature cards** in the flame
+language, tap → deck. Settles open question 1: a signal, not a second list.
+
+**3. The decision screen strips to what a decision needs.** Today above the
+question: `REVIEW · 14 waiting · history · mode-nav`, then `Operator`, then
+`Asked 22d ago`, then a DECISION eyebrow, then a section header, then the
+prompt. Six lines before the content. New anatomy, top to bottom:
+
+```
+‹  Decisions · 3 of 14                         ⌂
+Operator · 22d ago                    ← ONE line: who asked, how long ago
+<the prompt>                          ← text-lead, dominates
+○ option — label / muted description  ← hierarchy per §1
+[ Answer ]                            ← pinned, always reachable
+```
+
+Repo / workspace names appear only when the source is a workspace agent
+(then `gbrain · main · Claude · 22d ago`), never as separate eyebrow + meta
++ subject lines. History and mode-nav move behind the back button's
+neighbour, not the title zone.
+
+**4. Age is first-class; newest first; the chief of staff sweeps.** §2 stands
+and gets two additions. The deck orders **newest first** — recency is the
+right bias here; a three-week-old ask is almost never the one to answer
+next. And the operator, as chief of staff, runs the moot sweep §2 describes:
+a decision whose source agent has completed later turns, been recycled, or
+whose workspace is gone gets proposed as moot — "these 9 look dead, clear
+them?" — one tap, visible, reversible. Never a timer alone.
+
+**5. Chat with the decision — settled: a dedicated, disposable decision
+agent.** Brad's question was whether a side chat would need to understand
+the operator chat and the project it came from. The answer:
+
+- **The context that matters is the SOURCE agent's, not the operator's.** A
+  decision is a message in some agent's conversation; what "led up to it" is
+  that agent's last turns. So the side agent is seeded exactly the way a
+  resumed harness is (`ResumeMessage`-style): the card, the source agent's
+  last N turns around the ask verbatim, and one identity line (project ·
+  workspace · agent · asked when). For the 12 decisions the operator asked,
+  the source IS the operator, so the seed is the operator's own recent turns
+  — it sees the operator chat only because that's where the decision came
+  from.
+- **Who runs it: neither the operator nor the source agent.** Not the
+  operator — its single chat and its context window are the precious thing,
+  and a per-decision thread interleaved into it is the mess we're fixing. Not
+  the source agent — it is parked inside the `ask_user` tool call with three
+  clocks running (§5, Constraint B), and its context is what we're
+  protecting. So: a **workspace-less `ChatAgent` in the workstation
+  container, the same mechanics as the operator**, spawned only when a human
+  taps "Discuss", idle-reaped like any agent, disposable.
+- **Tools: read, plus one write.** `recall_conversation` scoped to the source
+  agent (pull more history than the seed), `peek_workspace` / `overview`,
+  read-only file access on the source workspace's volume — and
+  `answer_decision`, which resolves the card through the same
+  `Questions` / `ApprovalActions` path the buttons use, so
+  `deliver_late_answer` works and the chat card updates. Nothing else writes.
+  Reframe (`superseded`) comes later and is the second write.
+- **The thread is durable and keyed to the decision** (`{agent_id, msg_id}`):
+  reopen the decision, the thread is there. It is visible to every viewer —
+  multiplayer by design — which settles the sub-question in open question 3:
+  show the in-flight negotiation, don't hide it.
+- **What rolls back to the source agent:** the answer, optionally with a
+  one-line why appended. Never the transcript (§5 already argues this).
+
+**6. Screen anatomy with the thread.** Card on top, thread below, composer
+"Ask about this decision…" at the bottom, Answer pinned in a sticky action
+bar so a long thread never buries the decision itself. On a phone, swipe
+moves between decisions; the thread belongs to the one in front of you.
+Opening the thread must cost nothing on the cheap case (§4): no agent is
+spawned until the first message is sent.
+
+### Revised sequencing
+
+1. **Strip + rename + age-first** — the decision screen anatomy in (3), the
+   DECISIONS vocabulary, newest-first ordering, and the mobile Decisions tab
+   becoming the deck. Mostly deletion. One PR. This is the "fucking mess"
+   fix and ships first.
+2. **Moot sweep by the operator** — (4). Needs the moot detector from §2.
+3. **Decision agent, clarify only** — (5) and (6). Seed + read tools +
+   `answer_decision`. No reframe yet.
+4. **Reframe / `superseded`** — the second write.
+5. **Swipe** — the gesture over the existing one-per-screen model.
