@@ -570,6 +570,22 @@ Hooks.PushBell = {
 Hooks.QuestionOptions = {
   mounted() {
     this.pending = null
+    // "Dismiss" with an answer selected CLEARS it. That button is type=reset,
+    // but a native reset only restores the server-rendered defaults — which
+    // still say "checked" at that instant — and `updated` below deliberately
+    // puts a person's choice back after any patch. So on reset: uncheck
+    // everything ourselves (after the browser's own reset), empty the Other
+    // box, and drop the snapshot so nothing restores the choice.
+    this.el.addEventListener("reset", () => {
+      requestAnimationFrame(() => {
+        this.el.querySelectorAll("input[type=radio],input[type=checkbox]").forEach((i) => {
+          i.checked = false
+        })
+        const other = this.el.querySelector("[data-qother]")
+        if (other) other.value = ""
+        this.checked = null
+      })
+    })
     this.el.addEventListener("click", (e) => {
       const btn = e.target.closest(".q-option[phx-click]")
       if (!btn) return
