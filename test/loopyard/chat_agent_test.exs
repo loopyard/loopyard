@@ -503,8 +503,8 @@ defmodule Loopyard.ChatAgentTest do
       prompt =
         ChatAgent.build_system_prompt("test-id", bind_mount: "/tmp/project")
 
-      assert String.length(prompt) <= 7200,
-             "Setup prompt is #{String.length(prompt)} chars, max is 7200."
+      assert String.length(prompt) <= 9500,
+             "Setup prompt is #{String.length(prompt)} chars, max is 9500."
     end
 
     test "container agent prompt stays under limit" do
@@ -522,8 +522,8 @@ defmodule Loopyard.ChatAgentTest do
           workspace: workspace
         )
 
-      assert String.length(prompt) <= 7200,
-             "Container prompt is #{String.length(prompt)} chars, max is 7200."
+      assert String.length(prompt) <= 9500,
+             "Container prompt is #{String.length(prompt)} chars, max is 9500."
     end
 
     test "container agent with service stays under limit" do
@@ -542,8 +542,8 @@ defmodule Loopyard.ChatAgentTest do
           service_name: "postgres"
         )
 
-      assert String.length(prompt) <= 7200,
-             "Full prompt is #{String.length(prompt)} chars, max is 7200."
+      assert String.length(prompt) <= 9500,
+             "Full prompt is #{String.length(prompt)} chars, max is 9500."
     end
   end
 

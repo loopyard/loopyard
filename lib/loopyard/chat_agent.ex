@@ -63,6 +63,12 @@ defmodule Loopyard.ChatAgent do
     # were operating as when it started). Lets us count agents per identity and,
     # later, find who to refresh when that identity's home changes.
     :workstation_identity,
+    # The stamp this agent was made from (Loopyard.Agents.Template) and its
+    # scope — :workspace (a project's work container, its own log) or :system
+    # (the workstation container, the identity's agents log). Persisted, so a
+    # restart re-stamps the same agent.
+    :template_id,
+    :scope,
     :started_at,
     :started_by,
     :last_activity_at,

@@ -22,6 +22,7 @@ defmodule Loopyard.ChatAgent.Initializer do
   private `append_message`).
   """
 
+  alias Loopyard.Agents.Template
   alias Loopyard.ChatAgent.{IdleReaper, Persistence, Prompt, SessionManager, ToolConfig}
   alias Loopyard.Events
   alias Loopyard.Harness.Catalog
@@ -89,13 +90,13 @@ defmodule Loopyard.ChatAgent.Initializer do
 
   # Boot-opt keys that a full restart needs to rebuild session_opts (see below).
   @rebuildable_opt_keys [
-    :tools,
+    :template_id,
     :backend,
-    :system_prompt,
     :model,
     :harness,
     :container,
-    :workstation_identity
+    :workstation_identity,
+    :name
   ]
 
   @doc """
@@ -172,7 +173,11 @@ defmodule Loopyard.ChatAgent.Initializer do
 
     resume_session_id = Keyword.get(params, :claude_session_id)
 
-    tools = Keyword.get(opts, :tools, ToolConfig.default_tools())
+    # THE TEMPLATE decides what this agent is made of (Loopyard.Agents.Template):
+    # its compute, its tool scope, its context. An explicit :tools opt still
+    # wins (tests, evals); everything else comes from the stamp.
+    template = Template.fetch!(Keyword.get(opts, :template_id) || "coding")
+    tools = Keyword.get(opts, :tools) || ToolConfig.tools_for(template)
 
     # ACP is the ONLY production backend — every harness runs inside a
     # container (the security boundary). There is no host-execution backend
@@ -186,13 +191,12 @@ defmodule Loopyard.ChatAgent.Initializer do
 
     system_prompt =
       Prompt.build_system_prompt(id,
-        # Custom agents (e.g. Workstation) pass a complete prompt that overrides
-        # the workspace/container scaffolding. nil falls through to the default.
-        system_prompt: Keyword.get(opts, :system_prompt),
-        bind_mount: bind_mount,
+        template: template,
         workspace_id: workspace_id,
         workspace: workspace,
-        service_name: service_name
+        service_name: service_name,
+        name: Keyword.get(opts, :name),
+        workstation_identity: Keyword.get(opts, :workstation_identity)
       )
 
     # Mirror CLAUDE.md + .claude/ from the workspace volume into working_dir
@@ -309,13 +313,24 @@ defmodule Loopyard.ChatAgent.Initializer do
           |> Keyword.put(:harness, harness)
           |> maybe_put_model(acp_model)
 
-        container_only? and is_binary(Keyword.get(opts, :container)) ->
-          identity = Keyword.get(opts, :workstation_identity) || "operator"
+        # A system agent (compute: :workstation): its workstation container,
+        # its home volume, $HOME, the control-plane tools. `:container` may be
+        # given (the boot saga resolved it); else it's the identity's.
+        container_only? and
+            (template.compute == :workstation or is_binary(Keyword.get(opts, :container))) ->
+          identity = Keyword.get(opts, :workstation_identity) || Loopyard.Workstation.current()
+
+          container =
+            Keyword.get(opts, :container) || Loopyard.Workstation.container_name(identity)
+
           install_brief(Loopyard.Workstation.home_volume(identity), system_prompt)
 
           session_opts
-          |> Keyword.put(:acp_mcp_servers, ToolConfig.acp_mcp_servers(id, nil, :operator))
-          |> Keyword.put(:container, Keyword.get(opts, :container))
+          |> Keyword.put(
+            :acp_mcp_servers,
+            ToolConfig.acp_mcp_servers(id, nil, ToolConfig.bridge_scope(template))
+          )
+          |> Keyword.put(:container, container)
           |> Keyword.put(:cwd, "/home/#{identity}")
           |> Keyword.put(:harness, harness)
           |> maybe_put_model(acp_model)
@@ -437,6 +452,16 @@ defmodule Loopyard.ChatAgent.Initializer do
 
   # Read the harness's live session id after start (never let a probe crash
   # init); fall back to the id we tried to resume if the backend can't report.
+  defp default_template(%{scope: :system}), do: "system"
+  defp default_template(%{workspace_id: ws}) when is_binary(ws), do: "coding"
+  defp default_template(%{container: c}) when is_binary(c), do: "system"
+  defp default_template(_), do: "coding"
+
+  defp put_new_binary(opts, key, value) when is_binary(value),
+    do: Keyword.put_new(opts, key, value)
+
+  defp put_new_binary(opts, _key, _value), do: opts
+
   defp capture_live_session_id(backend, session, fallback) do
     backend.session_id(session) || fallback
   rescue
@@ -446,6 +471,16 @@ defmodule Loopyard.ChatAgent.Initializer do
   end
 
   defp resume_from_summary(id, opts, saved) do
+    # The stamp survives a restart: the saved row carries template_id/scope
+    # (a row from before templates existed resumes as what it was — a
+    # workspace agent is coding; a workspace-less one is the system template).
+    opts =
+      opts
+      |> Keyword.put_new(:template_id, saved[:template_id] || default_template(saved))
+      |> put_new_binary(:container, saved[:container])
+      |> put_new_binary(:workstation_identity, saved[:workstation_identity])
+      |> put_new_binary(:name, saved[:name])
+
     {session, session_opts, backend, new_prompt_hash} =
       start_session(id, opts,
         working_dir: saved.working_dir,
@@ -483,6 +518,8 @@ defmodule Loopyard.ChatAgent.Initializer do
         # even though it was never actually granted to the running session.
         bind_mount: nil,
         host_access: false,
+        template_id: Keyword.fetch!(opts, :template_id),
+        scope: Template.scope(Template.fetch!(Keyword.fetch!(opts, :template_id))),
         # ADOPT the harness's ACTUAL live session id. If the saved id was too
         # large / stale and session/load failed, the connection fell back to a
         # fresh session/new — capture THAT id so the restored agent tracks the
@@ -608,6 +645,8 @@ defmodule Loopyard.ChatAgent.Initializer do
       container: Keyword.get(opts, :container),
       workstation_identity:
         Keyword.get(opts, :workstation_identity) || Loopyard.Workstation.current(),
+      template_id: Keyword.get(opts, :template_id) || "coding",
+      scope: Template.scope(Template.fetch!(Keyword.get(opts, :template_id) || "coding")),
       started_at: now,
       started_by: started_by,
       last_activity_at: now,

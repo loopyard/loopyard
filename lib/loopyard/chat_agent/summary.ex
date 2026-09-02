@@ -22,6 +22,8 @@ defmodule Loopyard.ChatAgent.Summary do
       workspace_id: state.workspace_id,
       container: state.container,
       workstation_identity: state.workstation_identity,
+      template_id: Map.get(state, :template_id),
+      scope: Map.get(state, :scope) || Loopyard.Agents.scope(state),
       started_at: state.started_at,
       started_by: state.started_by,
       last_activity_at: state.last_activity_at,

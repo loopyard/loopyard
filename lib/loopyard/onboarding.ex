@@ -210,7 +210,7 @@ defmodule Loopyard.Onboarding do
         # absent ⇒ container-only). These thread straight to Initializer, which
         # honors :tools / :system_prompt / :host_access. nil → default agent.
         agent_opts =
-          [:tools, :system_prompt, :host_access]
+          [:template_id, :backend, :harness, :model, :tools, :host_access]
           |> Enum.reduce(agent_opts, fn key, acc ->
             case Keyword.get(opts, key) do
               nil -> acc

@@ -214,6 +214,8 @@ defmodule Loopyard.ChatAgent.Lifecycle do
       workstation_identity:
         Keyword.get(opts, :workstation_identity) || Loopyard.Workstation.current(),
       service_name: Keyword.get(opts, :service_name),
+      template_id: Keyword.get(opts, :template_id),
+      scope: Keyword.get(opts, :scope),
       started_at: now,
       started_by: "browser",
       last_activity_at: now,
