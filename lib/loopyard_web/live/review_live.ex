@@ -603,7 +603,7 @@ defmodule LoopyardWeb.ReviewLive do
                   ↑
                 </span>
               </span>
-              <span class="mt-1 block line-clamp-4 text-lead">{@prompt}</span>
+              <span class="mt-1 line-clamp-4 text-lead">{@prompt}</span>
             </a>
           </div>
 
