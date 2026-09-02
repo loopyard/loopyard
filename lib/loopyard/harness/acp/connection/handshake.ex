@@ -34,8 +34,17 @@ defmodule Loopyard.Harness.ACP.Connection.Handshake do
      Connection.reply_waiters(%{state | status: :closed}, {:error, {:auth_failed, error}})}
   end
 
+  # Authenticated — now redo the resume-or-fresh decision from the top, NOT a
+  # blind session/new: if it was session/load that got refused, a fresh
+  # session here would quietly throw away the harness-side history that the
+  # credential just unlocked. The one exception is a load that already failed
+  # for a non-auth reason (expired id) — repeating it would only fail again.
   def response(:authenticate, _msg, state) do
-    {:noreply, elem(Connection.new_session(state), 0)}
+    if Map.get(state, :load_failed, false) do
+      {:noreply, elem(Connection.new_session(state), 0)}
+    else
+      response(:initialize, Map.fetch!(state, :init_result), state)
+    end
   end
 
   def response(:initialize, msg, %{resume: sid} = state)
@@ -78,21 +87,32 @@ defmodule Loopyard.Harness.ACP.Connection.Handshake do
   end
 
   def response(:session_load, %{"error" => error}, state) do
-    # Saved session unknown/expired — boot a fresh one so the agent still comes
-    # up (as a new conversation) rather than failing to start. LOUD on purpose:
-    # this silently drops harness-side conversation continuity (Loopyard's own
-    # message history survives in ETS), so it must be visible when it happens.
-    Logger.warning(
-      "ACP: session/load for #{inspect(state.resume)} failed (#{inspect(error)}); " <>
-        "falling back to a FRESH session — harness-side history not restored"
-    )
+    case try_authenticate(state, error) do
+      # Adapters that gate session/load behind auth (codex-acp does, exactly
+      # like session/new) refuse the resume before ever looking at the id.
+      # That's not an expired session — authenticate and load again, so a
+      # Loopyard restart doesn't cost a Codex agent its harness-side history.
+      {:ok, state} ->
+        {:noreply, state}
 
-    Loopyard.EventLog.error(
-      "harness:acp",
-      "Resume failed for session #{inspect(state.resume)} — started fresh instead"
-    )
+      :skip ->
+        # Saved session unknown/expired — boot a fresh one so the agent still
+        # comes up (as a new conversation) rather than failing to start. LOUD
+        # on purpose: this silently drops harness-side conversation continuity
+        # (Loopyard's own message history survives in ETS), so it must be
+        # visible when it happens.
+        Logger.warning(
+          "ACP: session/load for #{inspect(state.resume)} failed (#{inspect(error)}); " <>
+            "falling back to a FRESH session — harness-side history not restored"
+        )
 
-    {:noreply, elem(Connection.new_session(state), 0)}
+        Loopyard.EventLog.error(
+          "harness:acp",
+          "Resume failed for session #{inspect(state.resume)} — started fresh instead"
+        )
+
+        {:noreply, elem(Connection.new_session(Map.put(state, :load_failed, true)), 0)}
+    end
   end
 
   def response(:session_new, %{"result" => result}, state) do
@@ -113,26 +133,38 @@ defmodule Loopyard.Harness.ACP.Connection.Handshake do
   # So the adapter gets to tell us: only when session/new comes back
   # "Authentication required" do we authenticate, and then retry it once. An
   # existing login never sees an authenticate call at all.
-  def response(:session_new, %{"error" => error} = msg, state) do
+  def response(:session_new, %{"error" => error}, state) do
+    case try_authenticate(state, error) do
+      {:ok, state} ->
+        {:noreply, state}
+
+      :skip ->
+        if auth_required?(error) and is_nil(Map.get(state, :auth_method)) do
+          Logger.error(
+            "ACP: session needs auth but no non-interactive method is offered" <>
+              case Auth.offered(Map.get(state, :init_result, %{})) do
+                nil -> ""
+                offered -> " (adapter offers: #{offered})"
+              end
+          )
+        end
+
+        {:noreply, Connection.reply_waiters(%{state | status: :closed}, {:error, error})}
+    end
+  end
+
+  # Send `authenticate` ONCE, and only for an auth refusal we have a headless
+  # method for. `:skip` means the caller handles the error as itself — no
+  # method, not an auth error, or we already tried and it didn't take.
+  defp try_authenticate(state, error) do
     method = Map.get(state, :auth_method)
 
-    if (auth_required?(error) and method) && not Map.get(state, :auth_tried, false) do
+    if auth_required?(error) and is_binary(method) and not Map.get(state, :auth_tried, false) do
       state = Map.put(state, :auth_tried, true)
       {state, _} = Connection.request(state, "authenticate", %{"methodId" => method})
-      {:noreply, state}
+      {:ok, state}
     else
-      if auth_required?(error) and is_nil(method) do
-        Logger.error(
-          "ACP: session needs auth but no non-interactive method is offered" <>
-            case Auth.offered(Map.get(state, :init_result, %{})) do
-              nil -> ""
-              offered -> " (adapter offers: #{offered})"
-            end
-        )
-      end
-
-      _ = msg
-      {:noreply, Connection.reply_waiters(%{state | status: :closed}, {:error, error})}
+      :skip
     end
   end
 
@@ -144,7 +176,4 @@ defmodule Loopyard.Harness.ACP.Connection.Handshake do
     do: String.contains?(m, "Authentication required")
 
   defp auth_required?(_), do: false
-
-  # Ping response — result OR error both prove the adapter's event loop is
-  # alive and serving; reply :pong either way.
 end

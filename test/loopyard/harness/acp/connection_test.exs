@@ -245,6 +245,86 @@ defmodule Loopyard.Harness.ACP.ConnectionTest do
       refute_receive {:sent, %{"method" => "authenticate"}}, 100
     end
 
+    test "a refused session/LOAD authenticates, then retries the load — history kept" do
+      # codex-acp gates session/load behind auth exactly like session/new. A
+      # Loopyard restart used to turn that refusal into "resume failed → fresh
+      # session", dropping the harness-side history the credential would have
+      # unlocked a moment later.
+      {conn, _t} = start_conn(resume: "sess-prev")
+      assert_receive {:sent, %{"method" => "initialize", "id" => init_id}}
+
+      send(
+        conn,
+        {:acp_msg,
+         %{
+           "id" => init_id,
+           "result" => %{
+             "authMethods" => @api_key,
+             "agentCapabilities" => %{"loadSession" => true}
+           }
+         }}
+      )
+
+      assert_receive {:sent, %{"method" => "session/load", "id" => load1}}
+
+      send(
+        conn,
+        {:acp_msg,
+         %{"id" => load1, "error" => %{"code" => -32_000, "message" => "Authentication required"}}}
+      )
+
+      assert_receive {:sent, %{"method" => "authenticate", "id" => auth_id}}
+      send(conn, {:acp_msg, %{"id" => auth_id, "result" => %{}}})
+
+      # The LOAD is retried, not replaced by a fresh session.
+      assert_receive {:sent, %{"method" => "session/load", "id" => load2} = frame}
+      assert frame["params"]["sessionId"] == "sess-prev"
+      refute_received {:sent, %{"method" => "session/new"}}
+
+      send(conn, {:acp_msg, %{"id" => load2, "result" => %{}}})
+      assert :ok = Connection.await_ready(conn, 1_000)
+      assert Connection.session_id(conn) == "sess-prev"
+    end
+
+    test "an expired id that fails AFTER auth falls back to a fresh session once" do
+      {conn, _t} = start_conn(resume: "sess-gone")
+      assert_receive {:sent, %{"method" => "initialize", "id" => init_id}}
+
+      send(
+        conn,
+        {:acp_msg,
+         %{
+           "id" => init_id,
+           "result" => %{
+             "authMethods" => @api_key,
+             "agentCapabilities" => %{"loadSession" => true}
+           }
+         }}
+      )
+
+      # Load fails for a NON-auth reason → fresh session; that is refused for
+      # auth → authenticate → and the retry must be session/new, not another
+      # doomed load.
+      assert_receive {:sent, %{"method" => "session/load", "id" => load1}}
+      send(conn, {:acp_msg, %{"id" => load1, "error" => %{"message" => "unknown session"}}})
+
+      assert_receive {:sent, %{"method" => "session/new", "id" => new1}}
+
+      send(
+        conn,
+        {:acp_msg,
+         %{"id" => new1, "error" => %{"code" => -32_000, "message" => "Authentication required"}}}
+      )
+
+      assert_receive {:sent, %{"method" => "authenticate", "id" => auth_id}}
+      send(conn, {:acp_msg, %{"id" => auth_id, "result" => %{}}})
+
+      assert_receive {:sent, %{"method" => "session/new", "id" => new2}}
+      refute_received {:sent, %{"method" => "session/load"}}
+      send(conn, {:acp_msg, %{"id" => new2, "result" => %{"sessionId" => "sess-fresh"}}})
+      assert :ok = Connection.await_ready(conn, 1_000)
+    end
+
     test "a refused session authenticates, then retries the session once" do
       {conn, _t} = start_conn()
       init_with_auth(conn, @api_key)
