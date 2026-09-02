@@ -1053,7 +1053,7 @@ Hooks.ChatForm = {
       const echoText = echo && echo.querySelector("[data-echo-text]")
       const echoLabel = echo && echo.querySelector("[data-echo-label]")
       if (echoText) echoText.textContent = text || `📎 ${files} file${files === 1 ? "" : "s"}`
-      if (echoLabel) echoLabel.textContent = "Sending…"
+      if (echoLabel) echoLabel.textContent = files > 0 ? `Attaching ${files} file${files === 1 ? "" : "s"}…` : "Sending…"
       if (echo) echo.classList.remove("hidden")
 
       // If the ack is slow, SAY WHY rather than leaving a static label. The

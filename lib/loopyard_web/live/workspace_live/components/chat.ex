@@ -177,7 +177,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       <%!-- scroll-smooth: the auto-tail (ScrollBottom hook nudges scrollTop as the
     agent streams) animates instead of jumping, so following the thinking
     glides. Pure CSS — honors prefers-reduced-motion automatically. --%>
-      <div id="messages" class="isolate overscroll-y-none flex-1 overflow-y-auto flex flex-col pb-4 scroll-pt-32">
+      <div
+        id="messages"
+        class="isolate overscroll-y-none flex-1 overflow-y-auto flex flex-col pb-4 scroll-pt-32"
+      >
         <%!-- Normal flow, TOP-aligned. This used to be `mt-auto`, which
     bottom-anchors the column so the newest message sits just above the
     input on first paint. That's right for a long transcript and wrong
@@ -431,9 +434,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     of raw prompt sitting in the input box. On a phone, tapping a block
     of text is how you read it, not how you edit it. Nothing about the
     row said it was a button, because it shouldn't have been one. --%>
-                <p class="flex-1 min-w-0 text-lead leading-relaxed text-zinc-800 dark:text-zinc-100 line-clamp-3">
-                  {text}
-                </p>
+                <.queued_text text={text} />
                 <%!-- Edit is now its OWN control, named and deliberate — the only
     thing allowed to put text in the composer is a human asking for it. --%>
                 <button
@@ -570,6 +571,35 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             <p id="send-status" class="hidden mt-1.5 text-lead text-red-500 dark:text-red-400"></p>
           </div>
         </div>
+      </div>
+    </div>
+    """
+  end
+
+  # A queued line: the human's words + a chip per attached file — never the
+  # raw `📎 Attached:` marker lines the agent will see (Loopyard.Attachments).
+  attr :text, :string, required: true
+
+  def queued_text(assigns) do
+    {body, attachments} = Loopyard.Attachments.parse(assigns.text)
+    assigns = assign(assigns, body: body, attachments: attachments)
+
+    ~H"""
+    <div class="flex-1 min-w-0">
+      <p
+        :if={@body != ""}
+        class="text-lead leading-relaxed text-zinc-800 dark:text-zinc-100 line-clamp-3"
+      >
+        {@body}
+      </p>
+      <div :if={@attachments != []} class={["flex flex-wrap gap-1.5", @body != "" && "mt-1"]}>
+        <span
+          :for={att <- @attachments}
+          class="inline-flex items-center gap-1 rounded-sm border border-violet-300/60 dark:border-violet-400/25 px-1.5 py-0.5 text-body text-zinc-600 dark:text-zinc-300"
+        >
+          <.icon name={:paper_clip} class="w-3 h-3 flex-none text-violet-500" />
+          {Loopyard.Attachments.display_name(att)}
+        </span>
       </div>
     </div>
     """

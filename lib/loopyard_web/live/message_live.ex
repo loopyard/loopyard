@@ -286,7 +286,7 @@ defmodule LoopyardWeb.MessageLive do
           :for={att <- @attachments}
           class="inline-flex items-center gap-1 rounded-sm border border-violet-300/60 dark:border-violet-400/25 px-1.5 py-0.5 text-meta"
         >
-          📎 {att.name}
+          📎 {Loopyard.Attachments.display_name(att)}
         </span>
       </div>
     </div>
