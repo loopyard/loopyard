@@ -179,7 +179,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     glides. Pure CSS — honors prefers-reduced-motion automatically. --%>
       <div
         id="messages"
-        class="isolate overscroll-y-none flex-1 overflow-y-auto flex flex-col pb-4 scroll-pt-32"
+        class="isolate overscroll-y-contain flex-1 overflow-y-auto flex flex-col pb-4 scroll-pt-32"
       >
         <%!-- Normal flow, TOP-aligned. This used to be `mt-auto`, which
     bottom-anchors the column so the newest message sits just above the

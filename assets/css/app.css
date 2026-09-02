@@ -92,9 +92,9 @@ html:has([data-app-shell]) body {
 
 /* And the bars are `transform-gpu`: their own composited layers, so the
  * compositor orders them above a scrolling layer instead of letting a
- * rubber-band paint through them. The inner panels also don't bounce
- * (`overscroll-y-none`) — a panel under a fixed header bouncing is what
- * kept smearing content over the bars on iOS. */
+ * rubber-band paint through them. The panels KEEP their bounce
+ * (`overscroll-y-contain`: no chaining into the page, rubber band intact) —
+ * the bounce is part of the feel and is never the thing to remove. */
 
 .app-bar-secondary {
   @apply sticky top-14 z-20 bg-brand-paper dark:bg-brand-ink transform-gpu;
