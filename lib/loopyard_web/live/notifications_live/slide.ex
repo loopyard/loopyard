@@ -110,11 +110,21 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
               </span>
               <span :if={@card.slide.asked_at}>{@verb} {Deck.ago_words(@card.slide.asked_at)}</span>
             </span>
-            <%!-- A workspace agent's byline is its state light and its name: the
-            card under it wears the project · workspace chip itself, and the
-            same chip twice, two lines apart, was the junk. --%>
+            <%!-- A workspace agent's byline: a whole CARD wears the project ·
+            workspace chip itself (the same chip twice, two lines apart, was
+            the junk), so the byline is a state light and the name. A bare
+            question of a fanned-out ask has no card header, so its byline
+            carries the chip. --%>
             <span :if={!@system_source?} class="min-w-0 flex items-center gap-2 truncate">
+              <Common.workspace_identity
+                :if={@card.q}
+                project={@card.slide.project_name}
+                workspace={@card.slide.workspace_name}
+                state={(@pending? && ((@finished? && :done) || :needs_you)) || :asleep}
+                class="min-w-0"
+              />
               <span
+                :if={!@card.q}
                 class={[
                   "flex-none w-2 h-2 rounded-full",
                   Common.state_light((@pending? && ((@finished? && :done) || :needs_you)) || :asleep)
@@ -122,6 +132,7 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
                 aria-hidden="true"
               ></span>
               <span class="truncate">
+                <span :if={@card.q}>· </span>
                 <span class="font-semibold text-zinc-800 dark:text-zinc-100">{@card.slide.agent_name}</span>
                 <span :if={@card.slide.asked_at}>{@verb} {Deck.ago_words(@card.slide.asked_at)}</span>
               </span>

@@ -71,9 +71,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
           …or just reply in the chat — your message is sent to the agent as the answer.
         </div>
 
-        <div :if={@msg.status == :timeout} class="text-lead text-zinc-500 dark:text-zinc-400">
-          No answer — the agent moved on.
-        </div>
         <div :if={@msg.status == :retracted} class="text-lead text-zinc-500 dark:text-zinc-400">
           Retracted — {@msg[:retract_reason] || "no longer needed"}. The agent moved on.
         </div>
