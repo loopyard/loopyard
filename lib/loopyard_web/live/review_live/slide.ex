@@ -29,12 +29,19 @@ defmodule LoopyardWeb.ReviewLive.Slide do
   attr :operator_id, :string, default: nil
   attr :user_label, :string, required: true
 
-  # One decision: a full-width, full-height slide with its own top bar. The
-  # bar names who's asking (the title), where you are in the deck, and the
-  # neighbours — every control a full 44px. Below it the card; below that the
-  # discussion, whose sticky header becomes the collapsed card (orange band)
-  # once the card has scrolled away — the slide's `StickyShadow` hook sets
-  # `data-stuck`, CSS switches the look. The composer is pinned to the foot.
+  # One decision: a full-width, full-height slide. The byline names who's
+  # asking and where you are in the deck; then the card; then the discussion.
+  #
+  # TWO SHAPES, ONE DOM. On a phone the slide is a column: one scroller holds
+  # byline + card + thread, the collapsed card (orange band) pins under the
+  # bar once the card scrolls away (`StickyShadow` sets `data-stuck`, CSS
+  # switches the look), and the composer is the footer. On a wide screen
+  # there's room to see the decision AND talk about it, so the slide is a
+  # two-column grid — decision left, conversation + composer right — and the
+  # scroller + its wrapper become `display: contents` so the same four
+  # blocks (card pane, band, thread, composer) place themselves as grid
+  # items. The deck's swipe is untouched: a slide is still one screen wide,
+  # so a swipe carries the decision and its conversation together.
   def decision_slide(assigns) do
     assigns =
       assign(assigns,
@@ -52,18 +59,20 @@ defmodule LoopyardWeb.ReviewLive.Slide do
       id={"slide-" <> @card.dom_id}
       phx-mounted={@target? && JS.focus()}
       tabindex="-1"
-      class="w-full h-full flex-none snap-start snap-always flex flex-col focus:outline-none"
+      class="w-full h-full flex-none snap-start snap-always flex flex-col focus:outline-none lg:grid lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)_auto]"
     >
-      <%!-- The slide is a COLUMN: this scroller, then the composer as a real
-      footer. The composer used to be `sticky bottom-0` inside the scroller,
-      and on iOS a sticky bottom travels with the rubber band — content
-      showed through a gap under it. A flex footer is pinned by layout. --%>
+      <%!-- Phone: the slide is a COLUMN — this scroller, then the composer as a
+      real footer (a `sticky bottom-0` composer travels with the iOS rubber
+      band; a flex footer is pinned by layout). Wide: the scroller is
+      `contents`, so its children are the grid's items. --%>
       <div
         id={"scroll-" <> @card.dom_id}
         phx-hook="StickyShadow"
-        class="isolate overscroll-y-contain flex-1 min-h-0 overflow-y-auto"
+        class="isolate overscroll-y-contain flex-1 min-h-0 overflow-y-auto lg:contents"
       >
-        <div class="mx-auto w-full max-w-2xl px-4 md:px-6 pt-5">
+        <%!-- THE DECISION PANE. Wide: the left column, spanning both rows,
+        scrolling on its own. --%>
+        <div class="mx-auto w-full max-w-2xl px-4 md:px-6 pt-5 lg:max-w-none lg:px-8 lg:pb-6 lg:min-h-0 lg:overflow-y-auto lg:overscroll-y-contain lg:row-span-2 lg:border-r lg:border-zinc-200 lg:dark:border-zinc-800">
           <div id={"top-" <> @card.dom_id}></div>
           <%!-- One-shot: mounts only while this slide is the one that just
         settled; focusing the next slide scrolls the deck to it. --%>
@@ -171,103 +180,117 @@ defmodule LoopyardWeb.ReviewLive.Slide do
           />
           <Cards.approval_card :if={@card.msg.role == :approval} msg={@card.msg} />
           <Cards.secret_card :if={@card.msg.role == :secret_request} msg={@card.msg} />
+        </div>
 
-          <%!-- THE COLLAPSED DECISION. Nothing at rest. Placed AFTER the card and
-        sticky under the bar, it pins exactly when the card has scrolled
-        away, and only then (data-stuck) shows the question in an orange
-        band — a real link back to the top, so "tap to expand" is just a
-        scroll. Pure sticky placement decides WHEN; one attribute decides
-        the LOOK. --%>
-          <div
-            data-sticky-header
-            class="group sticky -top-px pt-px z-10 -mx-4 md:-mx-6 mt-4 bg-brand-paper dark:bg-brand-ink"
-          >
-            <%!-- Big enough to read AND to hit: two lines of the question at
+        <%!-- THE COLLAPSED DECISION (phone only — wide, the card never leaves
+        the screen). Nothing at rest. Placed AFTER the card and sticky under
+        the bar, it pins exactly when the card has scrolled away, and only
+        then (data-stuck) shows the question in an orange band — a real link
+        back to the top, so "tap to expand" is just a scroll. Pure sticky
+        placement decides WHEN; one attribute decides the LOOK. --%>
+        <div
+          data-sticky-header
+          class="group sticky -top-px pt-px z-10 mt-4 bg-brand-paper dark:bg-brand-ink lg:hidden"
+        >
+          <%!-- Big enough to read AND to hit: two lines of the question at
           chat size, a full-height row, and a filled Answer chip — this is
           the way back to the decision while the thread flies under it. --%>
-            <a
-              href={"#top-" <> @card.dom_id}
-              class="hidden group-data-[stuck]:block px-4 md:px-6 py-3 border-l-4 border-orange-500 bg-orange-50 dark:bg-orange-500/10 text-zinc-900 dark:text-zinc-50 shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
-            >
-              <%!-- Byline top-left, one round "back up" top-right, then the
+          <a
+            href={"#top-" <> @card.dom_id}
+            class="hidden group-data-[stuck]:block px-4 md:px-6 py-3 border-l-4 border-orange-500 bg-orange-50 dark:bg-orange-500/10 text-zinc-900 dark:text-zinc-50 shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
+          >
+            <%!-- Byline top-left, one round "back up" top-right, then the
               question under both at chat size, four lines at most — it was
               ten lines tall with a chip beside three lines of text. --%>
-              <span class="flex items-center gap-3">
-                <span class="min-w-0 flex-1 truncate text-meta text-zinc-500 dark:text-zinc-400">
-                  From {@who}<span :if={@card.slide.asked_at}> · {Deck.ago(@card.slide.asked_at)}</span>
-                  · {@index} of {@total}
-                </span>
-                <span
-                  aria-label="Back to the decision"
-                  class="flex-none inline-flex items-center justify-center w-9 h-9 rounded-full bg-orange-600 text-white text-lead"
-                >
-                  ↑
-                </span>
+            <span class="flex items-center gap-3">
+              <span class="min-w-0 flex-1 truncate text-meta text-zinc-500 dark:text-zinc-400">
+                From {@who}<span :if={@card.slide.asked_at}> · {Deck.ago(@card.slide.asked_at)}</span>
+                · {@index} of {@total}
               </span>
-              <span class="mt-1 line-clamp-4 text-lead">{@prompt}</span>
-            </a>
+              <span
+                aria-label="Back to the decision"
+                class="flex-none inline-flex items-center justify-center w-9 h-9 rounded-full bg-orange-600 text-white text-lead"
+              >
+                ↑
+              </span>
+            </span>
+            <span class="mt-1 line-clamp-4 text-lead">{@prompt}</span>
+          </a>
+        </div>
+
+        <%!-- THE DISCUSSION. Phone: it grows with its content and no further —
+        a slide with no thread scrolls to the bottom of the card and stops
+        (a screen of empty space under Dismiss read as broken); the band
+        above only comes into play once a real thread is long enough to
+        scroll the card away. Wide: the right column, its own scroller, with
+        the composer under it. Prompt bands are NOT sticky here — the slide
+        has its own chrome. --%>
+        <div
+          id={"thread-" <> @card.dom_id}
+          class="scroll-mt-24 mx-auto w-full max-w-2xl px-4 md:px-6 lg:max-w-none lg:px-8 lg:pt-5 lg:min-h-0 lg:overflow-y-auto lg:overscroll-y-contain lg:col-start-2 lg:row-start-1"
+        >
+          <p
+            :if={@thread == [] and @queued == [] and @streaming == "" and !@blocked?}
+            class="hidden lg:block px-1 py-3 text-body text-zinc-400 dark:text-zinc-500"
+          >
+            Nothing said about this one yet — ask the operator below.
+          </p>
+          <p :if={@blocked?} class="px-1 py-3 text-body text-zinc-500 dark:text-zinc-400">
+            This is the operator's own question, and it's waiting on your answer
+            before it can do anything else — including discuss it. Answer it
+            above, or ask in a moment: anything you send now is queued until
+            it's free.
+          </p>
+
+          <div :for={{msg, idx} <- Enum.with_index(@thread)} :key={msg[:id] || idx}>
+            <Messages.chat_msg
+              msg={msg}
+              idx={idx}
+              messages={@thread}
+              agent_id={@operator_id || "operator"}
+              host="localhost"
+              detail_level={:chat}
+              user_label={@user_label}
+              sticky?={false}
+            />
           </div>
 
-          <%!-- THE DISCUSSION. It grows with its content and no further: a slide
-        with no thread scrolls to the bottom of the card and stops (a screen
-        of empty space under Dismiss read as broken). The collapsed band
-        above only comes into play once a real thread is long enough to
-        scroll the card away. Prompt bands are NOT sticky here — the slide
-        has its own chrome. --%>
-          <div id={"thread-" <> @card.dom_id} class="scroll-mt-24">
-            <p :if={@blocked?} class="px-1 py-3 text-body text-zinc-500 dark:text-zinc-400">
-              This is the operator's own question, and it's waiting on your answer
-              before it can do anything else — including discuss it. Answer it
-              above, or ask in a moment: anything you send now is queued until
-              it's free.
-            </p>
-
-            <div :for={{msg, idx} <- Enum.with_index(@thread)} :key={msg[:id] || idx}>
-              <Messages.chat_msg
-                msg={msg}
-                idx={idx}
-                messages={@thread}
-                agent_id={@operator_id || "operator"}
-                host="localhost"
-                detail_level={:chat}
-                user_label={@user_label}
-                sticky?={false}
-              />
-            </div>
-
-            <%!-- Parked sends, shown where they were sent from: the operator
+          <%!-- Parked sends, shown where they were sent from: the operator
             was busy, so this waits in its queue and goes out when it's
             free. Without this the message vanished until it drained. --%>
-            <div
-              :for={text <- @queued}
-              class="mt-3 px-3 py-2 border-l-2 border-violet-400/60 bg-violet-500/5 text-lead text-zinc-700 dark:text-zinc-300"
-            >
-              <span class="block text-meta text-violet-600 dark:text-violet-400">
-                Queued — the operator is busy; this sends when it's free
-              </span>
-              {text}
-            </div>
-
-            <div :if={@streaming != ""} class="px-1 py-2 text-lead whitespace-pre-wrap">
-              {@streaming}
-            </div>
-            <p
-              :if={(@awaiting? or @queued != []) and @streaming == "" and !@blocked?}
-              class="px-1 py-2 text-body text-zinc-400 dark:text-zinc-500"
-            >
-              {waiting_line(@operator_status)}
-            </p>
+          <div
+            :for={text <- @queued}
+            class="mt-3 px-3 py-2 border-l-2 border-violet-400/60 bg-violet-500/5 text-lead text-zinc-700 dark:text-zinc-300"
+          >
+            <span class="block text-meta text-violet-600 dark:text-violet-400">
+              Queued — the operator is busy; this sends when it's free
+            </span>
+            {text}
           </div>
+
+          <div :if={@streaming != ""} class="px-1 py-2 text-lead whitespace-pre-wrap">
+            {@streaming}
+          </div>
+          <p
+            :if={(@awaiting? or @queued != []) and @streaming == "" and !@blocked?}
+            class="px-1 py-2 text-body text-zinc-400 dark:text-zinc-500"
+          >
+            {waiting_line(@operator_status)}
+          </p>
         </div>
       </div>
 
       <%!-- The slide's own composer, the slide's FOOTER — the one thing at the
       bottom of the screen, flush with it (the safe-area inset is its own
-      padding). Same ChatForm hook as every chat (ack-gated clear,
-      kept-on-failure); `data-re` names the decision so the send is tagged
-      to it. --%>
-      <div class="flex-none px-4 md:px-6 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-brand-paper dark:bg-brand-ink border-t border-zinc-200 dark:border-zinc-800">
-        <div id={"composer-" <> @card.dom_id} phx-update="ignore" class="mx-auto w-full max-w-2xl">
+      padding); wide, the foot of the conversation column. Same ChatForm hook
+      as every chat (ack-gated clear, kept-on-failure); `data-re` names the
+      decision so the send is tagged to it. --%>
+      <div class="flex-none px-4 md:px-6 lg:px-8 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-brand-paper dark:bg-brand-ink border-t border-zinc-200 dark:border-zinc-800 lg:col-start-2 lg:row-start-2">
+        <div
+          id={"composer-" <> @card.dom_id}
+          phx-update="ignore"
+          class="mx-auto w-full max-w-2xl lg:max-w-none"
+        >
           <%!-- OPTIMISTIC ECHO: the instant you hit Send, the ChatForm hook shows
           your words here as "Sending…" — the operator may be mid-turn and
           park the message for a while, and a send with nothing on screen
