@@ -222,12 +222,13 @@ defmodule Loopyard.Attachments do
         {upload, mime, converted?} = normalize(upload)
         name = stored_name(upload.client_name)
         dest = Path.join(dir, name)
+        size = file_size(upload.path, upload)
         result = io.copy_in(handle, upload.path, dest)
         if converted?, do: File.rm(upload.path)
 
         case result do
           :ok ->
-            att = %{path: dest, name: name, mime: mime, size: file_size(upload.path, upload)}
+            att = %{path: dest, name: name, mime: mime, size: size}
             {:cont, {:ok, [att | acc]}}
 
           {:error, reason} ->

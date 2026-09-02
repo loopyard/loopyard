@@ -358,7 +358,10 @@ defmodule Loopyard.AttachmentsTest do
       assert att.mime == "image/jpeg"
       assert att.name =~ ~r/-IMG_0001\.jpg$/
       volume = Loopyard.Workspace.volume_name_for("att-ws-heic")
-      assert Attachments.sniff_image(FakeAttachmentWriter.read(volume, att.path)) == "image/jpeg"
+      jpg = FakeAttachmentWriter.read(volume, att.path)
+      assert Attachments.sniff_image(jpg) == "image/jpeg"
+      # The marker's size is the JPEG's, not the HEIC's.
+      assert att.size == byte_size(jpg)
       assert File.exists?(heic)
     end
   end
