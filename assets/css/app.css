@@ -69,6 +69,18 @@ body {
   @apply sticky top-0 z-30 bg-brand-paper dark:bg-brand-ink transform-gpu;
 }
 
+/* APP SHELL pages (the Operator's chat and decisions): the DOCUMENT does not
+ * scroll or bounce. The shell root is exactly the visible viewport (h-dvh)
+ * and the panels inside are the scrollers. Without this, iOS Safari's
+ * toolbar made 100vh taller than the screen, a pull at a panel's top chained
+ * into the document, and the bars rode off with it. */
+html:has([data-app-shell]),
+html:has([data-app-shell]) body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 /* Every INNER scroller that holds sticky children (the chat's #messages, a
  * decision slide's scroller) is `isolate`. A scroller is not a stacking
  * context on its own, so a `sticky … z-10` prompt band inside it competes

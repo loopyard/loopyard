@@ -20,8 +20,14 @@ defmodule LoopyardWeb.OperatorLive.Shell do
 
   def shell(assigns) do
     ~H"""
+    <%!-- APP SHELL: exactly the visible viewport (h-dvh, not h-screen — on iOS
+    100vh is the height with Safari's toolbar hidden, so with it showing the
+    page was taller than the screen and a pull chained into the DOCUMENT and
+    dragged both bars off). `data-app-shell` locks the document (app.css) so
+    only the panels inside scroll. --%>
     <div
-      class="h-screen flex flex-col bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x safe-area-top"
+      data-app-shell
+      class="h-dvh flex flex-col bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x safe-area-top"
       {@rest}
     >
       <Nav.bar height="h-14" gap="gap-3">

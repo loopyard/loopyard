@@ -603,3 +603,12 @@ plus `overscroll-y-none` (a panel under a fixed header does not bounce), and
 the bars are `transform-gpu` so they are composited layers the rubber-band
 layer can't paint through.
 
+## App-shell pages lock the document
+
+A page with fixed chrome and scrolling panels (the Operator shell) is
+`h-dvh` (the VISIBLE viewport — on iOS 100vh is the toolbar-hidden height,
+so `h-screen` left the page taller than the screen) and carries
+`data-app-shell`, which sets `html, body { overflow: hidden; overscroll-
+behavior: none }`. A pull at a panel's top then has nothing to chain into;
+the bars cannot be dragged off. Only the panels scroll.
+
