@@ -4,7 +4,7 @@ defmodule LoopyardWeb.AttachmentControllerTest do
   alias Loopyard.Test.FakeVolumeIO
 
   @ws "att-ctl-ws"
-  @png <<137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13>>
+  @png <<137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82>>
 
   setup do
     prev = Application.get_env(:loopyard, :volume_reader)
@@ -17,8 +17,42 @@ defmodule LoopyardWeb.AttachmentControllerTest do
     end)
 
     volume = Loopyard.Workspace.volume_name_for(@ws)
-    FakeVolumeIO.seed(volume, [{".loopyard/uploads/20260901T120000-ab12-shot.png", @png}])
+
+    FakeVolumeIO.seed(volume, [
+      {".loopyard/uploads/20260901T120000-ab12-shot.png", @png},
+      {".loopyard/uploads/20260901T120000-ab12-page.html",
+       "<html><script>alert(1)</script></html>"},
+      {".loopyard/uploads/20260901T120000-ab12-vector.svg", "<svg onload=alert(1)></svg>"}
+    ])
+
+    Loopyard.Attachments.Cache.clear()
+    on_exit(fn -> Loopyard.Attachments.Cache.clear() end)
     :ok
+  end
+
+  test "nothing an uploader controls can run on Loopyard's origin", %{conn: conn} do
+    for name <- ["20260901T120000-ab12-page.html", "20260901T120000-ab12-vector.svg"] do
+      conn = get(conn, "/projects/p1/workspaces/#{@ws}/attachments/#{name}")
+      assert conn.status == 200
+      assert get_resp_header(conn, "content-type") == ["application/octet-stream"]
+      assert [disp] = get_resp_header(conn, "content-disposition")
+      assert disp =~ "attachment"
+      assert get_resp_header(conn, "content-security-policy") == ["sandbox"]
+    end
+
+    conn = get(conn, "/projects/p1/workspaces/#{@ws}/attachments/20260901T120000-ab12-shot.png")
+    assert get_resp_header(conn, "content-security-policy") == ["sandbox"]
+    assert get_resp_header(conn, "x-content-type-options") == ["nosniff"]
+  end
+
+  test "bytes are cached by unique name — a second read never hits the volume", %{conn: conn} do
+    name = "20260901T120000-ab12-shot.png"
+    assert get(conn, "/projects/p1/workspaces/#{@ws}/attachments/#{name}").status == 200
+    volume = Loopyard.Workspace.volume_name_for(@ws)
+    Process.delete({FakeVolumeIO, volume, ".loopyard/uploads/#{name}"})
+    conn = get(build_conn(), "/projects/p1/workspaces/#{@ws}/attachments/#{name}")
+    assert conn.status == 200
+    assert conn.resp_body == @png
   end
 
   test "serves a stored attachment inline with its image content type", %{conn: conn} do

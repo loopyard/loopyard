@@ -16,6 +16,19 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 ## Robustness (handles edge cases gracefully)
 
+0. **Attachment retention / orphan sweep.** Uploads (`.loopyard/uploads`) are
+   never deleted, and a LiveView that dies between copying files and
+   consuming its entries leaves copies no message references. A safe sweep
+   must treat "referenced by any persisted message" as the keep-set — that's
+   a scan of the workspace's ETF log, not the ETS window — so it's deliberate
+   work, not a cron with an age. Until then the dir grows with use; a fork
+   copies it (it's in the volume), a fresh clone doesn't.
+
+0. **Operator attachments assume one identity.** `/operator/attachments/:name`
+   reads from `Workstation.current()`; a second identity's operator would 404
+   on its own thumbnails. Put the identity in the path when multi-identity
+   lands (`/operator/:identity/attachments/:name`).
+
 0000. **SystemSagasLive empty-state test is order-dependent (seen on CI, 2026-08-16).**
       `test/loopyard_web/live/system_sagas_live_test.exs:39` asserts
       "No sagas recorded yet" but another test's saga journal entry leaked

@@ -151,6 +151,33 @@ Consequently, the `git` tool's guardrails (declining `push` to the default branc
 
 **Future tightening (deferred):** to make push-to-main a *Loopyard*-enforced boundary rather than a GitHub-delegated one would require keeping the token out of the container (host-side by-reference credential brokering, the same "deferred" gap as §7) plus egress control on the work container. Out of scope for now.
 
+### 9. Chat attachments — bytes decide, names don't
+
+A human can attach files to a chat (`Loopyard.Attachments`). The rules:
+
+* **Storage is a fixed directory per target** — `/workspace/.loopyard/uploads`
+  (code volume) or `<home>/.loopyard/uploads` (the operator's workstation).
+  Stored names are `<stamp>-<rand>-<sanitized>`; the route only serves a
+  safe basename (`volume_path/1`, `container_path/2`), so no traversal, no
+  dotfiles, no other directory.
+* **The transcript's marker line is text, not a capability.** Anyone can type
+  `📎 Attached: /home/brad/.ssh/id_rsa (image/png, …)`. `prompt_blocks/2`
+  only ever reads paths INSIDE the session's uploads dir (`<cwd>/.loopyard/
+  uploads`) with a stored-shaped name; nothing else is opened, whatever the
+  line says.
+* **Inline images are typed by magic number.** The browser's declared type is
+  ignored for anything that matters: a file is sent to the model as an image
+  only if its bytes sniff as png/jpeg/gif/webp (`sniff_image/1`), under the
+  5 MB per-image and 20 MB per-prompt caps. A mislabelled or empty file is
+  path-only (the agent may still `Read` it).
+* **Nothing an uploader controls runs on Loopyard's origin.** The attachment
+  route serves sniffed images inline; everything else (an `.html`, an SVG)
+  goes out as `application/octet-stream` + `Content-Disposition: attachment`,
+  and every response carries `Content-Security-Policy: sandbox` and
+  `X-Content-Type-Options: nosniff`.
+* The file itself is inert data in the container: it executes only if the
+  agent chooses to run it, which is the same trust as any file in the repo.
+
 ## ACP adapter trust boundary
 
 Loopyard is moving to run a **real** coding harness (Claude Code today, Codex next) in-container over the **Agent Client Protocol** instead of reimplementing the agent loop (`Loopyard.Harness.ACP`; north-star issue #3). This changes the trust picture: the harness is no longer an SDK we call into — it's an **untrusted subprocess** speaking JSON-RPC over stdio, and it talks *back* to Loopyard (it can issue requests, not just stream responses). Treat ACP frames the way you'd treat any untrusted network input.
