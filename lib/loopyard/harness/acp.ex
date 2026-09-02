@@ -75,6 +75,8 @@ defmodule Loopyard.Harness.ACP do
       # The code volume behind /workspace: attached images are read from it
       # and sent inline as prompt image blocks (see stream/2).
       |> maybe_put(:volume, Keyword.get(opts, :volume) || volume_for(opts))
+      # …and, for a session without one (the operator), the container itself.
+      |> maybe_put(:container, Keyword.get(opts, :container))
 
     ready_timeout =
       if Keyword.get(opts, :resume), do: @resume_ready_timeout, else: @ready_timeout

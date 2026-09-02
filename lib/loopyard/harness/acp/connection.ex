@@ -155,6 +155,7 @@ defmodule Loopyard.Harness.ACP.Connection do
           # The code volume the session's /workspace is — lets a prompt inline
           # attached images (read out of the volume) when the adapter takes them.
           volume: Keyword.get(opts, :volume),
+          container: Keyword.get(opts, :container),
           # Cost accounting: `session_cost_usd` is the latest CUMULATIVE figure
           # the adapter reported for this session; `reported_cost_usd` is how
           # much of it we've already handed upstream as per-turn cost. See
@@ -233,7 +234,9 @@ defmodule Loopyard.Harness.ACP.Connection do
 
     # Map.get: a connection that was booted before this key existed (hot code
     # reload mid-session) answers text-only instead of crashing the session.
-    {:reply, %{image?: image?, volume: Map.get(state, :volume)}, state}
+    {:reply,
+     %{image?: image?, volume: Map.get(state, :volume), container: Map.get(state, :container)},
+     state}
   end
 
   # Liveness probe. Only a :ready session gets the wire round-trip; anything

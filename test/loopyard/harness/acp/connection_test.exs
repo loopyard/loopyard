@@ -218,11 +218,15 @@ defmodule Loopyard.Harness.ACP.ConnectionTest do
       send(conn, {:acp_msg, %{"id" => new_id, "result" => %{"sessionId" => "sess-img"}}})
       :ok = Connection.await_ready(conn, 1_000)
 
-      assert Connection.prompt_context(conn) == %{image?: true, volume: "loopyard-ws-code"}
+      assert Connection.prompt_context(conn) == %{
+               image?: true,
+               volume: "loopyard-ws-code",
+               container: nil
+             }
     end
 
     test "prompt_context is text-only when the adapter never said it takes images", %{conn: conn} do
-      assert Connection.prompt_context(conn) == %{image?: false, volume: nil}
+      assert Connection.prompt_context(conn) == %{image?: false, volume: nil, container: nil}
     end
 
     test "the prompt result's usage reaches SessionResult", %{conn: conn} do

@@ -170,6 +170,8 @@ defmodule LoopyardWeb.Router do
         AttachmentController,
         :show
 
+    get "/operator/attachments/:name", AttachmentController, :operator
+
     get "/launch/:secret", LaunchController, :launch
   end
 

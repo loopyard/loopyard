@@ -74,19 +74,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Attachments do
                }}
             end)
 
-          case safe_store(socket.assigns.workspace.id, uploads) do
+          case safe_store(target(socket), uploads) do
             {:ok, atts} ->
               consume_uploaded_entries(socket, :attachments, fn _, _ -> {:ok, :consumed} end)
               {:ok, atts}
 
             {:error, reason} ->
               Logger.warning(
-                "[Attachments] store failed for workspace #{socket.assigns.workspace.id}: #{inspect(reason)}"
+                "[Attachments] store failed for #{inspect(target(socket))}: #{inspect(reason)}"
               )
 
               {:error,
-               "Couldn't save the attachment(s) into the workspace container — " <>
-                 "start the workspace, then Send again. Your text and files are kept."}
+               "Couldn't save the attachment(s) into the agent's container — " <>
+                 "make sure it's running, then Send again. Your text and files are kept."}
           end
       end
     else
@@ -97,8 +97,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Attachments do
   # The Docker boundary: a raise here must not crash the LiveView (that drops
   # the tray AND the typed text) — it's the same "kept for retry" outcome as
   # an {:error, _}.
-  defp safe_store(workspace_id, uploads) do
-    Loopyard.Attachments.store(workspace_id, uploads)
+  # Where this composer's files go: an explicit `:attachment_target` assign
+  # (the operator sets one), else the workspace the LiveView is on.
+  defp target(socket) do
+    socket.assigns[:attachment_target] || {:workspace, socket.assigns.workspace.id}
+  end
+
+  defp safe_store(target, uploads) do
+    Loopyard.Attachments.store(target, uploads)
   rescue
     e -> {:error, {:exception, Exception.message(e)}}
   end

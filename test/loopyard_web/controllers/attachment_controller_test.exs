@@ -33,6 +33,23 @@ defmodule LoopyardWeb.AttachmentControllerTest do
     assert cache =~ "immutable"
   end
 
+  test "the operator's attachments are served out of its workstation container", %{conn: conn} do
+    {:container, container, home} = Loopyard.Operator.attachment_target()
+
+    Loopyard.Test.FakeContainerIO.seed(
+      container,
+      "#{home}/.loopyard/uploads/20260901T1-ab-op.png",
+      @png
+    )
+
+    conn = get(conn, "/operator/attachments/20260901T1-ab-op.png")
+    assert conn.status == 200
+    assert conn.resp_body == @png
+    assert get_resp_header(conn, "content-type") == ["image/png"]
+
+    assert get(build_conn(), "/operator/attachments/..%2F.ssh%2Fid_rsa").status == 404
+  end
+
   test "an unknown name is a 404, not an error page", %{conn: conn} do
     conn = get(conn, "/projects/p1/workspaces/#{@ws}/attachments/nope.png")
     assert conn.status == 404

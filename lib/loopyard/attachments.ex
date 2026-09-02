@@ -42,6 +42,13 @@ defmodule Loopyard.Attachments do
 
   @dir "/workspace/.loopyard/uploads"
   @rel_dir ".loopyard/uploads"
+
+  @typedoc """
+  Where a chat's attachments live. A workspace agent's go into its code volume
+  (`/workspace/.loopyard/uploads`); a workspace-less agent (the operator) keeps
+  them in its own container under `<home>/.loopyard/uploads`.
+  """
+  @type target :: {:workspace, String.t()} | {:container, String.t(), String.t()}
   @marker "📎 Attached: "
   @hint " — open the file to view it"
 
@@ -76,6 +83,17 @@ defmodule Loopyard.Attachments do
   @doc "Absolute in-container directory uploads land in."
   def dir, do: @dir
 
+  @doc "The uploads directory for a target."
+  @spec dir(target()) :: String.t()
+  def dir({:workspace, _}), do: @dir
+  def dir({:container, _container, home}), do: Path.join(home, @rel_dir)
+
+  @doc "Absolute path of a stored attachment under a container target, or `:error` for an unsafe name."
+  @spec container_path(String.t(), String.t()) :: {:ok, String.t()} | :error
+  def container_path(home, name) when is_binary(home) and is_binary(name) do
+    if safe_name?(name), do: {:ok, Path.join([home, @rel_dir, name])}, else: :error
+  end
+
   @doc """
   ACP prompt content blocks for a message: the text block (verbatim, marker
   lines included — the path is still useful to the agent), then one
@@ -89,22 +107,31 @@ defmodule Loopyard.Attachments do
   """
   @spec prompt_blocks(String.t(), %{
           optional(:volume) => String.t() | nil,
+          optional(:container) => String.t() | nil,
           optional(:image?) => boolean()
-        }) ::
-          [map()]
+        }) :: [map()]
   def prompt_blocks(text, ctx) when is_binary(text) do
     text_block = %{"type" => "text", "text" => text}
-    volume = ctx[:volume]
 
-    if ctx[:image?] && is_binary(volume) do
+    # Read via the code volume when the session has one (workspace agents),
+    # else straight out of the session's container (the operator's $HOME).
+    read =
+      cond do
+        ctx[:image?] != true -> nil
+        is_binary(ctx[:volume]) -> &reader().read_file(ctx[:volume], &1)
+        is_binary(ctx[:container]) -> &container_io().read_file(ctx[:container], &1)
+        true -> nil
+      end
+
+    if read do
       {_body, atts} = parse(text)
-      [text_block | Enum.flat_map(atts, &image_block(volume, &1))]
+      [text_block | Enum.flat_map(atts, &image_block(read, &1))]
     else
       [text_block]
     end
   end
 
-  defp image_block(volume, %{size: size} = att) do
+  defp image_block(read, %{size: size} = att) do
     cond do
       not image?(att) ->
         []
@@ -113,7 +140,7 @@ defmodule Loopyard.Attachments do
         []
 
       true ->
-        case reader().read_file(volume, att.path) do
+        case read.(att.path) do
           {:ok, bytes} when byte_size(bytes) <= @max_inline_bytes ->
             [%{"type" => "image", "data" => Base.encode64(bytes), "mimeType" => att.mime}]
 
@@ -133,16 +160,20 @@ defmodule Loopyard.Attachments do
   failed copy (earlier copies are left in place — they're harmless and the
   caller keeps the entries to retry).
   """
-  @spec store(String.t(), [upload()]) :: {:ok, [attachment()]} | {:error, term()}
-  def store(workspace_id, uploads) when is_list(uploads) do
-    volume = Workspace.volume_name_for(workspace_id)
+  @spec store(target() | String.t(), [upload()]) :: {:ok, [attachment()]} | {:error, term()}
+  def store(workspace_id, uploads) when is_binary(workspace_id),
+    do: store({:workspace, workspace_id}, uploads)
 
-    with :ok <- ensure_gitignore(volume) do
+  def store(target, uploads) when is_list(uploads) do
+    {io, handle} = io_for(target)
+    dir = dir(target)
+
+    with :ok <- ensure_gitignore(io, handle, dir) do
       Enum.reduce_while(uploads, {:ok, []}, fn upload, {:ok, acc} ->
         name = stored_name(upload.client_name)
-        dest = Path.join(@dir, name)
+        dest = Path.join(dir, name)
 
-        case writer().copy_in(volume, upload.path, dest) do
+        case io.copy_in(handle, upload.path, dest) do
           :ok ->
             att = %{
               path: dest,
@@ -237,6 +268,8 @@ defmodule Loopyard.Attachments do
     end
   end
 
+  # No workspace = the operator (the one workspace-less agent).
+  def url(nil, name) when is_binary(name), do: "/operator/attachments/#{name}"
   def url(_, _), do: nil
 
   @doc "Volume-relative path of a stored attachment by name, or `:error` for an unsafe name."
@@ -300,12 +333,20 @@ defmodule Loopyard.Attachments do
   # `*` inside the dir ignores everything in it (including itself), so a
   # repo whose `.gitignore` doesn't cover `.loopyard/` never sees screenshots
   # as untracked files an agent might `git add -A`.
-  defp ensure_gitignore(volume) do
-    case writer().write_file(volume, Path.join(@rel_dir, ".gitignore"), "*\n") do
+  defp ensure_gitignore(io, handle, dir) do
+    case io.write_file(handle, Path.join(dir, ".gitignore"), "*\n") do
       :ok -> :ok
       {:error, reason} -> {:error, reason}
     end
   end
 
+  # {io module, handle}: the volume writer keyed by volume name, or the
+  # container io keyed by container name.
+  defp io_for({:workspace, workspace_id}),
+    do: {writer(), Workspace.volume_name_for(workspace_id)}
+
+  defp io_for({:container, container, _home}), do: {container_io(), container}
+
   defp writer, do: Application.get_env(:loopyard, :attachment_writer, Loopyard.VolumeIO)
+  defp container_io, do: Application.get_env(:loopyard, :container_io, Loopyard.ContainerIO)
 end

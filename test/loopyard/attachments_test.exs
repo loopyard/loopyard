@@ -177,6 +177,61 @@ defmodule Loopyard.AttachmentsTest do
     end
   end
 
+  describe "container target (the operator)" do
+    alias Loopyard.Test.FakeContainerIO
+
+    test "store/2 puts files under <home>/.loopyard/uploads in the container, self-ignored" do
+      tmp = Path.join(System.tmp_dir!(), "att-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(tmp)
+      on_exit(fn -> File.rm_rf!(tmp) end)
+      src = Path.join(tmp, "upload.tmp")
+      File.write!(src, "PNG!")
+
+      target = {:container, "loopyard-ws-brad", "/home/brad"}
+
+      assert {:ok, [att]} =
+               Attachments.store(target, [
+                 %{path: src, client_name: "shot.png", client_type: "image/png", client_size: 4}
+               ])
+
+      assert att.path == "/home/brad/.loopyard/uploads/" <> att.name
+      assert FakeContainerIO.read_file("loopyard-ws-brad", att.path) == {:ok, "PNG!"}
+
+      assert FakeContainerIO.read_file(
+               "loopyard-ws-brad",
+               "/home/brad/.loopyard/uploads/.gitignore"
+             ) == {:ok, "*\n"}
+    end
+
+    test "prompt_blocks/2 reads the image out of the container when there's no volume" do
+      path = "/home/brad/.loopyard/uploads/x-shot.png"
+      FakeContainerIO.seed("loopyard-ws-brad", path, "PNG!")
+
+      text =
+        Attachments.annotate("look", [
+          %{path: path, name: "x-shot.png", mime: "image/png", size: 4}
+        ])
+
+      assert [%{"type" => "text"}, %{"type" => "image", "data" => data}] =
+               Attachments.prompt_blocks(text, %{
+                 volume: nil,
+                 container: "loopyard-ws-brad",
+                 image?: true
+               })
+
+      assert Base.decode64!(data) == "PNG!"
+    end
+
+    test "url/2 with no workspace is the operator's attachment route; container_path guards the name" do
+      assert Attachments.url(nil, "x-shot.png") == "/operator/attachments/x-shot.png"
+
+      assert Attachments.container_path("/home/brad", "x-shot.png") ==
+               {:ok, "/home/brad/.loopyard/uploads/x-shot.png"}
+
+      assert Attachments.container_path("/home/brad", "../.ssh/id_rsa") == :error
+    end
+  end
+
   test "image?/1 is by mime, and svg is not inlined" do
     assert Attachments.image?(@png)
     refute Attachments.image?(@log)
