@@ -49,8 +49,8 @@ RUN arch="$(dpkg --print-architecture)" \
 # notifications with real token usage and rate-limit info (_claude/rateLimit)
 # that the Translator depends on for compaction + rate-limit parking.
 # codex-acp bundles its own @openai/codex dependency but honours the CODEX_PATH
-# /system binary above; it is the SAME ACP wire as the Claude adapter, which is
-# why Loopyard drives both through one Connection (see Harness.Catalog).
+# /system binary above. It speaks the SAME ACP wire as the Claude adapter, so
+# one image can host either harness; which one runs is chosen per `docker exec`.
 RUN npm install -g \
       @anthropic-ai/claude-code \
       @openai/codex \

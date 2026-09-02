@@ -101,4 +101,24 @@ defmodule Loopyard.Workstation.IntegrationTest do
       assert {:error, :not_found} = Integration.doc("nope")
     end
   end
+
+  describe "mac_script/4 — never silently does nothing" do
+    # The bug: `fly auth token` fails (not logged in), the `&&` chain
+    # short-circuits, curl never runs, and the user sees NOTHING. They fire the
+    # command, the page still says "Not connected", and there is no way to tell
+    # a broken push from a missing login. Every script must say which one it is.
+    test "every script explains itself when the local credential isn't there" do
+      for id <- ~w(github claude codex fly) do
+        s = Integration.mac_script(Integration.get(id), "http://h", "w")
+
+        assert s =~ "loopyard:",
+               "#{id}: no diagnostic — a missing local credential must SAY so, not no-op"
+      end
+    end
+
+    test "fly names the ONE action that fixes it" do
+      s = Integration.mac_script(Integration.get("fly"), "http://h", "w")
+      assert s =~ "fly auth login"
+    end
+  end
 end

@@ -151,6 +151,7 @@ defmodule Loopyard.Workstation.Env do
         # it (each resumes its conversation). This is how "push a fresh token"
         # auto-recovers stranded agents without any manual Restart click.
         maybe_reload_agents(key, id)
+        announce(id, key)
         :ok
       end
     else
@@ -179,8 +180,22 @@ defmodule Loopyard.Workstation.Env do
          remaining <- Map.delete(current, key),
          :ok <- save(remaining, id) do
       sync_home_asserted(id, remaining)
+      announce(id, key)
       :ok
     end
+  end
+
+  # A credential push arrives from OUTSIDE the browser (a `curl -T` from the
+  # user's Mac), so an open integration page has nothing to react to unless we
+  # say so. Key only — the value never crosses PubSub.
+  defp announce(id, key) do
+    Loopyard.Events.Workstation.publish(%Loopyard.Events.Workstation.CredentialsChanged{
+      workstation_id: id,
+      source: :env,
+      key: key
+    })
+
+    :ok
   end
 
   @doc "`docker run` args injecting every env var: `[\"-e\", \"K=V\", ...]`."

@@ -30,8 +30,19 @@ defmodule LoopyardWeb.FileController do
         {:ok, body, conn} = read_body(conn, length: 5_000_000)
 
         case Container.write_file(rel, body, ws) do
-          :ok -> send_resp(conn, :no_content, "")
-          {:error, reason} -> conn |> put_status(:bad_request) |> json(%{error: inspect(reason)})
+          :ok ->
+            # Half the integrations check a FILE (`.codex/auth.json`), not an env
+            # var, so this path has to announce too or those pages stay stale.
+            Loopyard.Events.Workstation.publish(%Loopyard.Events.Workstation.CredentialsChanged{
+              workstation_id: ws,
+              source: :file,
+              key: rel
+            })
+
+            send_resp(conn, :no_content, "")
+
+          {:error, reason} ->
+            conn |> put_status(:bad_request) |> json(%{error: inspect(reason)})
         end
     end
   end
