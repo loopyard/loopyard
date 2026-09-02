@@ -311,6 +311,22 @@ defmodule Loopyard.AttachmentsTest do
     refute Attachments.heic?(@png_bytes)
   end
 
+  test "an image label on non-image bytes is stored as opaque data — never rendered as an image" do
+    tmp = Path.join(System.tmp_dir!(), "att-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(tmp)
+    on_exit(fn -> File.rm_rf!(tmp) end)
+    html = Path.join(tmp, "upload.tmp")
+    File.write!(html, "<html><script>alert(1)</script></html>")
+
+    assert {:ok, [att]} =
+             Attachments.store("att-ws-4", [
+               %{path: html, client_name: "fake.png", client_type: "image/png"}
+             ])
+
+    assert att.mime == "application/octet-stream"
+    refute Attachments.image?(att)
+  end
+
   test "the stored type is what the bytes are, not the browser's label" do
     tmp = Path.join(System.tmp_dir!(), "att-#{System.unique_integer([:positive])}")
     File.mkdir_p!(tmp)
