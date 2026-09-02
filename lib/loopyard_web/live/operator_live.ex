@@ -233,7 +233,13 @@ defmodule LoopyardWeb.OperatorLive do
         %{index: idx, text: old} = editing
 
         if message != "",
-          do: ChatAgent.update_pending(socket.assigns.agent_id, idx, old, message)
+          do:
+            ChatAgent.update_pending(
+              socket.assigns.agent_id,
+              idx,
+              old,
+              Loopyard.Attachments.annotate(message, elem(Loopyard.Attachments.parse(old), 1))
+            )
 
         {:reply, %{ok: true}, assign(socket, :editing_pending, nil)}
 
@@ -481,8 +487,11 @@ defmodule LoopyardWeb.OperatorLive do
   # Explicit push_event(socket, ...) form: the composer-writes guardrail counts
   # that shape to prove every fill_input comes from a human action.
   defp edit_fill(socket, index, text) do
+    # The box gets the human's words; attachments stay pinned to the queued
+    # line and are re-attached on save.
+    {body, _atts} = Loopyard.Attachments.parse(text)
     socket = assign(socket, :editing_pending, %{index: index, text: text})
-    push_event(socket, "fill_input", %{text: text})
+    push_event(socket, "fill_input", %{text: body})
   end
 
   defp current_track do

@@ -677,7 +677,8 @@ defmodule LoopyardWeb.WorkspaceLive do
 
         socket =
           if message != "" do
-            ChatAgent.update_pending(id, idx, old, message)
+            {_, kept} = Loopyard.Attachments.parse(old)
+            ChatAgent.update_pending(id, idx, old, Loopyard.Attachments.annotate(message, kept))
             AgentEvents.refresh_selected_from_agents(socket, id, socket.assigns.agents)
           else
             socket
@@ -881,8 +882,11 @@ defmodule LoopyardWeb.WorkspaceLive do
     text = Enum.at(socket.assigns.selected_agent[:pending_messages] || [], index)
 
     if is_binary(text) do
+      # The box gets the human's words only; the attachments stay pinned to the
+      # queued line and are re-attached on save (send_message's edit branch).
+      {body, _atts} = Loopyard.Attachments.parse(text)
       socket = assign(socket, :editing_pending, %{index: index, text: text})
-      {:noreply, push_event(socket, "fill_input", %{text: text})}
+      {:noreply, push_event(socket, "fill_input", %{text: body})}
     else
       {:noreply, socket}
     end

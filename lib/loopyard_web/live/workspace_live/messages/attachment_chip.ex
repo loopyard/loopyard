@@ -21,13 +21,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.AttachmentChip do
       href={@url}
       target="_blank"
       rel="noopener"
-      title={"#{@att.name} · #{Loopyard.Attachments.human_size(@att.size)}"}
+      title={"#{Loopyard.Attachments.display_name(@att)} · #{Loopyard.Attachments.human_size(@att.size)}"}
       class="focus-ring block rounded-sm border border-violet-300/60 dark:border-violet-400/25 bg-white/70 dark:bg-black/20 overflow-hidden hover:border-violet-500 transition-colors"
     >
       <img
         :if={@image?}
         src={@url}
-        alt={@att.name}
+        alt={Loopyard.Attachments.display_name(@att)}
         loading="lazy"
         class="block h-24 w-auto max-w-[220px] object-cover"
       />
@@ -35,14 +35,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.AttachmentChip do
         :if={!@image?}
         class="inline-flex items-center gap-1.5 px-2 py-1.5 text-body text-zinc-700 dark:text-zinc-200"
       >
-        <.icon name={:paper_clip} class="w-3.5 h-3.5 flex-none text-violet-500" /> {@att.name}
+        <.icon name={:paper_clip} class="w-3.5 h-3.5 flex-none text-violet-500" />
+        {Loopyard.Attachments.display_name(@att)}
       </span>
     </a>
     <span
       :if={!@url}
       class="inline-flex items-center gap-1.5 px-2 py-1.5 text-body text-zinc-600 dark:text-zinc-300 rounded-sm border border-violet-300/60 dark:border-violet-400/25"
     >
-      <.icon name={:paper_clip} class="w-3.5 h-3.5 flex-none text-violet-500" /> {@att.name}
+      <.icon name={:paper_clip} class="w-3.5 h-3.5 flex-none text-violet-500" />
+      {Loopyard.Attachments.display_name(@att)}
     </span>
     """
   end

@@ -232,6 +232,15 @@ defmodule Loopyard.AttachmentsTest do
     end
   end
 
+  test "display_name/1 drops the uniqueness prefix a human never typed" do
+    assert Attachments.display_name("20260902T061913-9608-riddle.png") == "riddle.png"
+
+    assert Attachments.display_name(%{name: "20260902T061913-9608-Screen-Shot.png"}) ==
+             "Screen-Shot.png"
+
+    assert Attachments.display_name("plain.png") == "plain.png"
+  end
+
   test "image?/1 is by mime, and svg is not inlined" do
     assert Attachments.image?(@png)
     refute Attachments.image?(@log)

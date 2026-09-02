@@ -292,6 +292,16 @@ defmodule Loopyard.Attachments do
     "#{stamp}-#{rand}-#{sanitize(client_name)}"
   end
 
+  @doc """
+  The name a human sees: the stored name minus the `<stamp>-<rand>-` uniqueness
+  prefix (`20260902T061913-9608-riddle.png` → `riddle.png`).
+  """
+  @spec display_name(attachment() | String.t()) :: String.t()
+  def display_name(%{name: name}), do: display_name(name)
+
+  def display_name(name) when is_binary(name),
+    do: Regex.replace(~r/^\d{8}T\d{6}-[0-9a-f]{4}-/, name, "")
+
   @doc "Human-readable size for chips (`84 KB`, `1.2 MB`)."
   def human_size(bytes) when is_integer(bytes) and bytes < 1024, do: "#{bytes} B"
   def human_size(bytes) when is_integer(bytes) and bytes < 1_048_576, do: "#{div(bytes, 1024)} KB"
