@@ -302,6 +302,9 @@ defmodule Loopyard.ChatAgent.Initializer do
             :container,
             Loopyard.Workspace.WorkContainer.container_name(workspace_id)
           )
+          # The code volume behind /workspace — Harness.ACP reads attached
+          # images out of it to send them inline as prompt image blocks.
+          |> Keyword.put(:volume, Loopyard.Workspace.volume_name_for(workspace_id))
           |> Keyword.put(:cwd, "/workspace")
           |> Keyword.put(:harness, harness)
           |> maybe_put_model(acp_model)
