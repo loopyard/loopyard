@@ -1,6 +1,6 @@
 defmodule Loopyard.ChatAgent.RateLimitTest do
   @moduledoc """
-  Surface #10 of plans/agent-sanity.md.
+  Surface #10 of plans/archive/agent-sanity.md.
 
   The Claude API can return rate-limit events (`ClaudeCode.Message.RateLimitEvent`)
   and auth failures (`ClaudeCode.Message.AuthStatusMessage`). Pre-fix those

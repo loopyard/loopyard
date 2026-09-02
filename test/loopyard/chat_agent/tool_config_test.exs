@@ -7,7 +7,7 @@ defmodule Loopyard.ChatAgent.ToolConfigTest do
     test "returns a list of tool modules" do
       tools = ToolConfig.default_tools()
       assert is_list(tools)
-      assert length(tools) > 0
+      assert tools != []
 
       for mod <- tools do
         assert is_atom(mod)
@@ -97,7 +97,7 @@ defmodule Loopyard.ChatAgent.ToolConfigTest do
       tools = ToolConfig.default_tools()
       allowed = ToolConfig.build_allowed_tools(tools, false)
       mcp_tools = Enum.filter(allowed, &String.starts_with?(&1, "mcp__"))
-      assert length(mcp_tools) > 0
+      assert mcp_tools != []
     end
   end
 

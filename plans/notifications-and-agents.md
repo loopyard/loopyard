@@ -221,7 +221,7 @@ in the batch prompt, rendered as a band (not a user bubble). That is what
 
 ### 4. UI/nav — consistent, with two things to reckon with
 
-The three-tab bar **reverses** `plans/ia-two-modes.md`'s Aug 1 argument
+The three-tab bar **reverses** `plans/archive/ia-two-modes.md`'s Aug 1 argument
 ("the Operator is ABOVE the workspaces; the control never represents where
 you are"). That is consistent, not a flip-flop: the altitude argument was
 about the operator being a singleton above everything, and that premise is

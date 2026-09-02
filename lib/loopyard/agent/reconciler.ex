@@ -4,7 +4,7 @@ defmodule Loopyard.Agent.Reconciler do
   drift between what `:chat_agents` ETS thinks is alive and what the
   `Loopyard.ChatAgentRegistry` says is actually alive.
 
-  Move #6 of plans/coordination-hardening.md (narrowed scope — Docker
+  Move #6 of plans/archive/coordination-hardening.md (narrowed scope — Docker
   reconciler ships via Observer, workspace reconciler deferred).
 
   ## What drift means here

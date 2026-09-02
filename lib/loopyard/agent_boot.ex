@@ -461,14 +461,14 @@ defmodule Loopyard.AgentBoot do
   defp scope_label({:system, identity}), do: "system:" <> identity
   defp scope_label(ws_id), do: to_string(ws_id)
 
-  # One self-determining kick-off. The agent runs service_status first and does
+  # One self-determining kick-off. The agent runs service_containers first and does
   # the right thing — bootstrap if unconfigured, confirm health if already set
   # up — so we don't have to guess "setup vs coding" up front.
   defp default_message(_ws_config, service_name) do
     if service_name do
       "Check the logs for the #{service_name} service and help me debug any issues."
     else
-      "Take a look at the workspace in /workspace and get it ready to work on. Run `service_status` first: " <>
+      "Take a look at the workspace in /workspace and get it ready to work on. Run `service_containers` first: " <>
         "if the dev environment isn't set up yet, set it up (read `setup_guide.md` via `read_agent_file` for the playbook, then the matching stack from `stacks/`). " <>
         "If it's already configured and running, just confirm it's healthy and give me a one-line summary of the project."
     end

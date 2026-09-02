@@ -890,7 +890,7 @@ defmodule Loopyard.Harness.ACP.ConnectionTest do
          %{
            "id" => prompt_id,
            "error" => %{
-             "code" => -32603,
+             "code" => -32_603,
              "message" => "Internal error: API Error: Rate limit reached"
            }
          }}

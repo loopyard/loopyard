@@ -16,7 +16,7 @@ defmodule Loopyard.Tools.Container.UrlToolsTest do
     test "tool emits localhost URL with Docker port" do
       # The tool output is always localhost — the renderer handles the rest
       url =
-        %URI{scheme: "http", host: "localhost", port: 32794, path: "/users/1"} |> URI.to_string()
+        %URI{scheme: "http", host: "localhost", port: 32_794, path: "/users/1"} |> URI.to_string()
 
       assert url == "http://localhost:32794/users/1"
     end
@@ -61,7 +61,7 @@ defmodule Loopyard.Tools.Container.UrlToolsTest do
           service: "dev",
           container_port: 3000,
           host_port: 4444,
-          docker_port: 32999,
+          docker_port: 32_999,
           exposed: true,
           allocated_at: DateTime.utc_now()
         }
@@ -108,7 +108,7 @@ defmodule Loopyard.Tools.Container.UrlToolsTest do
           service: "dev",
           container_port: 3000,
           host_port: 4555,
-          docker_port: 33000,
+          docker_port: 33_000,
           exposed: false,
           allocated_at: DateTime.utc_now()
         }
@@ -131,7 +131,7 @@ defmodule Loopyard.Tools.Container.UrlToolsTest do
   describe "URI construction" do
     test "app_url builds localhost URL with Docker port + path" do
       url =
-        %URI{scheme: "http", host: "localhost", port: 32794, path: "/code/my-article"}
+        %URI{scheme: "http", host: "localhost", port: 32_794, path: "/code/my-article"}
         |> URI.to_string()
 
       assert url == "http://localhost:32794/code/my-article"

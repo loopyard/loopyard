@@ -64,7 +64,7 @@ defmodule LoopyardWeb.MessageLiveTest do
   describe "message URL contract" do
     test "every message has a unique non-nil ID", %{agent_id: agent_id} do
       state = ChatAgent.get_state(agent_id)
-      assert length(state.messages) >= 1
+      assert state.messages != []
 
       for msg <- state.messages do
         assert msg[:id] != nil, "Message missing :id — role: #{msg.role}"

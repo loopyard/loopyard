@@ -1,6 +1,6 @@
 defmodule Loopyard.ChatAgent.StreamIntegrityTest do
   @moduledoc """
-  Surfaces #3 + #16 of plans/agent-sanity.md.
+  Surfaces #3 + #16 of plans/archive/agent-sanity.md.
 
   ### #3 In-flight message preservation
 
@@ -158,9 +158,9 @@ defmodule Loopyard.ChatAgent.StreamIntegrityTest do
 
       # No truncated-partial should have been appended since the
       # accumulator was empty when the error fired.
-      assert Enum.count(state_after.messages, fn m ->
+      refute Enum.any?(state_after.messages, fn m ->
                m.role == :assistant and Map.get(m, :partial, false) == true
-             end) == 0
+             end)
     end
 
     test "stream_error with empty accumulator → no partial message appended",
@@ -178,9 +178,9 @@ defmodule Loopyard.ChatAgent.StreamIntegrityTest do
       state = :sys.get_state(pid)
 
       # No partial-tagged assistant messages.
-      assert Enum.count(state.messages, fn m ->
+      refute Enum.any?(state.messages, fn m ->
                m.role == :assistant and Map.get(m, :partial, false) == true
-             end) == 0
+             end)
     end
   end
 

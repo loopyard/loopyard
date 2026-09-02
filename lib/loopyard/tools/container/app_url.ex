@@ -49,9 +49,9 @@ defmodule Loopyard.Tools.Container.AppUrl do
             clean_path =
               if String.starts_with?(route_path, "/"), do: route_path, else: "/#{route_path}"
 
-            url =
-              %URI{scheme: "http", host: "localhost", port: host_port, path: clean_path}
-              |> URI.to_string()
+            # Built as a string, not a %URI{} literal: OTP 28's dialyzer treats
+            # URI.t() as opaque and flags constructing one outside URI.
+            url = "http://localhost:#{host_port}#{clean_path}"
 
             # Line 1 is always the pasteable outside URL; notes go below it so a
             # careless paste still hands over a working link.
@@ -107,7 +107,7 @@ defmodule Loopyard.Tools.Container.AppUrl do
 
   defp docker_host_port(workspace_id, container) do
     case Loopyard.Docker.container_ports(container) do
-      {:ok, ports} when map_size(ports) > 0 ->
+      ports when is_map(ports) and map_size(ports) > 0 ->
         {_container_port, host_port} = Enum.at(ports, 0)
         {:ok, host_port}
 

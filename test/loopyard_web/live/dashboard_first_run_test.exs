@@ -7,7 +7,7 @@ defmodule LoopyardWeb.DashboardFirstRunTest do
   and offer the one action that fixes it, then get out of the way the moment a
   token exists.
 
-  Regression guard for the onboarding walkthrough (plans/onboarding.md, F4/F8):
+  Regression guard for the onboarding walkthrough (plans/archive/onboarding.md, F4/F8):
   the dashboard used to render "All 3 subsystems healthy" on an install that
   could not do anything at all.
   """

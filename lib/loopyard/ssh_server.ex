@@ -11,6 +11,15 @@ defmodule Loopyard.SSHServer do
   Port is configurable:
   - `SSH_PORT` env var — set to a specific port or "0" for auto-assign
   - Default: 0 (OS picks an available port)
+
+  ## Bind address
+
+  The daemon binds the SAME address the web endpoint does —
+  `Loopyard.Bind.configured_ip/0`, i.e. `LOOPYARD_BIND` — loopback by default,
+  `0.0.0.0` only when the operator asked for LAN exposure at boot. With
+  `no_auth_needed: true` this daemon hands anyone who can reach it a shell in
+  the named container, so it must never listen wider than the UI does. (It used
+  to pass no `ip:` at all, which is `:ssh.daemon`'s "every interface".)
   """
   use GenServer
   require Logger
@@ -41,7 +50,10 @@ defmodule Loopyard.SSHServer do
     system_dir = ensure_host_keys()
     :ssh.start()
 
+    # `ip:` is the one exposure decision, shared with the web endpoint — see
+    # the moduledoc. Omitting it binds every interface.
     ssh_opts = [
+      ip: Loopyard.Bind.configured_ip(),
       system_dir: String.to_charlist(system_dir),
       ssh_cli: {Loopyard.SSHServer.Channel, []},
       no_auth_needed: true,
@@ -105,7 +117,7 @@ defmodule Loopyard.SSHServer do
       File.mkdir_p!(dir)
       File.chmod!(dir, 0o700)
 
-      rsa_key = :public_key.generate_key({:rsa, 2048, 65537})
+      rsa_key = :public_key.generate_key({:rsa, 2048, 65_537})
       write_pem(dir, "ssh_host_rsa_key", :RSAPrivateKey, rsa_key)
 
       ec_key = :public_key.generate_key({:namedCurve, :secp256r1})

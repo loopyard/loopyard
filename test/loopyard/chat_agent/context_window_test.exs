@@ -1,6 +1,6 @@
 defmodule Loopyard.ChatAgent.ContextWindowTest do
   @moduledoc """
-  Surface #18 of plans/agent-sanity.md.
+  Surface #18 of plans/archive/agent-sanity.md.
 
   Claude has a finite context window. When full, the CLI silently
   drops earliest turns — the agent loses context without surfacing

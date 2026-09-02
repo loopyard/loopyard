@@ -71,7 +71,7 @@ defmodule Loopyard.Git do
   end
 
   @doc "Check if a path is inside a git repository."
-  def is_repo?(path) do
+  def repo?(path) do
     match?({:ok, _}, repo_root(path))
   end
 
@@ -234,10 +234,10 @@ defmodule Loopyard.Git do
             file_path = String.slice(line, 3..-1//1)
 
             staged_acc =
-              if index not in [" ", "?", nil] do
-                [%{status: index, path: file_path} | staged_acc]
-              else
+              if index in [" ", "?", nil] do
                 staged_acc
+              else
+                [%{status: index, path: file_path} | staged_acc]
               end
 
             unstaged_acc =

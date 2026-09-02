@@ -198,7 +198,7 @@ defmodule LoopyardWeb.SystemLive do
   # Lives at the BOTTOM as a confirmed danger-zone card (NOT a scary top-right
   # button) — you have to scroll past everything and confirm to hit it.
   # The rest of the System mode — destinations that used to be top-level
-  # (plans/ia-two-modes.md): remote access + ambient sound settings.
+  # (plans/archive/ia-two-modes.md): remote access + ambient sound settings.
   defp destinations_section(assigns) do
     ~H"""
     <section class="space-y-1.5">

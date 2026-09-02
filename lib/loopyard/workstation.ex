@@ -7,7 +7,7 @@ defmodule Loopyard.Workstation do
   You **operate as** a workstation (`current/0`); agents you spin up inherit it —
   its image, its creds, its name on commits. That's how an agent knows which
   image to use: it doesn't ask, it follows the driver's identity. See
-  plans/integrations.md.
+  plans/archive/integrations.md.
 
   On disk: `<LOOPYARD_HOME>/workstations/<id>/` holds `Dockerfile` + `env.json`.
   Docker holds the runtime: image `loopyard-ws-<id>`, volume `loopyard-ws-<id>-home`.
@@ -119,14 +119,12 @@ defmodule Loopyard.Workstation do
 
   @doc "Switch the identity you operate as."
   def set_current(id) do
-    cond do
-      not exists?(id) ->
-        {:error, :not_found}
-
-      true ->
-        File.mkdir_p!(base_dir())
-        File.write!(current_path(), id)
-        :ok
+    if exists?(id) do
+      File.mkdir_p!(base_dir())
+      File.write!(current_path(), id)
+      :ok
+    else
+      {:error, :not_found}
     end
   end
 

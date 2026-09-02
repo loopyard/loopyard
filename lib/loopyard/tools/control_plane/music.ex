@@ -59,7 +59,7 @@ defmodule Loopyard.Tools.ControlPlane.Music do
   end
 
   defp status do
-    st = Aural.Channel.state(@channel) || %{}
+    st = Aural.Channel.state(@channel)
     level = Float.round((st[:activity] || 0.0) * 1.0, 2)
 
     {:ok,
@@ -67,12 +67,17 @@ defmodule Loopyard.Tools.ControlPlane.Music do
        "are per-listener; the sound pill shows the current state.)"}
   end
 
+  # `Aural.Channel.pick_track/2` takes the track as an ATOM (the Synth's track
+  # names); the tool gets a string. Match against the known names first so
+  # the atom always already exists — never mint one from agent input.
   defp track(name) when is_binary(name) and name != "" do
-    if name in tracks() do
-      Aural.Channel.pick_track(@channel, name)
-      {:ok, "Switched the ambient bed to '#{name}' (crossfading)."}
-    else
-      {:error, "Unknown track '#{name}'. Available: #{Enum.join(tracks(), ", ")}."}
+    case Enum.find(tracks(), &(Atom.to_string(&1) == name)) do
+      nil ->
+        {:error, "Unknown track '#{name}'. Available: #{Enum.join(tracks(), ", ")}."}
+
+      track ->
+        Aural.Channel.pick_track(@channel, track)
+        {:ok, "Switched the ambient bed to '#{name}' (crossfading)."}
     end
   end
 

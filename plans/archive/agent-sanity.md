@@ -1,3 +1,5 @@
+> Archived Sept 2026 — merged. The invariants live in CLAUDE.md → "Agent reliability invariants" and `Loopyard.ChatAgent` (+ `SessionManager`, `StreamHandler`); surface numbers referenced from code/tests are still the ones below.
+
 # Agent Sanity — survive restarts, crashes, and reconnects without amnesia
 
 ## Why

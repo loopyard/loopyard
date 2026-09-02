@@ -18,7 +18,7 @@ Loopyard is a **Docker control plane** with **AI agents** wired into it. Dev env
 
 **The agents:** Claude Code sessions run as GenServer processes. Each agent exec's into the workspace container to read/write code and run commands. Agents use MCP tools from `loopyard-container`: `exec` for commands, `write_file` for Dockerfile/docker-compose.yml, `docker_compose` for container lifecycle, `logs` for debugging. All tool operations go through Docker — `Docker.exec_in` for commands, `VolumeIO` for file I/O. Tool output is truncated for agents (via `Helpers.truncate_for_agent`, ~80 lines) to save context tokens, but streamed in full to the UI for humans.
 
-**One self-determining agent — no setup-vs-coding split.** There is a single agent type (`priv/agents/coding/agent.md`). It reads the situation before acting: it runs `service_status` and inspects `/workspace`, then bootstraps the dev environment ONLY if it's actually missing (no `.loopyard/workspace/docker-compose.yml`), brings it back up if it exists but is down, and otherwise just codes without re-scaffolding a working environment. The setup playbook (`setup_guide.md`) and per-stack guides (`stacks/`) live alongside the agent prompt in `priv/agents/coding/`; the agent reads them on demand via `read_agent_file` (relative paths). There is no separate "setup agent."
+**One self-determining agent — no setup-vs-coding split.** There is a single agent type (`priv/agents/coding/agent.md`). It reads the situation before acting: it runs `service_containers` and inspects `/workspace`, then bootstraps the dev environment ONLY if it's actually missing (no `.loopyard/workspace/docker-compose.yml`), brings it back up if it exists but is down, and otherwise just codes without re-scaffolding a working environment. The setup playbook (`setup_guide.md`) and per-stack guides (`stacks/`) live alongside the agent prompt in `priv/agents/coding/`; the agent reads them on demand via `read_agent_file` (relative paths). There is no separate "setup agent."
 
 **The multiplayer layer:** Everything is wired through PubSub. Chat messages, terminal I/O, service status changes, build output — all broadcast to every connected viewer. LiveViews subscribe and render. The terminal system supports both browser (xterm.js via Phoenix Channel) and SSH access to the same shared session. Multiple people can watch an agent work, type in the same terminal, or monitor services simultaneously.
 
@@ -26,7 +26,7 @@ Loopyard is a **Docker control plane** with **AI agents** wired into it. Dev env
 
 ## Coordination hardening (harden-resume-state)
 
-The coordination layer went through a sprint of hardening moves (see [plans/coordination-hardening.md](plans/coordination-hardening.md) and the two follow-up audits). Landed surfaces + rules a new contributor needs to know:
+The coordination layer went through a sprint of hardening moves (see [plans/archive/coordination-hardening.md](plans/archive/coordination-hardening.md) and the two follow-up audits). Landed surfaces + rules a new contributor needs to know:
 
 **Observability surfaces (all at `/system`):**
 - `/system/events` — live event tap (ring buffer, per-topic rate)
@@ -34,8 +34,8 @@ The coordination layer went through a sprint of hardening moves (see [plans/coor
 - `/system/quarantine` — crash-looping actors, release controls
 - `/system/orphans` — tracked resources without a live owner
 - `/system/recovery` — checkpointer snapshot size/age, last boot replay time
-- `/system/reconcilers` — drift detection runs
-- `/system` — aggregated health map (`:healthy | :degraded | :down` per component)
+- `/system/workspaces`, `/system/docker`, `/system/ports`, `/system/secrets` — the registries, the daemon, the port pool, stored secrets
+- `/system` — aggregated health map (`:healthy | :degraded | :down` per component); the `Agent.Reconciler` drift check is one of its rows (there is no separate reconcilers page)
 
 **Adding a new broadcast event:**
 1. Add a struct to the relevant publisher module in `lib/loopyard/events/` (e.g. `Loopyard.Events.ChatAgent.SomeEvent`).
@@ -61,7 +61,7 @@ Move #1 (pure transition functions) and Move #5 (deadlines) are deferred for a f
 
 **ETS ownership:** `Loopyard.StateKeeper` is the sole ETS table owner. Never call `:ets.new/2` elsewhere — add your table to `StateKeeper`'s `@tables` list.
 
-## Agent reliability invariants (`plans/agent-sanity.md`)
+## Agent reliability invariants (`plans/archive/agent-sanity.md`)
 
 The ChatAgent went through a second hardening sweep focused on
 "conversation survives restart" + "when it can't, the user knows why."
@@ -72,13 +72,14 @@ Rules a contributor needs to know:
   per live `ClaudeCode.Session` pid. We mirror it onto
   `state.claude_session_id` on every `%Event.SessionResult{}` and
   persist it via `summary/1` → ETF log.
-- Every path that spawns a new CLI must go through
-  `session_opts_with_resume/1` so `resume: <claude_session_id>` is
-  passed to the SDK. That's what makes the new CLI continue the same
-  conversation instead of booting amnesic. The four sites:
-  `:restart_session` cast, `{:stream_error, "CLI session exited", _}`
-  recovery, `dispatch_retry_session` (backoff retry),
-  `ensure_session_alive` (pre-`send_message`).
+- Every path that spawns a new CLI goes through
+  `SessionManager.start_session_safe/1`, which carries
+  `resume: <claude_session_id>` into the harness's session opts. That's
+  what makes the new CLI continue the same conversation instead of
+  booting amnesic. The four sites: the `:restart_session` cast,
+  `{:stream_error, "CLI session exited", _}` recovery,
+  `SessionManager.handle_retry/3` (backoff retry), and
+  `SessionManager.ensure_alive/1` (pre-`send_message`).
 - `init_resume` threads the saved `claude_session_id` through too —
   Loopyard server restart doesn't drop the conversation.
 
@@ -405,8 +406,8 @@ boots the cloned config once cloning is done — not just forks.
   cancelable by its own ✕; it appears instantly (the send handler pulls
   the just-enqueued list from ETS into the ack reply, not the later
   `StatusChanged` broadcast). On desktop **Enter sends** (never inserts
-  a newline — `preventDefault` is unconditional); on mobile Enter is a
-  no-op (tap Send); Shift+Enter newlines, ⌘/Ctrl+Enter always sends.
+  a newline — `preventDefault` is unconditional); on mobile Enter
+  newlines (tap Send); Shift+Enter newlines, ⌘/Ctrl+Enter always sends.
 
 ## Agents — templates, scopes, the Agents root (plans/notifications-and-agents.md)
 
@@ -482,11 +483,15 @@ selections to the agent (`deliver_late_answer`).
 **Three surfaces, three jobs:** the chat shows cards inline as they happen; the
 operator rail LISTS what's waiting (flame mini-rows nested under each
 workspace's "In motion" row, capped at 3 + "+N more"; the operator's own asks
-lead the rail); the **Decisions deck** (`/decisions`, `NotificationsLive`) clears the backlog —
+lead the rail); the **Notifications deck** (`/notifications`, `NotificationsLive`) clears the backlog —
 ONE decision per slide (a multi-question ask fans out per question),
 prev/next, answer → settled beat → auto-advance. Resource URLs only:
-`/decisions`, `/decisions/:agent_id/:msg_id` (one decision + its discussion thread; `/review*` aliases kept),
-`/projects/:project_id/workspaces/:workspace_id/decisions`. Approvals decide through the ONE shared
+`/notifications`, `/notifications/history` (past decisions),
+`/notifications/:agent_id/:msg_id` (one decision + its discussion thread);
+`/decisions*`, `/operator/decisions*` and `/review*` are kept as aliases so
+pasted links keep working, and
+`/projects/:project_id/workspaces/:workspace_id/decisions` scopes the deck to
+one workspace. Approvals decide through the ONE shared
 `LoopyardWeb.Live.ApprovalActions` (both models: blocking waiter or durable
 queued card). `Cards.question_block/1` is the per-question atom shared by the
 chat card and the Reviewer.
@@ -514,9 +519,6 @@ answer). `LoopyardWeb.Components.FocusedView` is the shared full-screen shell
   `colors.brand.*` Tailwind preset). One job per color: paper/ink grounds,
   iris (violet) = interactive/"you", flame (≡ orange-600) = blocked-on-a-human
   ONLY, moss confirms, amber = transitional caution, rose alarms.
-- **Chat type scale**: THREE tokens — `chat-body` / `chat-sub` / `chat-meta`
-  (fontSize tokens in tailwind.config.js; `.chat-*` classes @apply them).
-  Never ad-hoc text sizes in chat surfaces.
 - **Sharp editorial geometry**: surfaces square, controls `rounded-sm`,
   circles `rounded-full`. The grouped-corner/rail apparatus was deliberately
   deleted — do not reintroduce position tricks composed across siblings.
@@ -600,10 +602,10 @@ Two ways in:
 - **Project** = a git repo. Managed by `ProjectRegistry`.
 - **Workspace** = a working directory (git worktree) within a project. Each gets its own containers, volumes, agents. Managed by `WorkspaceRegistry`.
 - **WorkspaceSupervisor** = top-level DynamicSupervisor for all workspace subtrees.
-- **WorkspaceGroup** = per-workspace Supervisor (ServiceManager + AgentSupervisor + ContainerMonitor).
+- **WorkspaceGroup** = per-workspace Supervisor (ServiceManager + AgentSupervisor + `ChatAgent.RestartController` + ContainerMonitor + `Workspace.LogBuffer` + `AgentLog.Checkpointer`, plus the source adapter's children — `Source.Local.SyncMonitor` for Local projects).
 - **Tool** = an MCP tool module under `Tools.Container.*`. One file per tool. Uses `Loopyard.Tool` macro.
 - **Toolkit** = `Tools.Container` — lists all tool modules in `__tool_server__/0`.
-- Infrastructure files (`Dockerfile`, `docker-compose.yml`) live in `.loopyard/workspace/` and are **tracked in git** — that's how a new branch or fork inherits a working dev environment instead of re-scaffolding one. Which means they must be **workspace-agnostic**: never a literal `loopyard-<id>-code`, always `${CODE_VOLUME}` / `${WORKSPACE_ID}`, resolved at run time by `Compose.process_agent_compose/3`. `Tools.Container.WriteFile` rewrites a hardcoded name back to the placeholder on write (it used to do the opposite, baking one workspace's id into a file git carries to every branch). Metadata (`workspace.json` with project name, system prompt) lives in `.loopyard/repo/`.
+- Infrastructure files (`Dockerfile`, `docker-compose.yml`) live in `.loopyard/workspace/`. A fork inherits them by **volume copy** (`CanonicalRepo.fork_from_workspace/4` copies the source workspace's whole volume, gitignored `.loopyard/` included — `fork/4` from the canonical bare repo gets committed state only, no infra). Whether `.loopyard/` is committed is the repo's own `.gitignore` decision, and either way the files must be **workspace-agnostic**: never a literal `loopyard-<id>-code`, always `${CODE_VOLUME}` / `${WORKSPACE_ID}`, resolved at run time by `Compose.process_agent_compose/3`. `Tools.Container.WriteFile` rewrites a hardcoded name back to the placeholder on write (it used to do the opposite, baking one workspace's id into a file git carries to every branch). Metadata (`workspace.json` with project name, system prompt) lives in `.loopyard/repo/`.
 - User-level data in `~/.loopyard/` (overridable with `LOOPYARD_HOME` env var).
 - URLs: `/projects/:project_id/workspaces/:workspace_id/agents/:id`, `/agents/:id`, `/agents`, `/notifications`, `/messages/:agent_id/:msg_id`
 
@@ -686,7 +688,7 @@ its own thing.
 
 ## Stack
 
-Elixir 1.19 / OTP 28, Phoenix 1.7 / LiveView 1.1, Claude Code SDK (`claude_code`), Docker Compose, Tailwind CSS, xterm.js, Bandit. No database (ETS + GenServers).
+Elixir 1.20 / OTP 29 (mix.exs allows ≥ 1.17), Phoenix 1.8 / LiveView 1.2, the Agent Client Protocol adapters in-container (`claude-agent-acp`, `codex-acp`), Docker Compose, Tailwind CSS, xterm.js, Bandit. No database (ETS + GenServers).
 
 ## Architecture: Scaling & Persistence
 
@@ -706,4 +708,5 @@ ETS remains the runtime store for fast multiplayer access; the log is the durabl
 
 ## Known issues
 
-- Agent log compaction not implemented (append-only log grows, replay gets slower over time)
+- Agent log compaction exists (`AgentLog.Compactor`, run on boot by `ServiceManager` past 5 MB) but is boot-time only — a very long-lived server replays a growing log until its next restart.
+- `docs/IMPROVEMENTS.md` is the live backlog; this list is for things a new contributor will trip over on day one.

@@ -178,9 +178,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
     do: to_string(input["command"] || "")
 
   defp console_command_label(%{tool: tool, input: input}) when is_binary(tool) do
-    cond do
-      String.ends_with?(tool, "__git") -> "git " <> to_string(input["command"] || "")
-      true -> to_string(input["command"] || tool)
+    if String.ends_with?(tool, "__git") do
+      "git " <> to_string(input["command"] || "")
+    else
+      to_string(input["command"] || tool)
     end
   end
 

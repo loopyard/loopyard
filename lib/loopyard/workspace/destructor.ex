@@ -230,36 +230,34 @@ defmodule Loopyard.Workspace.Destructor do
   # leaves a half-destroyed workspace behind, which is worse than any
   # single failed step. All outcomes log to EventLog.
   defp step(workspace_id, name, fun) do
-    try do
-      case fun.() do
-        :ok ->
-          :ok
+    case fun.() do
+      :ok ->
+        :ok
 
-        {:soft_error, reason} ->
-          EventLog.warning(
-            "workspace:#{workspace_id}",
-            "destroy (#{name}): #{inspect(reason)} — continuing"
-          )
-
-        other ->
-          EventLog.warning(
-            "workspace:#{workspace_id}",
-            "destroy (#{name}): unexpected return #{inspect(other)} — continuing"
-          )
-      end
-    rescue
-      e ->
-        EventLog.error(
+      {:soft_error, reason} ->
+        EventLog.warning(
           "workspace:#{workspace_id}",
-          "destroy (#{name}) crashed: #{Exception.message(e)} — continuing"
+          "destroy (#{name}): #{inspect(reason)} — continuing"
         )
-    catch
-      :exit, reason ->
-        EventLog.error(
+
+      other ->
+        EventLog.warning(
           "workspace:#{workspace_id}",
-          "destroy (#{name}) exited: #{inspect(reason)} — continuing"
+          "destroy (#{name}): unexpected return #{inspect(other)} — continuing"
         )
     end
+  rescue
+    e ->
+      EventLog.error(
+        "workspace:#{workspace_id}",
+        "destroy (#{name}) crashed: #{Exception.message(e)} — continuing"
+      )
+  catch
+    :exit, reason ->
+      EventLog.error(
+        "workspace:#{workspace_id}",
+        "destroy (#{name}) exited: #{inspect(reason)} — continuing"
+      )
   end
 
   # Non-fatal, but NEVER invisible: a failed volume/container removal during

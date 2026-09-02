@@ -37,9 +37,15 @@ defmodule Loopyard.ChatAgent.StreamHandler.RateLimit do
   def compute_rate_limit_wait_ms(resets_at_ms) when is_integer(resets_at_ms) do
     delta = resets_at_ms - System.system_time(:millisecond)
 
-    cond do
-      delta <= 0 -> 5_000
-      true -> min(delta + 1_000, @max_rate_limit_poll_ms)
+    if delta <= 0 do
+      5_000
+    else
+      # +1s grace past the reset so we don't retry into the tail of the window
+      # (tests shrink it — see config/test.exs).
+      min(
+        delta + Application.get_env(:loopyard, :rate_limit_retry_grace_ms, 1_000),
+        @max_rate_limit_poll_ms
+      )
     end
   end
 

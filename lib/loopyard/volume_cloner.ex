@@ -97,9 +97,7 @@ defmodule Loopyard.VolumeCloner do
   defp host_git_clone(git_url, branch, dest, callback) do
     git_path = System.find_executable("git")
 
-    unless git_path do
-      {:error, "git not found on host PATH"}
-    else
+    if git_path do
       port =
         Port.open(
           {:spawn_executable, git_path},
@@ -112,6 +110,8 @@ defmodule Loopyard.VolumeCloner do
         )
 
       collect_clone_output(port, callback, "", @clone_timeout)
+    else
+      {:error, "git not found on host PATH"}
     end
   end
 

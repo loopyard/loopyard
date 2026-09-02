@@ -18,7 +18,8 @@ defmodule Loopyard.Tools.Container.Exec do
 
     with :ok <- Helpers.validate_string(command, "command", 10_000),
          :ok <- Helpers.validate_timeout(timeout),
-         {:ok, container} <- Helpers.resolve_container(agent_id) do
+         {:ok, container} <- Helpers.resolve_container(agent_id),
+         :ok <- Helpers.require_docker_daemon() do
       # Stream output to chat so the user sees it live, then return
       # the final result to the agent.
       stream_msg = %{role: :build, title: command, content: "", timestamp: DateTime.utc_now()}
@@ -31,6 +32,13 @@ defmodule Loopyard.Tools.Container.Exec do
 
       # Login-wrap so the agent's shell sees identity env (credentials sourced
       # from the home volume's ~/.profile) — not injected via `docker run -e`.
+      #
+      # This tool owns its own Port (interactive streaming needs it), which is
+      # exactly why it must honour the daemon gate in the `with` above —
+      # `Docker.docker/2` and `Docker.open_port/2` are gated for everyone else
+      # (docs/CODE_RULES.md → "Every Docker shell-out honours the daemon gate").
+      # The gate sits AFTER container resolution so a workspace-less agent
+      # still gets the "no workspace" answer it always did.
       args = ["exec"]
       args = if params[:workdir], do: args ++ ["-w", params.workdir], else: args
       args = args ++ [container, "sh", "-c", Loopyard.Docker.with_login_profile(command)]

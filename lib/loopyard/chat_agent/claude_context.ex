@@ -211,29 +211,27 @@ defmodule Loopyard.ChatAgent.ClaudeContext do
         content
         |> extract_imports(parent_rel)
         |> Enum.reduce({seen, written}, fn import_rel, {seen, written} ->
-          cond do
-            MapSet.member?(seen, import_rel) ->
-              {seen, written}
+          if MapSet.member?(seen, import_rel) do
+            {seen, written}
+          else
+            seen = MapSet.put(seen, import_rel)
 
-            true ->
-              seen = MapSet.put(seen, import_rel)
+            case volume_reader().read_file(volume, import_rel) do
+              {:ok, imported} when is_binary(imported) and imported != "" ->
+                write_to_host(working_dir, import_rel, imported)
 
-              case volume_reader().read_file(volume, import_rel) do
-                {:ok, imported} when is_binary(imported) and imported != "" ->
-                  write_to_host(working_dir, import_rel, imported)
+                crawl_imports(
+                  volume,
+                  working_dir,
+                  import_rel,
+                  seen,
+                  [import_rel | written],
+                  hop + 1
+                )
 
-                  crawl_imports(
-                    volume,
-                    working_dir,
-                    import_rel,
-                    seen,
-                    [import_rel | written],
-                    hop + 1
-                  )
-
-                _ ->
-                  {seen, written}
-              end
+              _ ->
+                {seen, written}
+            end
           end
         end)
 

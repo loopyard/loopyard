@@ -17,7 +17,7 @@ defmodule Loopyard.InvariantsTest do
   # with the final loading of recently-edited tool modules,
   # producing "module is not available" errors. Serial execution
   # ensures every tool module is loaded before the invariant check
-  # runs. See plans/post-migration-audit.md NOTE #14.
+  # runs. See plans/archive/post-migration-audit.md NOTE #14.
   use ExUnit.Case, async: false
 
   # ---------------------------------------------------------------

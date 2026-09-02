@@ -31,25 +31,23 @@ defmodule Loopyard.Tools.Container.MultiEdit do
 
   defp apply_multi_edit(agent_id, path, edits) when is_list(edits) do
     with {:ok, _} <- Helpers.validate_workspace_path(path) do
-      cond do
-        edits == [] ->
-          {:error, "edits list must not be empty"}
+      if edits == [] do
+        {:error, "edits list must not be empty"}
+      else
+        with {:ok, workspace_id} <- Helpers.agent_workspace_id(agent_id) do
+          volume_name = Loopyard.Workspace.volume_name_for(workspace_id)
 
-        true ->
-          with {:ok, workspace_id} <- Helpers.agent_workspace_id(agent_id) do
-            volume_name = Loopyard.Workspace.volume_name_for(workspace_id)
+          case Loopyard.VolumeManager.read_file(volume_name, path) do
+            {:ok, content} ->
+              apply_edits_to_content(volume_name, path, content, edits)
 
-            case Loopyard.VolumeManager.read_file(volume_name, path) do
-              {:ok, content} ->
-                apply_edits_to_content(volume_name, path, content, edits)
+            {:error, :not_found} ->
+              {:error, "File not found: #{path}"}
 
-              {:error, :not_found} ->
-                {:error, "File not found: #{path}"}
-
-              {:error, reason} ->
-                {:error, "Failed to read #{path}: #{inspect(reason)}"}
-            end
+            {:error, reason} ->
+              {:error, "Failed to read #{path}: #{inspect(reason)}"}
           end
+        end
       end
     end
   end

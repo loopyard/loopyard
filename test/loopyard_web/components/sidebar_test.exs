@@ -63,7 +63,7 @@ defmodule LoopyardWeb.Components.SidebarTest do
     end
 
     test "returns first port as string" do
-      assert first_host_port(%{"3000" => 32001}) == "32001"
+      assert first_host_port(%{"3000" => 32_001}) == "32001"
     end
   end
 
@@ -159,7 +159,7 @@ defmodule LoopyardWeb.Components.SidebarTest do
 
   describe "service_item/1" do
     test "renders service name with status dot" do
-      svc = %{name: "postgres", status: :running, ports: %{"5432" => 32885}}
+      svc = %{name: "postgres", status: :running, ports: %{"5432" => 32_885}}
 
       html =
         render_comp(&service_item/1, %{

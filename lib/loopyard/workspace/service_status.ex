@@ -116,21 +116,19 @@ defmodule Loopyard.Workspace.ServiceStatus do
   end
 
   defp infer_service_type_from_name(name) do
-    cond do
-      name in [
-        "postgres",
-        "redis",
-        "mysql",
-        "mongo",
-        "minio",
-        "rabbitmq",
-        "memcached",
-        "elasticsearch"
-      ] ->
-        :stock
-
-      true ->
-        :process
+    if name in [
+         "postgres",
+         "redis",
+         "mysql",
+         "mongo",
+         "minio",
+         "rabbitmq",
+         "memcached",
+         "elasticsearch"
+       ] do
+      :stock
+    else
+      :process
     end
   end
 

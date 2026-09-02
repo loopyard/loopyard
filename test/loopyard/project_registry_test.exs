@@ -37,7 +37,7 @@ defmodule Loopyard.ProjectRegistryTest do
       {:ok, project, _} = ProjectRegistry.add(path)
       workspaces = ProjectRegistry.list_workspaces(project.id)
       # Should have at least the main workspace
-      assert length(workspaces) >= 1
+      assert workspaces != []
     end
 
     test "no duplicate workspace names within a project" do
@@ -107,7 +107,7 @@ defmodule Loopyard.ProjectRegistryTest do
       path = File.cwd!()
       ProjectRegistry.add(path)
       projects = ProjectRegistry.list_projects()
-      assert length(projects) >= 1
+      assert projects != []
     end
   end
 
@@ -128,7 +128,7 @@ defmodule Loopyard.ProjectRegistryTest do
       path = File.cwd!()
       {:ok, project, _} = ProjectRegistry.add(path)
       workspaces = ProjectRegistry.list_workspaces(project.id)
-      assert length(workspaces) >= 1
+      assert workspaces != []
       assert hd(workspaces).project_id == project.id
     end
 

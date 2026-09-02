@@ -7,7 +7,7 @@ defmodule Loopyard.Retry do
   crash-recovery backoff of `base * 2^(n-1)` capped at 5 attempts. Two
   shapes of the same idea: try a thing, wait on failure, give up eventually.
 
-  Move #7d in `plans/coordination-hardening.md` narrows the circuit-breaker
+  Move #7d in `plans/archive/coordination-hardening.md` narrows the circuit-breaker
   design down to this: pull the shared mechanics into one place so the delay
   schedule and attempt cap are in one module, not duplicated at each call
   site.

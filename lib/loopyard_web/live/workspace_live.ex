@@ -42,9 +42,7 @@ defmodule LoopyardWeb.WorkspaceLive do
     project = Loopyard.ProjectRegistry.get_project(project_id)
     workspace_entry = Loopyard.ProjectRegistry.get_workspace(workspace_id)
 
-    unless project && workspace_entry do
-      {:ok, push_navigate(socket, to: "/")}
-    else
+    if project && workspace_entry do
       # workspace_entry is normalized by ProjectRegistry - always has :path
       workspace = %{id: workspace_entry.id, path: workspace_entry.path, name: project.name}
 
@@ -52,6 +50,8 @@ defmodule LoopyardWeb.WorkspaceLive do
         project: project,
         workspace_entry: workspace_entry
       })
+    else
+      {:ok, push_navigate(socket, to: "/")}
     end
   end
 
@@ -297,15 +297,12 @@ defmodule LoopyardWeb.WorkspaceLive do
       socket.assigns.agents
       |> Enum.find(fn a -> a[:name] == "Setup" && a[:status] not in [:stopped, :crashed] end)
 
-    cond do
-      existing_setup ->
-        {:noreply,
-         push_patch(socket, to: "#{workspace_path(socket)}/agents/#{existing_setup.id}")}
-
-      true ->
-        # Show the New Agent screen. Setup only runs when the user picks
-        # the Setup preset explicitly — no auto-launch on blank workspaces.
-        {:noreply, socket}
+    if existing_setup do
+      {:noreply, push_patch(socket, to: "#{workspace_path(socket)}/agents/#{existing_setup.id}")}
+    else
+      # Show the New Agent screen. Setup only runs when the user picks
+      # the Setup preset explicitly — no auto-launch on blank workspaces.
+      {:noreply, socket}
     end
   end
 
@@ -545,6 +542,18 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   def handle_async(:file_content, {:exit, _reason}, socket) do
     {:noreply, assign(socket, :file_content, nil)}
+  end
+
+  def handle_async({:delete_volume, _name}, {:ok, {:ok, _}}, socket) do
+    {:noreply, push_patch(socket, to: workspace_path(socket))}
+  end
+
+  def handle_async({:delete_volume, name}, {:ok, {:error, reason}}, socket) do
+    {:noreply, put_flash(socket, :error, "Could not delete volume #{name}: #{reason}")}
+  end
+
+  def handle_async({:delete_volume, name}, {:exit, reason}, socket) do
+    {:noreply, put_flash(socket, :error, "Could not delete volume #{name}: #{inspect(reason)}")}
   end
 
   def handle_async(:git_data, {:ok, {log_result, status_result}}, socket) do
@@ -1223,9 +1232,15 @@ defmodule LoopyardWeb.WorkspaceLive do
   @impl true
 
   def handle_event("delete_volume", %{"volume_name" => name}, socket) do
-    Loopyard.Docker.docker(["volume", "rm", name])
-    Loopyard.Docker.Observer.poll_now()
-    {:noreply, push_patch(socket, to: workspace_path(socket))}
+    # `docker volume rm` is a daemon round-trip (seconds when the daemon is
+    # busy) — never block the LiveView on it. The result lands in
+    # handle_async/3 below; the handler returns immediately.
+    {:noreply,
+     start_async(socket, {:delete_volume, name}, fn ->
+       result = Loopyard.Docker.docker(["volume", "rm", name])
+       Loopyard.Docker.Observer.poll_now()
+       result
+     end)}
   end
 
   # --- Git diff viewer events ---
@@ -1265,7 +1280,7 @@ defmodule LoopyardWeb.WorkspaceLive do
   # Loopyard.Events.*. The handle_info clauses below are two-line
   # dispatches to the on_* callbacks declared by each Subscriber behaviour
   # — missing callbacks compile-warn, so new events forced us to wire them
-  # explicitly or justify the drop. Per plans/coordination-hardening.md
+  # explicitly or justify the drop. Per plans/archive/coordination-hardening.md
   # Move #3, each LV writes its own dispatch (no macro magic).
 
   @impl true

@@ -15,6 +15,8 @@ defmodule LoopyardWeb.Components.Birdseye do
   """
   use Phoenix.Component
 
+  alias Loopyard.WorkspaceTree.Headline
+
   # Meaningful-only colors, driven by the agent's raw `:status` — which the
   # LiveView keeps fresh by patching from StatusChanged events. This is
   # DELIBERATELY not `agent_display_status/1`: that does a render-time Registry
@@ -107,82 +109,23 @@ defmodule LoopyardWeb.Components.Birdseye do
   ONE priority-ordered headline for a workspace — the overview's answer to
   "what does this need from me / what's happening": needs-you > broken >
   working > quiet. Returns `%{kind, text, class}` or nil for quiet (ready /
-  asleep — the DOT carries those; no redundant status words). The text always
-  says something NEW (what it wants, what broke, what it's doing) — never the
-  color-word.
+  asleep — the DOT carries those; no redundant status words).
+
+  The MEANING (priority order, the words) is `Loopyard.WorkspaceTree.Headline`
+  — domain code the operator's queue reads too. This wrapper only adds the
+  colour class per kind, so presentation never leaks below the web layer.
   """
   def headline(ws) do
-    agents = ws[:agents] || []
-
-    cond do
-      kind = ws[:needs_you] ->
-        %{
-          kind: :needs_you,
-          text: needs_you_text(kind),
-          class: "text-orange-600 dark:text-orange-400"
-        }
-
-      kind = ws[:broken] ->
-        %{kind: :broken, text: broken_text(kind), class: "text-red-500 dark:text-red-400"}
-
-      working = Enum.find(agents, &(Map.get(&1, :status) in @working)) ->
-        %{
-          kind: :working,
-          text: working_text(working),
-          class: "text-violet-600 dark:text-violet-400"
-        }
-
-      match?(%{added: _, removed: _}, ws[:changes]) and
-          ws[:changes].added + ws[:changes].removed > 0 ->
-        # Carry the raw +/- so every surface can render the green/red split
-        # (ProjectList.change_stat). `text`/`class` stay as a single-colour
-        # fallback for anywhere that only reads text.
-        %{
-          kind: :changed,
-          added: ws[:changes].added,
-          removed: ws[:changes].removed,
-          text: "+#{ws[:changes].added} −#{ws[:changes].removed}",
-          class: "text-emerald-600 dark:text-emerald-400"
-        }
-
-      true ->
-        nil
+    case Headline.headline(ws) do
+      nil -> nil
+      %{kind: kind} = h -> Map.put(h, :class, headline_class(kind))
     end
   end
 
-  defp needs_you_text(:question), do: "asked a question"
-  defp needs_you_text(:approval), do: "wants approval"
-  defp needs_you_text(:secret), do: "needs a secret"
-  defp needs_you_text(_), do: "needs you"
-
-  defp broken_text(:auth_expired), do: "sign in again"
-  defp broken_text(:quarantined), do: "crash-looping"
-  defp broken_text(:service_crashed), do: "service crashed"
-  defp broken_text(_), do: "broken"
-
-  # What the working agent is doing, in the READER's words — never the raw tool
-  # name. Printing the name put a bare "logs" / "exec" in a column of "working…",
-  # which reads as a stray label rather than a status. It also hard-coded ONE
-  # harness's vocabulary into the UI: the in-container harness calls a shell act
-  # `Bash`, the in-process one `mcp__loopyard-container__exec` — the same act
-  # would read differently per backend. Classify by neutral KIND and render a
-  # calm verb (the harness-agnostic rule — see `Loopyard.Agent.ToolKind`).
-  defp working_text(agent) do
-    case Map.get(agent, :active_tool) do
-      tool when is_binary(tool) and tool != "" ->
-        tool |> Loopyard.Agent.ToolKind.classify() |> working_verb()
-
-      _ ->
-        "working…"
-    end
-  end
-
-  defp working_verb(:command), do: "running…"
-  defp working_verb(:read), do: "reading…"
-  defp working_verb(:grep), do: "searching…"
-  defp working_verb(:edit), do: "editing…"
-  defp working_verb(:write), do: "writing…"
-  defp working_verb(_), do: "working…"
+  defp headline_class(:needs_you), do: "text-orange-600 dark:text-orange-400"
+  defp headline_class(:broken), do: "text-red-500 dark:text-red-400"
+  defp headline_class(:working), do: "text-violet-600 dark:text-violet-400"
+  defp headline_class(:changed), do: "text-emerald-600 dark:text-emerald-400"
 
   @doc """
   A live status dot. `class` nil → an aligned blank (holds the slot so names

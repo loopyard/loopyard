@@ -3,7 +3,7 @@ defmodule Loopyard.Resources do
   Explicit resource ownership: every tracked resource belongs to some
   Elixir pid and is released when that pid goes DOWN.
 
-  Move #7b in `plans/coordination-hardening.md`.
+  Move #7b in `plans/archive/coordination-hardening.md`.
 
   ## The bug class this kills
 

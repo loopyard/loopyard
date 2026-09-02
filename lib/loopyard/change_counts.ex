@@ -32,8 +32,11 @@ defmodule Loopyard.ChangeCounts do
 
   # --- Read API (used by WorkspaceTree — must stay ETS-only) ---
 
-  @doc "Cached changed-file count for a workspace, or nil when unknown."
-  @spec get(String.t()) :: non_neg_integer() | nil
+  @doc """
+  Cached uncommitted diff for a workspace as LINES `%{added: n, removed: m}`,
+  or nil when unknown (no running work container yet / never computed).
+  """
+  @spec get(String.t()) :: %{added: non_neg_integer(), removed: non_neg_integer()} | nil
   def get(workspace_id) when is_binary(workspace_id) do
     case :ets.lookup(@table, workspace_id) do
       [{^workspace_id, count, _computed_at}] -> count

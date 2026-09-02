@@ -37,7 +37,9 @@ You want:
 mix loopyard.server
 ```
 
-The server binds to `127.0.0.1:4000` by default (local only). Use the Remote page (`/remote`) to expose on `0.0.0.0` for LAN/tunnel access.
+The server binds to `127.0.0.1:4000` by default (local only). Where it listens is a **boot flag**, not runtime state — set `LOOPYARD_BIND=0.0.0.0` in the environment before starting to expose it for LAN/tunnel access (`config/dev.exs`; a bad value falls back to loopback). There is deliberately no UI toggle: the old one was reachable over the very connection it controlled, so flipping it to "private" from a phone could sever your only link with no way back short of physical access.
+
+`mix loopyard.server` also starts EPMD and boots the BEAM as a distributed node named `loopyard@127.0.0.1` (a loopback longname — hostname-derived names broke whenever macOS flipped the hostname), with the cookie read-or-created at `~/.loopyard/cookie` (always `~/.loopyard`, never `$LOOPYARD_HOME`). That is what makes `mix loopyard.rpc "..."` work from any terminal on the machine.
 
 ## Keeping it running
 

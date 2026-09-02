@@ -86,7 +86,6 @@ defmodule Loopyard.Tools.Container.InspectService do
   end
 
   defp exit_summary(%{exit_code: code}), do: " (exit #{code})"
-  defp exit_summary(_), do: ""
 
   defp extract_error_lines(logs) when is_binary(logs) do
     logs

@@ -13,7 +13,7 @@ defmodule Loopyard.Workspace.Setup.Error do
      with `code`, `why`, `consequence`, and `action` fields. UI surfaces
      `why` as the headline, `consequence` as the body, and `action` as
      the call-to-action — matching the WHY/CONSEQUENCE/ACTION rule from
-     `plans/agent-sanity.md`.
+     `plans/archive/agent-sanity.md`.
 
   Both responsibilities are served by `classify/2`. Callers ignore the
   parts they don't need.

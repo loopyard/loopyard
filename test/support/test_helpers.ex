@@ -24,6 +24,30 @@ defmodule Loopyard.TestHelpers do
     :ok
   end
 
+  @doc """
+  Poll `fun` (10 ms apart) until it returns truthy, or fail after `timeout_ms`
+  (default 1 s). The replacement for `Process.sleep(N)` before an assertion:
+  a sleep is either too long (suite time) or too short (flaky under load).
+  """
+  def eventually(fun, timeout_ms \\ 1_000) when is_function(fun, 0) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    do_eventually(fun, deadline)
+  end
+
+  defp do_eventually(fun, deadline) do
+    cond do
+      fun.() ->
+        :ok
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        ExUnit.Assertions.flunk("condition never became true within the wait budget")
+
+      true ->
+        Process.sleep(10)
+        do_eventually(fun, deadline)
+    end
+  end
+
   @doc "Ensure a workspace subtree is running for a path. Returns the workspace_id."
   def ensure_workspace(path \\ File.cwd!()) do
     workspace_id = Loopyard.Workspace.workspace_id(path)

@@ -376,7 +376,7 @@ defmodule Loopyard.Source.Local.SyncMonitor do
   # Retry the container-ready probe until docker exec succeeds or we burn through
   # the attempt budget. Uses `Loopyard.Retry.run/2` so the backoff schedule
   # and attempt cap live with every other retry site in the tree (see
-  # `plans/coordination-hardening.md` Move #7d).
+  # `plans/archive/coordination-hardening.md` Move #7d).
   defp wait_for_container_ready(container) do
     result =
       Loopyard.Retry.run(
@@ -388,7 +388,8 @@ defmodule Loopyard.Source.Local.SyncMonitor do
           end
         end,
         max_attempts: @ready_probe_attempts,
-        backoff: {:fixed, @ready_probe_delay}
+        backoff:
+          {:fixed, Application.get_env(:loopyard, :sync_ready_probe_ms, @ready_probe_delay)}
       )
 
     case result do

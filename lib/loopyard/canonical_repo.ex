@@ -177,7 +177,19 @@ defmodule Loopyard.CanonicalRepo do
     # Route on "has a remote": a real https URL (production) OR a `{:volume, _}`
     # stand-in (tests) → land on that remote's main; nil/"" (local-only) → the
     # legacy canonical path. `remote_spec/2` handles both remote shapes.
-    if github_url not in [nil, ""] do
+    if github_url in [nil, ""] do
+      canon = volume_name(project_id)
+
+      cmd = """
+      #{@identity} && cd /workspace && \
+      git checkout #{shq(branch)} && \
+      git fetch /canonical main && \
+      git rebase FETCH_HEAD && \
+      git push /canonical HEAD:main
+      """
+
+      git([{canon, "/canonical"}, {ws, "/workspace"}], cmd, opts)
+    else
       {extra_mounts, url} = remote_spec(github_url, opts[:token])
 
       cmd = """
@@ -190,18 +202,6 @@ defmodule Loopyard.CanonicalRepo do
       """
 
       git([{ws, "/workspace"} | extra_mounts], cmd, opts)
-    else
-      canon = volume_name(project_id)
-
-      cmd = """
-      #{@identity} && cd /workspace && \
-      git checkout #{shq(branch)} && \
-      git fetch /canonical main && \
-      git rebase FETCH_HEAD && \
-      git push /canonical HEAD:main
-      """
-
-      git([{canon, "/canonical"}, {ws, "/workspace"}], cmd, opts)
     end
   end
 

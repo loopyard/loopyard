@@ -7,7 +7,7 @@ defmodule Loopyard.Operator.Policy do
 
   Ordering is a CLUE, not an authority — the human judges. So the default impl is
   deliberately dumb; we tune it by WATCHING the real thing, not by assuming order
-  matters. See plans/operator-attention-queue.md.
+  matters. See plans/archive/operator-attention-queue.md.
   """
   @type item :: map()
 

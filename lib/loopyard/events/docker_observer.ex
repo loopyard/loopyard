@@ -2,7 +2,7 @@ defmodule Loopyard.Events.DockerObserver do
   @moduledoc """
   Publisher module for the `"docker_observer"` PubSub topic.
 
-  Move #2 of plans/coordination-hardening.md. `Loopyard.Docker.Observer`
+  Move #2 of plans/archive/coordination-hardening.md. `Loopyard.Docker.Observer`
   broadcasts four event kinds; subscribers pattern-match on structs.
   """
 
@@ -44,5 +44,5 @@ defmodule Loopyard.Events.DockerObserver.Subscriber do
   @callback on_disconnected(DockerObserver.Disconnected.t(), socket) :: result
   @callback on_reconnected(DockerObserver.Reconnected.t(), socket) :: result
 
-  # See plans/post-migration-audit.md MEDIUM #5 — no @optional_callbacks.
+  # See plans/archive/post-migration-audit.md MEDIUM #5 — no @optional_callbacks.
 end

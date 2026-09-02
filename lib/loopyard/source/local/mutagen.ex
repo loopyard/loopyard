@@ -187,9 +187,7 @@ defmodule Loopyard.Source.Local.Mutagen do
     # Only parse details when the output has Alpha/Beta endpoint blocks,
     # which indicates full `mutagen sync list` output rather than a
     # minimal status line.
-    unless String.match?(out, ~r/Alpha:/s) do
-      nil
-    else
+    if String.match?(out, ~r/Alpha:/s) do
       status_line =
         case Regex.run(~r/Status:\s*(.+)/, out) do
           [_, text] -> String.trim(text)
@@ -232,6 +230,8 @@ defmodule Loopyard.Source.Local.Mutagen do
         conflicts: conflicts,
         scan_problems: scan_problems
       }
+    else
+      nil
     end
   rescue
     _ -> nil

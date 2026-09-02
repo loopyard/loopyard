@@ -24,7 +24,7 @@ defmodule Loopyard.LogBufferTest do
     Process.sleep(100)
 
     results = LogBuffer.grep(marker)
-    assert length(results) >= 1
+    assert results != []
     assert hd(results).level == :warning
   end
 

@@ -1,6 +1,10 @@
 # Plan: Decisions — one surface, legible, and not a graveyard
 
-**Status:** plan. Nothing built yet. Written from four complaints, each of which
+**Status:** shipped — the deck + slide live in
+`lib/loopyard_web/live/notifications_live/{deck,slide}.ex` (`NotificationsLive`,
+`/notifications`); the surface's next steps continue in
+[notifications-and-agents.md](notifications-and-agents.md). Kept for the
+measurements and the reasoning. Written from four complaints, each of which
 measured out to something concrete.
 
 ## What's actually wrong (measured, not guessed)

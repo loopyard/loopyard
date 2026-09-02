@@ -15,7 +15,7 @@ defmodule LoopyardWeb.WorkstationLive do
 
   Identity is the home volume, not an image: the bench + console boot from the
   shared base image, and your creds ride in via the mounted `$HOME`. See
-  plans/agent-home-and-refresh.md.
+  plans/archive/agent-home-and-refresh.md.
   """
   use LoopyardWeb, :live_view
   use LoopyardWeb.IExAware

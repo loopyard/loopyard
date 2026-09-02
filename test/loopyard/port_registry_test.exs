@@ -101,7 +101,7 @@ defmodule Loopyard.PortRegistryTest do
     end
 
     test "returns :not_registered for unknown entries" do
-      assert {:error, :not_registered} = PortRegistry.set_docker_port("nope", "dev", 3000, 12345)
+      assert {:error, :not_registered} = PortRegistry.set_docker_port("nope", "dev", 3000, 12_345)
     end
 
     test "updates proxy when docker_port changes (container restart)" do

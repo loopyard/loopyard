@@ -4,7 +4,7 @@ defmodule Loopyard.Saga do
   Either every step succeeds, or every already-completed step's
   rollback runs in reverse order. No half-done multi-step operations.
 
-  Move #7a in `plans/coordination-hardening.md`.
+  Move #7a in `plans/archive/coordination-hardening.md`.
 
   ## The bug class this kills
 
@@ -69,7 +69,7 @@ defmodule Loopyard.Saga do
 
   ## Telemetry
 
-  Per [plans/coordination-hardening.md](plans/coordination-hardening.md)
+  Per [plans/archive/coordination-hardening.md](plans/archive/coordination-hardening.md)
   Move #7a:
 
     * `[:loopyard, :saga, :started]` — meta: `%{saga, step_count}`
@@ -389,14 +389,12 @@ defmodule Loopyard.Saga do
   # process running the saga. Matches the rollback wrapper — both
   # ends of a step are uniformly exception-safe.
   defp safe_run(fun, context) do
-    try do
-      fun.(context)
-    rescue
-      e -> {:error, {:exception, Exception.message(e)}}
-    catch
-      :exit, reason -> {:error, {:exit, reason}}
-      :throw, value -> {:error, {:throw, value}}
-    end
+    fun.(context)
+  rescue
+    e -> {:error, {:exception, Exception.message(e)}}
+  catch
+    :exit, reason -> {:error, {:exit, reason}}
+    :throw, value -> {:error, {:throw, value}}
   end
 
   # ── Rollback pass ──
@@ -553,7 +551,7 @@ defmodule Loopyard.Saga do
       with `%{count: length}` measurements and
       `%{saga_name, failed_rollbacks, ...metadata}` meta.
 
-  See audit LOW #16 in `plans/post-migration-audit.md`.
+  See audit LOW #16 in `plans/archive/post-migration-audit.md`.
   """
   @spec maybe_log_rollback_failed(
           :rolled_back | {:rollback_failed, [{step_name(), term()}]},

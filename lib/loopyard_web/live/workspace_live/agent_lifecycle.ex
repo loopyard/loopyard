@@ -183,6 +183,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
   composer keeps the text and tells the user to press Send again in a few
   seconds, which then lands on the live group. Never blocks the LiveView.
   """
+  @spec wake_and_enqueue(String.t(), String.t()) ::
+          :ok | {:error, :unavailable | :waking | :queue_full}
   def wake_and_enqueue(id, text) do
     # Config-gated (off in test): the wake is a LIVE-system feature — it boots
     # real supervisors/agents (and possibly compose). In tests those side

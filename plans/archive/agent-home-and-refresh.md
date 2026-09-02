@@ -1,3 +1,5 @@
+> Archived Sept 2026 — merged. The layered agent home + workstation pump live in `Loopyard.Workstation`, `Loopyard.Workstation.Env`, `AgentBoot` and `Workspace.WorkContainer`; see docs/ARCHITECTURE.md.
+
 # Agent home + the workstation pump
 
 How an agent boots its environment, how identity/creds get into it, and how we

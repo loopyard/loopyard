@@ -4,7 +4,7 @@ defmodule Loopyard.Events.IexSession do
   "which IEx session is claimed and by whom" broadcast that
   `Loopyard.IExSession` emits when claim/release changes.
 
-  Move #2 of plans/coordination-hardening.md.
+  Move #2 of plans/archive/coordination-hardening.md.
   """
 
   @topic "iex_session"

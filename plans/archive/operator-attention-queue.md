@@ -1,6 +1,8 @@
+> Archived Sept 2026 — superseded by plans/notifications-and-agents.md; the attention line became `Loopyard.Attention` + `Loopyard.Notifications` rendered by `NotificationsLive` (`/notifications`) and the operator rail.
+
 # Plan: The Operator Attention Queue — a calm, self-sorting "what needs me"
 
-> Fully specifies the attention view from issue #69. Builds on `plans/operator-hub.md`
+> Fully specifies the attention view from issue #69. Builds on `plans/archive/operator-hub.md`
 > (the operator cockpit + Operator.Digest). Design settled in conversation; this is
 > the buildable spec.
 
@@ -332,4 +334,4 @@ every tweak is a config number or a one-module `Operator.Policy` swap.
 - Calm by construction: bounded top N, board-not-stream, smooth reshuffle.
 - ETS-cheap reads (the `/workspaces` mount budget — no render-time shell-outs).
 - PubSub boundary (`lib/loopyard/events/*` only), StateKeeper owns any ETS table.
-- Reuses the operator-hub signals; additive to `plans/operator-hub.md`.
+- Reuses the operator-hub signals; additive to `plans/archive/operator-hub.md`.

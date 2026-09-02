@@ -1,6 +1,6 @@
 defmodule Loopyard.ChatAgent.PersistenceResilienceTest do
   @moduledoc """
-  Surface #17 of plans/agent-sanity.md.
+  Surface #17 of plans/archive/agent-sanity.md.
 
   Historically `Persistence.persist_*` called `AgentLog.append` which
   used `File.write!/2` — raising on disk-full, permission-denied,

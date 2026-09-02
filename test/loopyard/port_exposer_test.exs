@@ -251,11 +251,9 @@ defmodule Loopyard.PortExposerTest do
   end
 
   defp safe_stop(pid) do
-    try do
-      GenServer.stop(pid)
-    catch
-      :exit, _ -> :ok
-    end
+    GenServer.stop(pid)
+  catch
+    :exit, _ -> :ok
   end
 
   defp free_port do

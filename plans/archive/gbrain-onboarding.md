@@ -1,3 +1,5 @@
+> Archived Sept 2026 — merged. The operator + control-plane toolset it specified live in `Loopyard.Operator` and `Tools.ControlPlane` (`/operator`).
+
 # Plan: run `overtonxyz/gbrain` on Loopyard, agent-driven
 
 ## Goal

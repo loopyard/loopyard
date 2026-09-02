@@ -15,7 +15,7 @@ defmodule Loopyard.Events.PublishersTest do
   # under full-suite load, producing flaky "module is not available"
   # errors on `Events.X.subscribe/0` calls. Serialized test
   # execution ensures the modules are fully loaded before any
-  # test calls into them. See plans/post-migration-audit.md NOTE #14.
+  # test calls into them. See plans/archive/post-migration-audit.md NOTE #14.
   use ExUnit.Case, async: false
 
   alias Loopyard.Events

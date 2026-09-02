@@ -179,7 +179,7 @@ defmodule Loopyard.Compose do
            "Why: Loopyard assigns host ports dynamically and keeps them sticky " <>
            "across restarts. Pinning invites collisions between workspaces and " <>
            "lets one workspace squat on another's port.\n\n" <>
-           "Fix: list only the container port — `\"3000\"` instead of `\"8080:3000\"`. " <>
+           ~s(Fix: list only the container port — `"3000"` instead of `"8080:3000"`. ) <>
            "Loopyard will pick a free host port and reuse the same one on restart."}
     end
   end
@@ -210,18 +210,16 @@ defmodule Loopyard.Compose do
     networks = Map.get(compose, "networks", %{}) || %{}
 
     Enum.reduce_while(networks, :ok, fn {name, spec}, _acc ->
-      cond do
-        is_map(spec) and spec["external"] == true ->
-          {:halt,
-           {:error,
-            "top-level network #{inspect(name)}: `external: true` is not allowed. " <>
-              "Joining a network Loopyard doesn't own lets this service reach " <>
-              "containers from other workspaces. Drop the `external` flag or " <>
-              "remove the network entry — the default compose network is already " <>
-              "isolated per workspace."}}
-
-        true ->
-          {:cont, :ok}
+      if is_map(spec) and spec["external"] == true do
+        {:halt,
+         {:error,
+          "top-level network #{inspect(name)}: `external: true` is not allowed. " <>
+            "Joining a network Loopyard doesn't own lets this service reach " <>
+            "containers from other workspaces. Drop the `external` flag or " <>
+            "remove the network entry — the default compose network is already " <>
+            "isolated per workspace."}}
+      else
+        {:cont, :ok}
       end
     end)
   end
@@ -581,7 +579,7 @@ defmodule Loopyard.Compose do
     cond do
       # Same contract as Docker.docker/2's gate — keeps the default test
       # suite off the daemon entirely.
-      not Application.get_env(:loopyard, :docker_enabled, true) ->
+      not Loopyard.Docker.daemon_available?() ->
         {:error, "docker disabled in this environment"}
 
       # No compose binary at all. This is the fresh Colima / OrbStack /

@@ -88,4 +88,18 @@ defmodule LoopyardWeb.SystemDockerLiveTest do
       assert is_binary(render(view))
     end
   end
+
+  describe "kill_container" do
+    test "runs `docker rm` off the LiveView and flashes the failure", %{conn: conn} do
+      {:ok, view, _} = live(conn, "/system/docker")
+
+      # The handler must return immediately — the rm is a daemon round-trip.
+      # With the daemon disabled in this env the async result is an error,
+      # which surfaces as a flash once the task lands (never a crash).
+      html = render_click(view, "kill_container", %{"name" => "no-such-container"})
+      refute html =~ "Could not remove"
+
+      assert render_async(view) =~ "Could not remove no-such-container"
+    end
+  end
 end

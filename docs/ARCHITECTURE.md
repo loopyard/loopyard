@@ -16,37 +16,65 @@ Everything inside a dev environment is Docker: compose clusters, named volumes, 
 
 The app is split into two independent layers that can restart without affecting each other:
 
-1. **Infrastructure layer** — StateKeeper (ETS table owner), PubSub, Registries, Docker.Observer, WorkspaceSupervisor, ServiceManagers, ChatAgents, ContainerMonitor, Terminal. Runs containers, manages agent lifecycles, holds all state. Survives web hot reloads.
+1. **Infrastructure layer** — StateKeeper (ETS table owner), PubSub, Registries, Resources.Janitor, DockerDaemon, Docker.Observer, WorkspaceSupervisor, ServiceManagers, ChatAgents, ContainerMonitor, Terminal, PortRegistry (+ PortExposers), Notifications, the Saga journal/recorder. Runs containers, manages agent lifecycles, holds all state. Survives web hot reloads.
 
 2. **Web layer** — LiveViews, Controllers, Channels, Endpoint. Reads state from infrastructure and renders UI. Can restart freely without killing agents or containers.
 
 ## Supervisor tree
 
+Regenerated from `lib/loopyard/application.ex` (child order as started) and `lib/loopyard/workspace_group.ex`:
+
 ```
-Loopyard.Supervisor (:one_for_one)
-  ├── LogBuffer
-  ├── IExSession
+Loopyard.Supervisor (:one_for_one, max_restarts: 20, max_seconds: 10)
   ├── StateKeeper (sole ETS table owner — starts first, lives longest)
+  ├── LogBuffer (ETS ring buffer of Logger messages, surfaced on /system)
+  ├── IExSession (tracks operator IEx/RPC presence for the UI)
+  ├── Resources.Janitor (monitors owner pids, releases tracked resources on DOWN)
+  ├── DockerDaemon (probes the Docker daemon, autoheals colima when it dies)
   ├── Phoenix.PubSub
-  ├── Registry × 6 (ChatAgent, ServiceManager, Workspace, WorkspaceAgent, SyncMonitor, Terminal)
+  ├── Registry × 9 (ChatAgent, ChatAgent.RestartController, AgentLog.Checkpointer,
+  │                 ServiceManager, Workspace, WorkspaceAgent, SyncMonitor, Terminal,
+  │                 Workspace.Setup)
   ├── DynamicSupervisor (TerminalSupervisor)
   ├── Task.Supervisor (TaskSupervisor — all fire-and-forget Tasks go here)
+  ├── DynamicSupervisor (AgentSupervisor — agents with no workspace, e.g. the operator)
   ├── WorkspaceSupervisor (DynamicSupervisor)
-  │   └── WorkspaceGroup (Supervisor, :one_for_all)
-  │       ├── ServiceManager (manages Docker Compose services)
+  │   └── WorkspaceGroup (Supervisor, :one_for_all, max_restarts: 10 / 60s)
+  │       ├── ServiceManager (runs docker compose up/down, monitors container health)
   │       ├── AgentSupervisor (DynamicSupervisor)
   │       │   └── ChatAgent × N
-  │       └── ContainerMonitor (polls Docker health every 5s)
-  ├── SSHServer
+  │       ├── ChatAgent.RestartController (every agent respawn decision + quarantine)
+  │       ├── ContainerMonitor (polls Docker health every 5s)
+  │       ├── Workspace.LogBuffer (tails `docker logs -f` per service into an ETS ring)
+  │       ├── AgentLog.Checkpointer (agent-log snapshot schedule)
+  │       └── Source.Local.SyncMonitor (Local projects only — owns the mutagen session)
+  ├── PortRegistry (host-port allocation + proxy lifecycle)
+  ├── Registry (PortExposer)
+  ├── DynamicSupervisor (PortExposerSupervisor)
+  │   └── PortExposer × N (one TCP proxy per proxied port)
+  ├── SSHServer (SSH into containers; username = container name)
   ├── Docker.Observer (event-driven container/volume cache)
-  └── LoopyardWeb.Endpoint
+  ├── Events.Tap (ring buffer of every broadcast → /system/events)
+  ├── Saga.Recorder (last 100 saga runs → /system/sagas)
+  ├── Saga.Journal.Writer (single writer for the saga journal)
+  ├── Agent.Reconciler (ETS-vs-registry drift check every 30s)
+  ├── ChangeCounts (per-workspace changed-file counts, event-driven)
+  ├── Notifications (the inbox store — replays its log, then single writer)
+  ├── Notifications.Push (Web Push for every raised inbox item)
+  ├── Operator.Digest (bounded "what finished" ring the operator pulls)
+  ├── Harness.MemoryMonitor (restarts a bloated-but-idle harness before the OOM cap)
+  ├── LoopyardWeb.Endpoint
+  ├── LoopyardWeb.MCP.Listener (0.0.0.0 Bandit endpoint for the ACP MCP bridge; omitted when disabled)
+  └── LoopyardWeb.ActivitySound (activity/inbox → ambient sound; a pure subscriber)
 ```
 
 **Key properties:**
 - StateKeeper starts first, creates ALL named ETS tables, and lives longest. No other module creates ETS tables.
+- Resources.Janitor starts right after StateKeeper (needs `:resource_registry`) and before anything that calls `Resources.track/4` (PortRegistry, WorkspaceSupervisor).
 - Docker.Observer starts before Endpoint so the ETS cache is warm for the first LiveView mount.
 - ServiceManager.terminate does NOT call compose down — containers persist across server reboots.
 - Every fire-and-forget Task runs under TaskSupervisor (never bare `Task.start`).
+- `Harness.MemoryMonitor`, `ChangeCounts`, `Operator.Digest` and the MCP Listener are config-gated (inert or absent in test).
 
 ## Container model (Docker Compose)
 
@@ -67,13 +95,14 @@ All containers share a Docker network and the code volume. Container naming: `lo
 All workspaces use Docker named volumes for code storage:
 
 ```
-code-{workspace_id} (named volume)
+loopyard-{workspace_id}-code (named volume — VolumeManager.code_volume_name/1, prefix from Docker.prefix/0)
   ├── workspace container mounts /workspace
   ├── dev container mounts /workspace
   └── inotify works between containers (same Linux filesystem)
 ```
 
-- **Git projects**: `VolumeCloner.clone_into_volume` clones the repo using host git, then copies into volume
+- **Canonical-backed projects** (the default `Onboarding.create_project/2` path): `CanonicalRepo.init`/`init_from_remote` + `checkout`/`fork` materialize the volume from the project's canonical bare repo in a transient git container — no host git.
+- **Legacy `ProjectRegistry.add_from_url` projects**: `VolumeCloner.clone_into_volume` (via the `VolumeManager` delegate) clones the repo using host git, then copies into the volume.
 - **Local projects**: `VolumeIO.copy_to_volume` rsyncs code to volume on first start
 
 ### Container persistence
@@ -83,7 +112,7 @@ Containers survive server reboots:
 - On startup, `ServiceManager.init` checks `Compose.ps` for running containers
 - If found: reconnects state without rebuilding (`:reconnect` call)
 - If not found: does full `compose up --build`
-- `POST /system/reset` is the only path that calls `compose down`
+- `compose down` is only reached from explicit stop/teardown paths: `ServiceManager.stop_services` (Compose.down), `Onboarding.stop_preview` (Compose.down), the workspace view's stop action (`WorkspaceLive`, Compose.down), and `Workspace.Destructor` (`down -v --remove-orphans` when a workspace is destroyed)
 
 ## Hub-and-spokes git storage (v1 — `Loopyard.CanonicalRepo`)
 
@@ -110,7 +139,7 @@ No persistent git server, no host paths, no Mutagen — git is the only thing th
 
 A workspace is a git branch in its own env. *Most* interaction is just "read/write code, run commands, let the agent show its work" — that must NOT require booting the project's dev cluster (postgres, dev server, stock services). So there are **two distinct things** a workspace can have running, and they're decoupled:
 
-- **The work container (`Loopyard.Workspace.WorkContainer`)** — the cheap, Loopyard-owned place an agent acts. Built from `priv/workspace-base/Dockerfile` (alpine + git/gh/ssh/bash/curl/rsync, `sleep infinity`), built on demand and cached. Named `loopyard-<ws>-work`, it mounts the `loopyard-<ws>-code` volume at `/workspace`. Boots sub-second once the base image is cached. This is what "working is the default" means: you don't boot containers to start working.
+- **The work container (`Loopyard.Workspace.WorkContainer`)** — the cheap, Loopyard-owned place an agent acts. Built from `priv/workspace-base/Dockerfile` (`debian:bookworm-slim` — deliberately glibc, not Alpine/musl — with git/gh/ssh/bash/curl/rsync, build-essential, ruby, node, mise, fly, the `claude`/`codex` CLIs + their ACP adapters, `sleep infinity`), built on demand and cached. Named `loopyard-<ws>-work`, it mounts the `loopyard-<ws>-code` volume at `/workspace`. Boots sub-second once the base image is cached. This is what "working is the default" means: you don't boot containers to start working.
 - **The preview/dev cluster** — the agent-written `.loopyard/workspace/docker-compose.yml`, brought up via `Onboarding.start_preview/1` (the `loopyard-<ws>-workspace-1` + service containers). Opt-in, for when you want to *run* the app.
 
 **The seam (in `Loopyard.Workspace`):**
@@ -124,13 +153,13 @@ A workspace is a git branch in its own env. *Most* interaction is just "read/wri
 - `AgentBoot`'s `:ensure_services` step, for volume-backed workspaces, calls `Workspace.ensure_working/1` (cheap) instead of booting the compose cluster. Legacy host bind-mount projects keep the old `ServiceManager.start_services` path. So spawning an agent makes the workspace *workable*, not *fully running*.
 - The workspace UI (`States.workspace_not_running`) defaults to "Ready to work — start an agent"; booting the preview env is a quiet secondary action. The stored workspace `status` still tracks only the preview cluster (`:stopped`/`:starting`/`:running`); "working" is a derived query, not a stored status.
 
-**The work container is also the harness host.** Its base image (`priv/workspace-base/Dockerfile`) carries Node + the ACP adapter (`@zed-industries/claude-code-acp`), so the **real** Claude/Codex harness runs *inside* the box via `docker exec -i loopyard-<ws>-work claude-code-acp` (ACP = JSON-RPC over stdio), against the mounted code volume — natively, with native tools/skills/subagents. This is the north star: the box hosts a real harness, it doesn't reimplement one; new harnesses plug in by adding their adapter to the base image, nothing else about the sandbox changes. Validated headlessly: the work container completes an ACP `initialize` handshake with the real harness (`test/loopyard/workspace/work_container_test.exs`); a full prompt additionally needs in-container auth (the parked credential piece — see #3/#12).
+**The work container is also the harness host.** Its base image (`priv/workspace-base/Dockerfile`) carries Node + the ACP adapters (`@agentclientprotocol/claude-agent-acp` — the renamed `claude-code-acp`, which the launch script still falls back to for containers stamped from the old image — and `@agentclientprotocol/codex-acp`), so the **real** Claude/Codex harness runs *inside* the box via `docker exec -i loopyard-<ws>-work claude-agent-acp` (ACP = JSON-RPC over stdio), against the mounted code volume — natively, with native tools/skills/subagents. This is the north star: the box hosts a real harness, it doesn't reimplement one; new harnesses plug in by adding their adapter to the base image, nothing else about the sandbox changes. Validated headlessly: the work container completes an ACP `initialize` handshake with the real harness (`test/loopyard/workspace/work_container_test.exs`); a full prompt additionally needs in-container auth (the parked credential piece — see #3/#12).
 
 The base image carries git/bash/curl/node + the harness adapter — *not* the project's own toolchain (elixir, the app's deps, postgres). Running the project's tests/build or the app itself still needs the project image, i.e. the **preview env**. Cheap container = code + git + harness; preview = run the app.
 
 ## Environment layering — image · home · code · services
 
-An agent's environment is **composed from independent layers, each owning one concern with one mechanism**. The design invariant is orthogonality: any layer changes without touching the others. Full model + build order in [plans/agent-home-and-refresh.md](../plans/agent-home-and-refresh.md).
+An agent's environment is **composed from independent layers, each owning one concern with one mechanism**. The design invariant is orthogonality: any layer changes without touching the others. Full model + build order in [plans/agent-home-and-refresh.md](../plans/archive/agent-home-and-refresh.md).
 
 ```
 agent = image (tools) + /home/<name> (you) + /workspace (code), launched with a login shell
@@ -174,37 +203,48 @@ Each agent tool is a standalone module. No monolithic tool files.
 
 ```
 lib/loopyard/tools/
-├── container.ex              ← toolkit (lists 22 tool modules in __tool_server__/0)
+├── container.ex              ← toolkit (lists 28 tool modules in __tool_server__/0)
 ├── container/
 │   ├── helpers.ex            ← shared: resolve_container, validate_path, etc.
+│   ├── pagination.ex         ← shared: output capping + pagination for large result sets
+│   ├── probe_formatter.ex    ← shared: probe_http output formatting
 │   ├── exec.ex               ← one tool
 │   ├── write_file.ex
 │   ├── read_file.ex
+│   ├── read_files.ex
+│   ├── file_info.ex
 │   ├── edit.ex
 │   ├── multi_edit.ex
 │   ├── grep.ex
 │   ├── glob.ex
 │   ├── tree.ex
 │   ├── logs.ex
-│   ├── docker.ex
 │   ├── docker_compose.ex
 │   ├── inspect_env.ex
 │   ├── inspect_service.ex
 │   ├── service_containers.ex
 │   ├── ports.ex
 │   ├── probe_http.ex
-│   ├── probe_formatter.ex
-│   ├── read_files.ex
 │   ├── workspace_info.ex
 │   ├── volumes.ex
 │   ├── file_url.ex
 │   ├── app_url.ex
 │   ├── git.ex
-│   └── file_info.ex
-├── agents.ex                 ← agent-to-agent tools
+│   ├── ask_user.ex
+│   ├── request_secret.ex
+│   ├── propose_fork.ex
+│   ├── propose_rename.ex
+│   ├── propose_integrate.ex
+│   ├── propose_delete_workspace.ex
+│   └── recall_conversation.ex
+├── agent_files.ex (+ agent_files/)   ← read_agent_file: an agent's own playbooks under priv/
 ├── secrets.ex                ← secret management tools
+├── control_plane.ex (+ control_plane/) ← the operator agent's toolkit (disjoint from Tools.Container)
+├── command_guard.ex          ← allowlist for agent text spliced into a host CLI (docker compose, gh)
 └── workspace.ex              ← workspace metadata tools
 ```
+
+There is deliberately no `Container.Docker` (arbitrary `docker` CLI) tool — it was a workspace-boundary escape hatch — and no `Tools.Agents` toolkit (see below).
 
 **Tool module structure** (using `Loopyard.Tool` macro):
 
@@ -230,10 +270,10 @@ The macro generates `__tool_name__/0`, `__description__/0`, `input_schema/0`. Yo
 **Tool output truncation:** Long command output is truncated for agents (via `Helpers.truncate_for_agent`, ~80 lines) to conserve context tokens. The full output is streamed to the chat UI for human viewers. This keeps agent context bounded while giving humans complete visibility.
 
 **Discovery pipeline:**
-1. `ChatAgent.ToolConfig.default_tools()` → `[Tools.Container, Tools.Secrets]`. The former `Tools.Agents` toolkit is gone on purpose — see [SECURITY.md](SECURITY.md).
+1. `ChatAgent.ToolConfig.default_tools()` → `[Tools.Container, Tools.Secrets, Tools.AgentFiles]`. The former `Tools.Agents` toolkit is gone on purpose — see [SECURITY.md](SECURITY.md).
 2. `build_mcp_servers(tools, agent_id)` returns `%{name => %{module: mod, assigns: %{agent_id: id}}}`. The SDK threads `assigns` into every `execute(params, assigns)` call; tools cross-check the model-supplied `agent_id` param against the session-bound id.
 3. `build_allowed_tools/2` iterates tools, builds `"mcp__server__tool"` strings.
-4. Passed to Claude SDK session → CLI contacts BEAM via JSONRPC for tool calls.
+4. For the in-container ACP harness (the production path) the tools are NOT served in-process: `Loopyard.MCP.acp_mcp_servers/2` builds the `session/new` `mcpServers` spec pointing at `LoopyardWeb.MCP.Listener` — a dedicated Bandit endpoint on `0.0.0.0:<LOOPYARD_MCP_PORT>` (default 4030) that the container reaches via `host.docker.internal`. Every call is bearer-authed per agent (`Loopyard.MCP.Token`) and routed by `Loopyard.MCP.ToolRouter` to the same `execute/2`. Only the reduced control-plane subset is exposed (`ToolConfig.acp_control_plane_tools/0` — ports, service lifecycle, approval-gated proposals, ask/secret round-trips, URL helpers, `read_agent_file`, `recall_conversation`); the fs/exec tools are omitted because the harness has native Read/Write/Bash in the container.
 
 **Security boundaries enforced here:** session-bound `agent_id` (tools reject mismatched ids), workspace-scoped tool resolution (every tool derives its container/volume from the agent's own state), compose validation (no host mounts, host networking, privileged, external networks, host port pins), loopback-only port publishing, scoped secrets. Full model in [SECURITY.md](SECURITY.md).
 
@@ -241,14 +281,13 @@ The macro generates `__tool_name__/0`, `__description__/0`, `input_schema/0`. Yo
 
 Each `ChatAgent` is a GenServer owning a conversation **backend** session. There is **one agent type** — a self-determining coding agent (`priv/agents/coding/agent.md`) that inspects the workspace (`service_status` + `/workspace`) and bootstraps the dev environment only if it's actually missing, otherwise just codes. There is no setup-vs-coding split.
 
-**The Harness behaviour is the pluggable harness seam.** `Loopyard.Harness` (`lib/loopyard/harness.ex`) defines `start_session/1`, `stream/2`, `stop/1`, `session_alive?/1`, `session_id/1`. ChatAgent / StreamHandler / multiplayer fan-out consume neutral `Loopyard.Agent.Event` structs, so swapping backends changes only the event *source*:
-- `Harness.Claude` — the Claude Code SDK / CLI subprocess (today's default).
-- `Harness.ACP` (`harness/acp.ex`) — drives a **real** Claude/Codex harness over the Agent Client Protocol (JSON-RPC over stdio), host-side today and in-container next (`docker exec -i <work> claude-code-acp`). North-star direction (#3); implemented + tested but not yet the default. See [SECURITY.md](SECURITY.md) for its trust boundary and [IMPROVEMENTS.md](IMPROVEMENTS.md) for open gaps.
-- `Harness.Fake` — deterministic test backend.
+**The Harness behaviour is the pluggable harness seam.** `Loopyard.Harness` (`lib/loopyard/harness.ex`) defines `start_session/1`, `stream/2`, `stop/1`, `session_alive?/1`, `cancel_turn/1` (interrupt the in-flight turn, keep the session), `session_id/1`. ChatAgent / StreamHandler / multiplayer fan-out consume neutral `Loopyard.Agent.Event` structs, so swapping backends changes only the event *source*:
+- `Harness.ACP` (`harness/acp.ex`) — the **only production backend** (`config :loopyard, :default_harness`). Drives a **real** Claude/Codex harness over the Agent Client Protocol (JSON-RPC over stdio) **in-container only**: `docker exec -i <work> claude-agent-acp` (or `codex-acp`) against the mounted code volume. There is deliberately no host-execution backend — `Harness.Claude` (the Claude Code SDK / CLI as a host subprocess) was deleted, and `Harness.ACP` refuses to start without a `:container` (`assert_runtime_contained!`). Which adapter runs is a `Harness.Catalog` entry. See [SECURITY.md](SECURITY.md) for its trust boundary and [IMPROVEMENTS.md](IMPROVEMENTS.md) for open gaps.
+- `Harness.Fake` — deterministic test backend (`test.exs` overrides `:default_harness` to it).
 
 **Inbox vs. turn execution — the durability boundary.** Loopyard owns the **durable message inbox**: message ordering, the persisted ETF message log, the `pending_sends` FIFO queue, and rate-limit/auth/backoff gating. The backend (whichever harness) owns only **turn execution** — taking a prompt and streaming a response. This is why a harness restart never loses messages: the inbox is Loopyard state, not harness state. The `send_message` LiveView event replies with a server **ack** (`%{ok: true}`) so the browser only clears the input once Loopyard has durably accepted the message.
 
-Each `ChatAgent` GenServer (with the default backend) owns a Claude Code SDK session (CLI subprocess).
+Each `ChatAgent` GenServer (with the default backend) owns an ACP connection — a `docker exec -i <work> claude-agent-acp` JSON-RPC session running inside the workspace's work container. The Claude CLI OS pid is tracked via `Resources.track` so the Janitor kills it on agent DOWN.
 
 **Message storage:** Reversed list internally for O(1) prepend. `append_message` returns `{state, msg}`. `summary/1` reverses before exposing to readers. Capped at 1000 messages in memory — the ETF agent log retains full history.
 
@@ -271,34 +310,57 @@ ETS (read by LiveViews, get_state, get_message)
 LiveViews (render updates)
 ```
 
-**Session recovery:** ChatAgent auto-restarts dead CLI sessions with exponential backoff (1s → 2s → 4s, max 30s). Builds a resume message from recent activity so the new session can continue.
+**Session recovery:** ChatAgent auto-restarts dead harness sessions with exponential backoff via `Retry.backoff_ms/2` + `Process.send_after` — base `:crash_backoff_base_ms` (default 2000 ms), doubling per consecutive crash (2s → 4s → 8s …) with no ceiling on the delay itself; the crash-loop breaker (`@max_consecutive_crashes`) bounds the number of attempts. Builds a resume message from recent activity so the new session can continue.
 
 ## LiveView architecture
 
 LiveViews are thin — they handle events, delegate to modules, and render.
 
+Regenerated from `lib/loopyard_web/live/workspace_live/`:
+
 ```
 lib/loopyard_web/live/
-├── workspace_live.ex         ← mount, handle_*, render (the workspace view: chat + file browser + git viewer + …)
+├── workspace_live.ex           ← mount, handle_*, render (the workspace view: chat + file browser + git viewer + …)
 ├── workspace_live/
-│   ├── components.ex         ← imports all component submodules
+│   ├── components.ex           ← imports all component submodules
 │   ├── components/
-│   │   ├── sidebar.ex        ← sidebar, service_item, volume_item, agent_list_item
-│   │   ├── chat.ex           ← chat_header, agent_view, chat_panel, container_panel
-│   │   ├── services.ex       ← service_log_view, console_view, all_services_view
-│   │   ├── states.ex         ← booting_screen, empty_state
-│   │   ├── context_panel.ex  ← right-rail agent context pane
-│   │   ├── sync_detail.ex    ← Local-source sync status detail page
-│   │   ├── volumes.ex        ← volume detail + tabs
-│   │   ├── viewers/          ← file + git + image + binary + syntax viewers
-│   │   └── formatters.ex     ← time_ago, exit_reason, service_status_text (pure functions)
-│   ├── agent_lifecycle.ex    ← spawn, select, list agents
-│   ├── agent_events.ex       ← handle_info for agent PubSub (status, messages, streaming)
-│   ├── docker_events.ex      ← handle_info for Docker Observer (container state changes)
-│   ├── diff_loader.ex        ← git diff / commit fetches (adapter-scoped pure fns)
-│   ├── file_browser.ex       ← volume file browser (tree + probe_path)
-│   ├── service_logs.ex       ← fetch, refresh service logs (async via TaskSupervisor)
-│   └── messages.ex           ← chat_msg, streaming_bubble components
+│   │   ├── sidebar.ex          ← sidebar, service_item, volume_item, agent_list_item, new_agent_screen
+│   │   ├── chat.ex             ← agent_view, chat_panel, container_panel
+│   │   ├── chat/header.ex      ← mobile workspace header, desktop agent header, detail segmented control
+│   │   ├── chat/status.ex      ← pure status predicates (what the agent/turn is doing now)
+│   │   ├── chat_nav.ex         ← section-switcher model (Agents / Services / Files) — pure
+│   │   ├── chat_status.ex      ← live-status presentation: thinking_indicator, live_status, reasoning_bar
+│   │   ├── context_panel.ex    ← right-rail agent context pane (harness status, usage, MCP tools)
+│   │   ├── detail_contexts.ex  ← rail detail panels for service / volume selections
+│   │   ├── services.ex         ← service_log_view, console_view, all_services_view
+│   │   ├── setup_progress.ex   ← workspace setup-saga step-list takeover screen
+│   │   ├── states.ex           ← booting_screen, empty_state
+│   │   ├── sync_detail.ex      ← Local-source sync status detail page
+│   │   ├── volumes.ex          ← volume detail + Info/Files/Git tabs
+│   │   ├── viewers/            ← file_viewer dispatch + text/image/binary/git viewers, file_type, syntax (Makeup)
+│   │   └── formatters.ex       ← time_ago, exit_reason, service_status_text (pure functions)
+│   ├── agent_lifecycle.ex      ← spawn, select, list agents
+│   ├── agent_events.ex         ← handle_info for agent PubSub (status, messages, streaming)
+│   ├── attachments.ex          ← composer file uploads (allow_upload :attachments)
+│   ├── composer.ex             ← the send_message event → agent, replies the ack the ChatForm hook keys on
+│   ├── data_loader.ex          ← async loads: container tab, git log/status, priming agents from the log
+│   ├── diff_loader.ex          ← git diff / commit fetches (adapter-scoped pure fns)
+│   ├── docker_events.ex        ← handle_info for Docker Observer / services / sync / setup events
+│   ├── file_browser.ex         ← volume file browser (tree + probe_path)
+│   ├── main_content.ex         ← live_action router for the center pane
+│   ├── message_row_component.ex ← LiveComponent wrapper around chat_msg/1 for diff skipping
+│   ├── messages.ex             ← chat_msg clauses + helpers
+│   ├── messages/
+│   │   ├── actions.ex          ← hover actions (Copy / Open raw)
+│   │   ├── attachment_chip.ex  ← attachment thumbnail/chip on a prompt band
+│   │   ├── cards.ex            ← the interactive mini-app cards (question_block/1 lives here)
+│   │   ├── cards/              ← question, approval, secret, auth_fix, agent_embed, shared helpers
+│   │   ├── tool_results.ex     ← tool-result renderers (output, file read, grep, closed port)
+│   │   └── transcript.ex       ← pure run-grouping / sectioning of the transcript
+│   ├── navigation.ex           ← where a window lands + agent presets
+│   ├── service_logs.ex         ← fetch, refresh service logs (async via TaskSupervisor)
+│   ├── switcher.ex             ← per-window view tracking for the rail (:window_views)
+│   └── volume_routes.ex        ← handle_params bodies for the volume routes (files, changes, history, diffs)
 ```
 
 **Key patterns:**
@@ -333,17 +395,36 @@ User → PortExposer (127.0.0.1:4008 or 0.0.0.0:4008) → Docker (127.0.0.1:3292
 
 ## ETS tables
 
-All owned by `StateKeeper`. Created once in `init/1`.
+All owned by `StateKeeper`. Created once in `init/1`. Regenerated from `StateKeeper`'s `@tables` (all `:named_table, :public`):
 
 | Table | Type | Purpose |
 |-------|------|---------|
 | `:chat_agents` | set | Agent state summaries (read by LiveViews) |
+| `:card_patches` | set | Outstanding card-state patches (question drafts/answers, approval/secret flips) applied ahead of the agent's mailbox, keyed `{agent_id, msg_id}` |
+| `:mcp_token_epochs` | set | `Loopyard.MCP.Token` revocation epochs per agent — bumping invalidates outstanding bridge tokens |
+| `:markdown_cache` | set | `Loopyard.Markdown` render cache keyed by content (server-side MDEx) |
+| `:attachment_cache` | set | Chat attachment bytes by unique name (`Attachments.Cache`) |
 | `:project_registry` | set | Project records |
 | `:workspace_registry` | set | Workspace records |
 | `:event_log` | ordered_set | System events (newest-first, capped at 200) |
 | `:service_status_cache` | set | Service status per workspace |
+| `:service_log_frames` | set | `Workspace.LogBuffer` ring of streamed service log frames keyed `{workspace_id, service}` — survives the container dying |
 | `:docker_observer` | set | Container/volume snapshot from Docker.Observer |
 | `:loopyard_evals` | set | Eval run state |
+| `:port_registry` | set | `PortRegistry` entries keyed `{workspace_id, service, container_port}` |
+| `:harness_questions` | set | `Harness.Questions` pending harness→user questions (blocking-waiter pattern) |
+| `:harness_approvals` | set | `Harness.Approvals` pending fork/integrate/delete proposals awaiting a human |
+| `:secret_requests` | set | `Harness.SecretRequests` pending secret requests (the value is never stored here) |
+| `:ws_change_counts` | set | `ChangeCounts` cached per-workspace changed-file counts (±N badge) |
+| `:operator_digest` | ordered_set | `Operator.Digest` bounded ring of cross-workspace turn completions |
+| `:notifications` | set | `Notifications` inbox: every open decision + finished-turn item |
+| `:operator_jobs` | set | `Operator.Jobs` worker queue — per-workspace `{agent_id, read_count}` |
+| `:events_tap` | ordered_set | `Events.Tap` ring buffer of every broadcast (drives `/system/events`) |
+| `:resource_registry` | set | `Resources.Janitor` tracked OS/OTP resources keyed `{kind, id}` |
+| `:restart_controller_history` | set | `ChatAgent.RestartController` crash history — survives the group's `:one_for_all` restarts |
+| `:saga_recorder` | set | `Saga.Recorder` last 100 saga runs (drives `/system/sagas`) |
+| `:log_buffer` | set | `LogBuffer` rolling log tail surfaced on `/system` |
+| `:window_views` | set | `WindowViews` per-window "where was I" keyed `{transport_pid, workspace_id}` |
 
 ## What an agent is — the template
 
@@ -397,7 +478,7 @@ On server restart:
 1. ServiceManager detects running containers via `Compose.ps`
 2. Calls `replay_agent_log` to restore agent state to ETS
 3. Starts ChatAgent GenServers with `resume: true` for each restored agent
-4. Each agent loads messages from ETS and starts a fresh Claude session
+4. Each agent loads messages from ETS and starts a harness session in its work container (resuming the saved harness session id where the identity is unchanged, otherwise seeding from the durable log — see CLAUDE.md → harness-portable memory)
 
 **Log format:** Length-prefixed binary records using `:erlang.term_to_binary`. Events: `{:agent, id, data}`, `{:msg, agent_id, msg}`, `{:msg_update, agent_id, msg_id, changes}`, `{:agent_removed, id}`.
 
@@ -412,12 +493,12 @@ Key operations emit telemetry spans:
 | `[:loopyard, :compose, :down]` | `Compose.down/2` | `%{workspace_id: id}` |
 | `[:loopyard, :agent, :message]` | `ChatAgent` | `%{agent_id: id, role: :user}` |
 
-No subscribers configured by default — attach your own handlers for logging/metrics.
+Two handlers attach at boot: `Saga.Recorder` (the `[:loopyard, :saga, *]` events → `:saga_recorder` ETS for `/system/sagas`) and `LoopyardWeb.SlowMountLogger.attach()` (Phoenix LiveView mount/handle_params/handle_event `:stop` events, warns past 500ms). Attach your own handlers for anything else.
 
 ## Directory structure
 
 ```
-# Code volume (Docker named volume code-{workspace_id})
+# Code volume (Docker named volume loopyard-{workspace_id}-code)
 /workspace/                     ← project root inside containers
 └── .loopyard/
     ├── repo/
@@ -426,24 +507,35 @@ No subscribers configured by default — attach your own handlers for logging/me
         ├── Dockerfile          ← agent-written
         └── docker-compose.yml  ← agent-written
 
-# Loopyard home directory
+# Loopyard home directory — Workspace.home_dir/0: ~/.loopyard, or $LOOPYARD_HOME
 ~/.loopyard/
 ├── workspaces/
 │   └── {workspace_id}/
 │       └── .loopyard/workspace/
 │           ├── docker-compose.yml  ← processed by Compose (host copy)
 │           └── agents.log          ← append-only agent state log
-├── projects.json               ← persisted project list
-└── secrets.json                ← user-level secret storage
+├── worktrees/{workspace_id}/   ← Local projects: the host git worktree Mutagen syncs (Source.Local.Worktree)
+├── workstations/{id}/          ← per-identity Dockerfile + env.json (Workstation)
+├── ssh/                        ← SSHServer host keys
+├── projects.json               ← persisted project list (ProjectStore)
+├── canonical_projects.json     ← canonical-backed projects (CanonicalStore)
+├── secrets.json                ← user-level secret storage (Secrets)
+├── ports.json                  ← port assignments (PortStore)
+├── web_push.json               ← VAPID keys + browser push subscriptions (WebPush)
+├── notifications.log           ← the inbox store's own ETF log (Notifications.Log)
+├── push_token                  ← bearer token gating PUT /env/:key (PushToken, mode 0600)
+└── cookie                      ← distribution cookie for mix loopyard.rpc (ALWAYS ~/.loopyard, never $LOOPYARD_HOME)
 ```
 
 ## Terminal (interactive console)
 
 The Terminal GenServer wraps `docker exec -it` via `script(1)` for PTY allocation. Without `script`, Erlang Ports don't provide a real TTY.
 
-- macOS: `script -q /dev/null docker exec -it container sh`
-- Linux: `script -qc "docker exec -it container sh" /dev/null`
-- Fallback: `docker exec -i container sh` (no PTY)
+- macOS: `script -q /dev/null docker exec -it container sh -l`
+- Linux: `script -qc "docker exec -it container sh -l" /dev/null`
+- Fallback: `docker exec -i container sh -l` (no PTY)
+
+Always a login shell (`sh -l`) so `~/.profile` is sourced — the identity env (tokens) is in scope for what a human types, same as the agent's login-wrapped exec.
 
 Connected via Phoenix Channel (`terminal:container_name`). PubSub topic (`terminal_output:container_name`) is deliberately different from the channel topic to avoid double-delivery. Multiplayer — all viewers share one session. 50KB output buffer for late joiners.
 
@@ -455,5 +547,5 @@ Connected via Phoenix Channel (`terminal:container_name`). PubSub topic (`termin
 | `TailScroll` | Auto-scroll to bottom on mount AND every update (for log tailing) |
 | `ChatForm` | Clear input after submit, auto-resize textarea |
 | `CopySource` | Copy text/fetched content to clipboard |
-| `Markdown` | Render markdown content via marked.js |
+| `StreamMarkdown` | Append server-rendered markdown blocks for the live assistant reply (`Markdown.Stream`); finalized messages are rendered server-side by `Loopyard.Markdown` (MDEx, `:markdown_cache` ETS) — there is no client-side markdown library |
 | `Terminal` | xterm.js terminal connected via Phoenix Channel |

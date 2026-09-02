@@ -162,7 +162,8 @@ defmodule Loopyard.ToolAuthorizationTest do
 
     base =
       for field <- required, into: %{} do
-        {String.to_atom(field), placeholder_for(schema["properties"][field]["type"])}
+        # Every required field is a param the tool module declared as an atom.
+        {String.to_existing_atom(field), placeholder_for(schema["properties"][field]["type"])}
       end
 
     Enum.reduce(overrides, base, fn {k, v}, acc -> Map.put(acc, k, v) end)

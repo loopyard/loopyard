@@ -107,3 +107,12 @@ config :loopyard, docker_enabled: System.get_env("LOOPYARD_DOCKER_TESTS") in ["1
 # Loopyard.Test.FakeAttachmentWriter) — the real writer is `docker cp`.
 config :loopyard, attachment_writer: Loopyard.Test.FakeAttachmentWriter
 config :loopyard, container_io: Loopyard.Test.FakeContainerIO
+
+# Timing knobs the default suite shrinks (production keeps the module
+# defaults): the SyncMonitor readiness probe (200ms × 5 attempts = 0.8s of
+# pure waiting in one test) and the warm-interrupt deadline (1.5s before a
+# wedged cancel_turn is given up on — the test only needs the give-up).
+config :loopyard,
+  sync_ready_probe_ms: 5,
+  interrupt_deadline_ms: 200,
+  rate_limit_retry_grace_ms: 50

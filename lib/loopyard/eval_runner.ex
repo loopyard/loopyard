@@ -349,9 +349,7 @@ defmodule Loopyard.EvalRunner do
   defp host_git_clone(git_url, branch, dest) do
     git_path = System.find_executable("git")
 
-    unless git_path do
-      {:error, "git not found on host PATH"}
-    else
+    if git_path do
       port =
         Port.open(
           {:spawn_executable, git_path},
@@ -364,6 +362,8 @@ defmodule Loopyard.EvalRunner do
         )
 
       collect_port_output(port, "", @clone_timeout)
+    else
+      {:error, "git not found on host PATH"}
     end
   end
 
@@ -839,7 +839,9 @@ defmodule Loopyard.EvalRunner do
         {:error, :timeout}
 
       true ->
-        Process.sleep(1_000)
+        # Poll every second, but never overshoot the deadline by one.
+        remaining = deadline - System.monotonic_time(:millisecond)
+        Process.sleep(max(min(1_000, remaining), 10))
         wait_for_workspace_container_loop(container, deadline, workspace_id)
     end
   end

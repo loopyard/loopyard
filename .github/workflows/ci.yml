@@ -95,22 +95,25 @@ jobs:
       - name: Dependency audit
         run: mix deps.audit
 
-      # --- Soft gates (report only, don't block) ---
+      # These three used to be `continue-on-error` — reported, never enforced,
+      # so 120 credo issues, 6 sobelow findings and 82 dialyzer warnings sat
+      # green for months. Each is now a hard gate against a clean baseline
+      # (Sept 2026). Structure-only credo checks (complexity, nesting, arity,
+      # TODO/FIXME) are report-only via exit_status: 0 in .credo.exs; sobelow's
+      # accepted findings and threshold live in .sobelow-conf; dialyzer's
+      # known-benign warnings live in .dialyzer_ignore.exs — every skip has
+      # a reason next to it.
 
       - name: Credo
         run: mix credo --strict
-        continue-on-error: true
 
       - name: Sobelow (security)
         run: mix sobelow --config
-        continue-on-error: true
 
       - name: Dialyzer
         run: |
           mkdir -p priv/plts
-          mix dialyzer --plt
-          mix dialyzer
-        continue-on-error: true
+          mix dialyzer --format short
 
   docker-e2e:
     runs-on: ubuntu-latest

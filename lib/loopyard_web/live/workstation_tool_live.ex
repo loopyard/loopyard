@@ -3,7 +3,7 @@ defmodule LoopyardWeb.WorkstationToolLive do
   One page per integration (`/workstations/:id/:tool`). **Mac-first**: the default
   is a single command you run on your Mac that pipes the credential into the box.
   "Set a token" and "Use the terminal" live under *Other ways*. The doc is tucked
-  under *Reference*. See plans/integrations.md.
+  under *Reference*. See plans/archive/integrations.md.
   """
   use LoopyardWeb, :live_view
   use LoopyardWeb.IExAware

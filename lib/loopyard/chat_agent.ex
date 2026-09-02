@@ -11,7 +11,7 @@ defmodule Loopyard.ChatAgent do
   # Loopyard.ChatAgent.RestartController GenServer owns every
   # respawn decision synchronously, which gives us exact quarantine
   # semantics: the Nth crash quarantines before the N+1th can occur.
-  # See plans/coordination-hardening.md Move #10.
+  # See plans/archive/coordination-hardening.md Move #10.
   use GenServer, restart: :temporary
   require Logger
 
@@ -125,7 +125,7 @@ defmodule Loopyard.ChatAgent do
     # OS pid of the Claude CLI subprocess owned by state.session. Tracked
     # via Loopyard.Resources.track/4 so the Janitor kills it on our
     # DOWN — covers the brutal_kill / node crash / :shutdown-timeout
-    # cases where `terminate/2` never runs. See plans/agent-sanity.md #12.
+    # cases where `terminate/2` never runs. See plans/archive/agent-sanity.md #12.
     tracked_cli_os_pid: nil,
     # SHA-256 of the system_prompt passed to `append_system_prompt` on
     # start_session. Stored alongside claude_session_id so init_resume
@@ -188,7 +188,7 @@ defmodule Loopyard.ChatAgent do
     # message with a "(truncated — CLI crashed)" marker so users don't
     # lose the partial response after a browser refresh. Transient;
     # NOT included in summary/1 — lives only in the live GenServer.
-    # See plans/agent-sanity.md #3.
+    # See plans/archive/agent-sanity.md #3.
     in_flight_partial: "",
     # Publish coalescing for streaming deltas. Raw SDK token events arrive
     # 30–60×/s; publishing each one made every viewer's LiveView re-ship and
@@ -1520,7 +1520,26 @@ defmodule Loopyard.ChatAgent do
   defp send_message_normal(state, text) do
     state = SessionManager.ensure_alive(state)
 
-    if not state.backend.session_alive?(state.session) do
+    if state.backend.session_alive?(state.session) do
+      # A message ABOUT a decision carries its reference as a marker line
+      # (ChatAgent.Thread): shown without it, stamped `re:`, and the model
+      # gets the card itself in place of the marker.
+      user_msg = Thread.user_message(text)
+      {state, user_msg} = append_message(state, user_msg)
+      Persistence.persist_message(state, user_msg)
+
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+        agent_id: state.id,
+        msg: user_msg
+      })
+
+      # Fresh human turn → reset the transient-retry counter and any prior
+      # failed-prompt banner.
+      start_turn(
+        %{state | turn_retry_count: 0, failed_prompt: nil, current_turn_origin: :human},
+        Thread.frame_prompt(text)
+      )
+    else
       # ensure_alive/1 just tried to (re)spawn the CLI and it's STILL dead.
       # Do NOT silently drop the message (the "swallow" bug) — but do NOT
       # fire a red error either: we're about to kick a restart that heals in
@@ -1552,25 +1571,6 @@ defmodule Loopyard.ChatAgent do
       Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :booting})
       GenServer.cast(self(), :restart_session)
       {:noreply, state}
-    else
-      # A message ABOUT a decision carries its reference as a marker line
-      # (ChatAgent.Thread): shown without it, stamped `re:`, and the model
-      # gets the card itself in place of the marker.
-      user_msg = Thread.user_message(text)
-      {state, user_msg} = append_message(state, user_msg)
-      Persistence.persist_message(state, user_msg)
-
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-        agent_id: state.id,
-        msg: user_msg
-      })
-
-      # Fresh human turn → reset the transient-retry counter and any prior
-      # failed-prompt banner.
-      start_turn(
-        %{state | turn_retry_count: 0, failed_prompt: nil, current_turn_origin: :human},
-        Thread.frame_prompt(text)
-      )
     end
   end
 
@@ -1583,14 +1583,7 @@ defmodule Loopyard.ChatAgent do
   defp send_batch(state, list) when is_list(list) do
     state = SessionManager.ensure_alive(state)
 
-    if not state.backend.session_alive?(state.session) do
-      # Dead at drain time — re-queue the whole flurry and restart; never lose it.
-      state = %{state | pending_sends: list, status: :booting}
-      :ets.insert(@ets_table, {state.id, summary(state)})
-      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :booting})
-      GenServer.cast(self(), :restart_session)
-      {:noreply, state}
-    else
+    if state.backend.session_alive?(state.session) do
       state =
         Enum.reduce(list, state, fn text, st ->
           msg = Thread.user_message(text)
@@ -1609,6 +1602,13 @@ defmodule Loopyard.ChatAgent do
         %{state | turn_retry_count: 0, failed_prompt: nil, current_turn_origin: :human},
         Loopyard.Turn.batch_prompt(Enum.map(list, &Thread.frame_prompt/1))
       )
+    else
+      # Dead at drain time — re-queue the whole flurry and restart; never lose it.
+      state = %{state | pending_sends: list, status: :booting}
+      :ets.insert(@ets_table, {state.id, summary(state)})
+      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :booting})
+      GenServer.cast(self(), :restart_session)
+      {:noreply, state}
     end
   end
 

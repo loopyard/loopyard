@@ -44,7 +44,7 @@ defmodule Loopyard.PortStoreTest do
           workspace_id: "ws2",
           service: "postgres",
           container_port: 5432,
-          host_port: 32771,
+          host_port: 32_771,
           exposed: true,
           legacy: true,
           allocated_at: ~U[2026-04-14 09:00:00Z]
@@ -68,7 +68,7 @@ defmodule Loopyard.PortStoreTest do
 
       assert e2.exposed == true
       assert e2.legacy == true
-      assert e2.host_port == 32771
+      assert e2.host_port == 32_771
     end
 
     test "saves the configured port range as a JSON array" do

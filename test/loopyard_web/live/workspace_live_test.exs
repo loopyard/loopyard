@@ -122,6 +122,18 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
       assert html =~ "Test Agent"
     end
 
+    test "delete_volume runs `docker volume rm` off the LiveView and flashes the failure",
+         %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
+      {:ok, view, _html} = live(conn, ws_chat_path(ws, setup_agent_id))
+
+      # The handler returns before the daemon answers; with the daemon
+      # disabled here the async result is an error → a flash, not a crash.
+      html = render_click(view, "delete_volume", %{"volume_name" => "no-such-volume"})
+      refute html =~ "Could not delete volume"
+
+      assert render_async(view) =~ "Could not delete volume no-such-volume"
+    end
+
     test "redirects to / for unknown workspace", %{conn: conn} do
       assert {:error, {:live_redirect, %{to: "/"}}} =
                live(conn, "/projects/nonexistent/workspaces/nonexistent")
@@ -264,7 +276,7 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
       |> render_click()
 
       # Workspace sidebar navigation moved from push_navigate to push_patch
-      # (same LV module; see plans/livevew-flapping-audit.md). assert_patch
+      # (same LV module; see plans/archive/livevew-flapping-audit.md). assert_patch
       # mirrors the production transition — any redirect-style assertion
       # would fail because the LV process stays up across the hop.
       path = assert_patch(view)
@@ -320,7 +332,7 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
     # remain running after stop_agent + LV mount. The LV's mount path
     # doesn't auto-spawn, but other paths (ServiceManager replay,
     # RestartController) do — same root race as the deleted "stopped
-    # agent shows remove button" test. See plans/agent-sanity.md.
+    # agent shows remove button" test. See plans/archive/agent-sanity.md.
 
     @tag timeout: 10_000
     test ":index with existing agents shows them without spawning new ones", %{
@@ -466,7 +478,7 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
       # The failed agent you were watching is removed, and navigation lands you
       # on a LIVE agent (never a blank index, never the dead agent — the latter
       # used to loop; see Navigation.resume_agent_live?). Workspace nav uses
-      # push_patch for intra-module routes (plans/livevew-flapping-audit.md).
+      # push_patch for intra-module routes (plans/archive/livevew-flapping-audit.md).
       to = assert_patch(view)
       refute to =~ "/agents/#{id}", "must not patch back to the failed agent"
       refute id in Enum.map(Loopyard.ChatAgent.list_agents(), & &1.id)
@@ -525,7 +537,7 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
     # always alive by the time the sidebar renders.
     #
     # Whether the auto-resume is correct UX or a real bug is a
-    # separate investigation — see plans/agent-sanity.md. This
+    # separate investigation — see plans/archive/agent-sanity.md. This
     # test, as written, can't pass in the current architecture
     # without a multi-day refactor of agent lifecycle. Deleting
     # rather than carrying a flaky test that masks regressions.

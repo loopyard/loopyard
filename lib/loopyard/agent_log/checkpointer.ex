@@ -2,7 +2,7 @@ defmodule Loopyard.AgentLog.Checkpointer do
   @moduledoc """
   Per-workspace snapshot scheduler for the agent log.
 
-  Move #8 in `plans/coordination-hardening.md`: bound log replay time
+  Move #8 in `plans/archive/coordination-hardening.md`: bound log replay time
   by periodically snapshotting the log and keeping the previous
   snapshot as a fallback. Builds on top of
   `Loopyard.AgentLog.compact_keep_previous/1` — this module decides
@@ -326,55 +326,53 @@ defmodule Loopyard.AgentLog.Checkpointer do
   end
 
   defp attempt_checkpoint(state) do
-    try do
-      case Loopyard.AgentLog.compact_keep_previous(
-             log_path: state.log_path,
-             version: state.version
-           ) do
-        {:ok, stats} ->
-          :telemetry.execute(
-            [:loopyard, :checkpoint, :written],
-            %{
-              before_bytes: stats.before,
-              after_bytes: stats.after,
-              records: stats.agents + stats.messages
-            },
-            %{workspace_id: state.workspace_id, path: state.log_path}
-          )
+    case Loopyard.AgentLog.compact_keep_previous(
+           log_path: state.log_path,
+           version: state.version
+         ) do
+      {:ok, stats} ->
+        :telemetry.execute(
+          [:loopyard, :checkpoint, :written],
+          %{
+            before_bytes: stats.before,
+            after_bytes: stats.after,
+            records: stats.agents + stats.messages
+          },
+          %{workspace_id: state.workspace_id, path: state.log_path}
+        )
 
-          {:ok, stats}
+        {:ok, stats}
 
-        {:error, reason} = err ->
-          :telemetry.execute(
-            [:loopyard, :checkpoint, :failed],
-            %{count: 1},
-            %{workspace_id: state.workspace_id, reason: reason, path: state.log_path}
-          )
-
-          Logger.warning(
-            "[Checkpointer] Snapshot failed for workspace #{state.workspace_id}: #{inspect(reason)}"
-          )
-
-          err
-      end
-    rescue
-      e ->
-        # Compaction raised — treat as failure, don't crash the
-        # checkpointer. Next tick will retry.
-        reason = {:exception, Exception.message(e)}
-
+      {:error, reason} = err ->
         :telemetry.execute(
           [:loopyard, :checkpoint, :failed],
           %{count: 1},
           %{workspace_id: state.workspace_id, reason: reason, path: state.log_path}
         )
 
-        Logger.error(
-          "[Checkpointer] Snapshot exception for workspace #{state.workspace_id}: #{Exception.message(e)}"
+        Logger.warning(
+          "[Checkpointer] Snapshot failed for workspace #{state.workspace_id}: #{inspect(reason)}"
         )
 
-        {:error, reason}
+        err
     end
+  rescue
+    e ->
+      # Compaction raised — treat as failure, don't crash the
+      # checkpointer. Next tick will retry.
+      reason = {:exception, Exception.message(e)}
+
+      :telemetry.execute(
+        [:loopyard, :checkpoint, :failed],
+        %{count: 1},
+        %{workspace_id: state.workspace_id, reason: reason, path: state.log_path}
+      )
+
+      Logger.error(
+        "[Checkpointer] Snapshot exception for workspace #{state.workspace_id}: #{Exception.message(e)}"
+      )
+
+      {:error, reason}
   end
 
   defp schedule_tick(state) do

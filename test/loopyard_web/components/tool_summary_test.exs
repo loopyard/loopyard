@@ -71,11 +71,6 @@ defmodule LoopyardWeb.Components.ToolSummaryTest do
                "Read logs (web)"
     end
 
-    test "service_status tool reads as a verb+object" do
-      assert ToolSummary.summarize("mcp__loopyard-container__service_status", %{}) ==
-               "Check service status"
-    end
-
     test "service_containers tool reads as a verb+object" do
       assert ToolSummary.summarize("mcp__loopyard-container__service_containers", %{}) ==
                "List service containers"

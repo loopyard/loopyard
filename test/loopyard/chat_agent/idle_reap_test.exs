@@ -1,6 +1,6 @@
 defmodule Loopyard.ChatAgent.IdleReapTest do
   @moduledoc """
-  Surface #20 of plans/agent-sanity.md.
+  Surface #20 of plans/archive/agent-sanity.md.
 
   Long-idle agents hold a Claude CLI subprocess (~200MB RSS) plus the
   SDK Session GenServer indefinitely. With many workspaces and many

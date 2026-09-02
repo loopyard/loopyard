@@ -1,3 +1,5 @@
+> Archived Sept 2026 — merged (branch `harden-resume-state`). Landed surfaces + rules live in CLAUDE.md → "Coordination hardening" and the `/system/*` pages; move numbers referenced from code are still the ones below.
+
 # Coordination Hardening
 
 Goal: eliminate entire **classes** of bugs from the core compose + agent coordination layer, not the individual instances. After this plan lands, the communication and state layers both have compile-time contracts, observable timelines, and structural guarantees of eventual consistency.

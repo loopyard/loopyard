@@ -3,7 +3,7 @@ defmodule Loopyard.Saga.Recorder do
   Keeps a rolling record of recent `Loopyard.Saga` runs for the
   `/system/sagas` surface.
 
-  Move #7a in `plans/coordination-hardening.md`.
+  Move #7a in `plans/archive/coordination-hardening.md`.
 
   ## How it records
 
@@ -201,12 +201,10 @@ defmodule Loopyard.Saga.Recorder do
 
   @doc false
   def handle_event(event, measurements, metadata, _config) do
-    try do
-      do_handle(event, measurements, metadata)
-    rescue
-      e ->
-        Logger.warning("[Saga.Recorder] handler crashed: #{Exception.message(e)}")
-    end
+    do_handle(event, measurements, metadata)
+  rescue
+    e ->
+      Logger.warning("[Saga.Recorder] handler crashed: #{Exception.message(e)}")
   end
 
   defp do_handle([:loopyard, :saga, :started], measurements, meta) do

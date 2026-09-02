@@ -35,15 +35,15 @@ defmodule Loopyard.GitTest do
     end
   end
 
-  describe "is_repo?/1" do
+  describe "repo?/1" do
     test "returns true for git repos" do
-      assert Git.is_repo?(File.cwd!())
+      assert Git.repo?(File.cwd!())
     end
 
     test "returns false for non-git dirs" do
       tmp = Path.join(System.tmp_dir!(), "loopyard-git-test-#{:rand.uniform(100_000)}")
       File.mkdir_p!(tmp)
-      refute Git.is_repo?(tmp)
+      refute Git.repo?(tmp)
       File.rm_rf!(tmp)
     end
   end
@@ -51,7 +51,7 @@ defmodule Loopyard.GitTest do
   describe "worktree_list/1" do
     test "lists at least the main worktree" do
       assert {:ok, worktrees} = Git.worktree_list(File.cwd!())
-      assert length(worktrees) >= 1
+      assert worktrees != []
       main = hd(worktrees)
       assert Map.has_key?(main, :path)
       # A worktree is either on a branch or detached — CI checks out a detached
@@ -63,7 +63,7 @@ defmodule Loopyard.GitTest do
   describe "log/2" do
     test "returns recent commits from this repo" do
       assert {:ok, entries} = Git.log(File.cwd!(), limit: 5)
-      assert length(entries) > 0
+      assert entries != []
       assert length(entries) <= 5
 
       first = hd(entries)

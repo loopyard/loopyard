@@ -2,7 +2,7 @@ defmodule Loopyard.Events.ChatAgent do
   @moduledoc """
   Publisher module for the `"chat_agents"` PubSub topic.
 
-  Move #2 of plans/coordination-hardening.md — every chat-agent lifecycle
+  Move #2 of plans/archive/coordination-hardening.md — every chat-agent lifecycle
   event that used to be broadcast as a tuple is now a struct defined below.
   Producers call `publish/1`; subscribers pattern-match on `%Struct{}` in
   `handle_info/2`. The module name itself is the universal identifier —

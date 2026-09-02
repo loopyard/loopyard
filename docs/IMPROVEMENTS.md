@@ -97,25 +97,17 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 6. **Read-only agent awareness tool.** Agents sharing a workspace don't know about each other. If Agent A rebuilds containers while Agent B is mid-deploy, B sees mysterious failures with no explanation. A read-only `workspace_agents` MCP tool that returns `[{name, status, last_action}]` (same data the sidebar shows, just an ETS lookup) would let agents say "another agent just rebuilt" instead of silently failing. No spawning, no cross-agent messaging, no control — just awareness. The security boundary (no `Tools.Agents`, no spawn) stays intact.
 
-9. **LifecycleE2ETest "destroy leaves no residue" — supervisor stays alive past 90s on CI.** `WorkspaceSupervisor.workspace_running?(ws_id)` continues to report `true` for over 90 seconds after `Workspace.Destructor.destroy/1` returns on the docker-e2e CI runner. Either `DynamicSupervisor.terminate_child` is hanging on a Docker daemon ack inside `ServiceManager.terminate/2`, or some path is recreating the WorkspaceGroup after teardown (Setup task respawn? source_children?). Test currently `@tag :skip`'d in `test/loopyard/workspace/lifecycle_e2e_test.exs:67`. Reproduce: run `mix test test/loopyard/workspace/lifecycle_e2e_test.exs --include skip --include docker` against a real Docker daemon, then add `Logger` traces around terminate_child + Registry.lookup loops to see who's recreating the entry.
+9. **LifecycleE2ETest "destroy leaves no residue" — supervisor stays alive past 90s on CI.** `WorkspaceSupervisor.workspace_running?(ws_id)` continues to report `true` for over 90 seconds after `Workspace.Destructor.destroy/1` returns on the docker-e2e CI runner. Either `DynamicSupervisor.terminate_child` is hanging on a Docker daemon ack inside `ServiceManager.terminate/2`, or some path is recreating the WorkspaceGroup after teardown (Setup task respawn? source_children?). Test currently `@tag :skip`'d in `test/loopyard/workspace/lifecycle_e2e_test.exs:78`. Reproduce: run `mix test test/loopyard/workspace/lifecycle_e2e_test.exs --include skip --include docker` against a real Docker daemon, then add `Logger` traces around terminate_child + Registry.lookup loops to see who's recreating the entry.
 
 7. **Consider SQLite + Ecto for persistent state (later).** Today ETS + an append-only ETF log per workspace is the storage substrate. Works fine at current scale but cross-cuts: registry persistence (`project_store.ex` → JSON), agent messages (`agent_log.ex` → ETF), projects/workspaces (`workspace_registry.ex` → ETS), secrets (`secrets.ex` → JSON) each have bespoke persistence paths. SQLite via Ecto would give us a single queryable store, real transactions, trivial backups, and compaction-for-free. Not urgent — the current setup is fast and has no real bugs pointing at it. Revisit when (a) we want cross-workspace queries ("show every agent that used this secret"), (b) log compaction + migration machinery starts feeling more complex than a schema, or (c) we add multi-node features that need a shared store. Keeping `ProjectStore` / `AgentLog` / `WorkspaceRegistry` as narrow interfaces (not leaking ETS semantics to callers) now makes a later swap tractable — we're already doing that.
 
-## Robustness (continued)
-
-11. ~~**Migrate the ACP adapter off the deprecated package.**~~ **DONE** (2026-07-20). Base image (now tagged `loopyard-workspace-base:v2` — the tag bump is what makes `ensure_image` rebuild) pins `@agentclientprotocol/claude-agent-acp@0.60.0`, bin `claude-agent-acp`. `docker_exec_cmd` prefers the new bin with a fallback to `claude-code-acp` so containers stamped from the old image keep booting until re-stamped. The big win: 0.60.0 pushes `usage_update` notifications (real token usage + `_claude/rateLimit` info) — see #16/#22.
-
 ## ACP backend caveats (ACP is now the default)
 
-`Harness.ACP` is now the default backend (`config :loopyard, :default_harness: Loopyard.Harness.ACP`; test.exs stays on `Harness.Fake`, and `Harness.Claude` is selectable per-agent via `backend:` and one config line away). Cancel (#14), resume (#15), and system-prompt threading (#17 partial) landed. The remaining items below are now **known caveats of the default**, not blockers — the two that matter most for parity are #13 (human-gated permissions) and the #17 tool-policy/mcp_servers threading.
+`Harness.ACP` is now the default backend (`config :loopyard, :default_harness: Loopyard.Harness.ACP`; test.exs stays on `Harness.Fake`; the host-execution `Harness.Claude` is deleted). Cancel (`session/cancel`), resume (`session/load`), and system-prompt threading (#17 partial) landed. The remaining items below are now **known caveats of the default**, not blockers — the two that matter most for parity are #13 (human-gated permissions) and the #17 tool-policy/mcp_servers threading.
 
 13. **Plumb `session/request_permission` through to a real decision.** `Connection.handle_agent_request("session/request_permission", …)` surfaces a `%Event.PermissionRequest{}` but `StreamHandler.process_event/2` has no clause for it — it falls through `process_event(_other, state)` and is **dropped**, so the UI never sees it. Meanwhile `ACP.acp_permission_mode/1` hardcodes `:auto_allow` (Connection picks the first `allow*` option). Wire the event into StreamHandler → an approval card (reuse the `Harness.Approvals` broker), and add the `:ask` permission mode (#7) so a human gates the call instead of auto-allowing. Until then, an ACP agent is bounded only by the container sandbox, not per-tool policy (see SECURITY.md → ACP adapter trust boundary).
 
-14. ~~**No `session/cancel` interrupt.**~~ **DONE.** `Harness.cancel_turn/1` was already the behaviour callback (wired through `Turn` + `ChatAgent.warm_interrupt`); only the ACP leaf was a no-op. `Connection.cancel/1` now sends the `session/cancel` notification (keeping the session warm), and `ACP.cancel_turn/1` calls it (exit-safe). Frame-level tested in `connection_test.exs`.
-
-15. ~~**ACP resume is a no-op — no `session/load`.**~~ **DONE.** `handle_response(:initialize, …)` now issues `session/load` with the saved id when `:resume` is present AND the adapter advertised `agentCapabilities.loadSession`, falling back to `session/new` otherwise, and again if `session/load` errors (expired id). The resume id already round-trips (captured → `claude_session_id` → `:resume`). Frame-level tested in `connection_test.exs`. Still worth verifying replay behavior against the real adapter (history arrives as `session/update` with `turn == nil`, safely ignored).
-
-16. **Token accounting fixed; dollar cost still zeroed.** With claude-agent-acp@0.60.0 (#11) the Translator consumes `usage_update` notifications: `input_tokens` is the session's REAL context usage, so `context_utilization` moves and the 92% proactive compaction + context warnings work under ACP (this was the root enabler of the OOM spiral, #20). Output tokens remain a byte-estimate and `cost_usd` stays 0.0 — the adapter doesn't price turns. Containers stamped from the pre-v2 image emit no `usage_update` and behave as before until re-stamped.
+16. **Token accounting fixed; dollar cost still zeroed.** With claude-agent-acp@0.60.0 the Translator consumes `usage_update` notifications: `input_tokens` is the session's REAL context usage, so `context_utilization` moves and the 92% proactive compaction + context warnings work under ACP (this was the root enabler of the old OOM death spiral, now also broken by the mid-turn-crash compaction breaker in `chat_agent.ex`). Output tokens remain a byte-estimate and `cost_usd` stays 0.0 — the adapter doesn't price turns. Containers stamped from the pre-v2 image emit no `usage_update` and behave as before until re-stamped.
 
 17. **`session_opts` are ClaudeCode-shaped and not fully threaded to ACP.** _Mostly done:_ the **system prompt** reaches the harness (`maybe_install_system_prompt/2` installs `append_system_prompt`/`system_prompt` as `CLAUDE.local.md`), and **`mcp_servers`** now landed — Loopyard's control-plane tools reach an in-container ACP agent over a dedicated HTTP MCP bridge (`Loopyard.MCP` / `LoopyardWeb.MCP.{Server,Listener}`, `ToolConfig.acp_mcp_servers/2`), threaded as `:acp_mcp_servers` → `session/new` `mcpServers`, bearer-authed + agent-scoped (see SECURITY.md → ACP MCP bridge). **Still open:** (a) **tool policy** — `allowed_tools`/`disallowed_tools` have no ACP equivalent; map them onto the permission model (auto-reject disallowed / auto-allow allowed inside `decide_permission`), which depends on the `:ask` work (#13). (c) `thinking`/`max_turns` have no ACP equivalent — document as dropped. Until (a) lands, an ACP agent runs with the harness's tool defaults for *native* tools, though Loopyard's MCP tools are now available.
 
@@ -123,9 +115,7 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 18. **Untested guardrails on the ACP fs delegation (host mode).** `Connection.handle_agent_request("fs/read_text_file" | "fs/write_text_file", …)` passes the adapter-supplied `path` straight to `File.read/1` / `File.write/2` with **no `validate_workspace_path` clamp** — host mode trusts the adapter with the host filesystem, and there's no test proving a `../../etc/passwd`-style path is rejected (because nothing rejects it yet). In-container mode advertises no fs capability so this path is unused there, which is why it's tolerable for now. Before host mode is anything but a spike: clamp both handlers through `Helpers.validate_workspace_path/1` and add a rejection test mirroring `write_file_test.exs`. Also missing: a bounded-buffer test for `Transport.Port` (the `:noeol` continuation buffer has no hard ceiling — a pathological adapter can grow `state.buf` unboundedly).
 
-20. **ACP harness OOM death spiral on long conversations — compact on repeated mid-turn crash.** Diagnosed live (agent `07b22ffeb604debc`, 2026-07-20): the work container's hard 8GiB `--memory` cap OOM-killed the in-container harness **26 times** (`memory.events oom_kill`), accelerating to every-turn as the conversation grew (110 turns, 1000 msgs, one claude session). Chain: #16 zeroes `input_tokens` → `context_utilization` stays 0.0 → the 92% proactive compaction NEVER fires under ACP → the session grows unboundedly → each turn the harness loads/replays it and balloons past the cgroup cap → kernel kills it → recovery `resume:`s the SAME bloated session → next turn balloons again. Also explains slow Send→response: every send first respawns the harness + replays the giant session. Fix (designed, not yet shipped): (a) count mid-turn CLI deaths since the last CLEAN turn completion on a new state field (the existing 60s message-window breaker in `on_stream_error` misses crashes minutes apart, and `consecutive_crashes` belongs to the thinking-exit backoff machinery); at ≥2, route recovery to the existing `{:auto_restart_context, nil}` compaction (summarize → fresh session) instead of resume — that breaks the spiral with a real signal. (b) ~~Longer term: estimate utilization under ACP (message bytes ÷ 4)~~ superseded — claude-agent-acp@0.60.0 (#11/#16) reports REAL usage via `usage_update`, so `context_utilization` is live under ACP and the 92% proactive compaction fires before the OOM. Note the orphan-adapter reaper in `harness/acp.ex` already bounds leaked exec pairs — accumulation wasn't the driver.
-
-22. **ACP rate-limit handling: push-first, stderr classification as fallback.** Diagnosed live (agent `bc17dbb4450d553a`, 2026-07-20): an upstream "API Error: Rate limit reached" makes the adapter error the `session/prompt` request and EXIT (status 1) — pre-fix that read as a generic crash, and restart-with-resume looped straight back into the hard limit. Two layers now: (1) claude-agent-acp@0.60.0 (#11) PUSHES `usage_update` + `_claude/rateLimit` (status, `resetsAt` ms, type) mid-turn → Translator emits a full `%Event.RateLimitStatus{}` → precise timed retry, and an `allowed` push un-parks the agent immediately. (2) Fallback for the adapter-death shape (and pre-v2 containers): `Connection` classifies the prompt-error reply + rate-limit stderr on `{:acp_closed, …}` and emits a `:rejected` with nil reset → 60s poll. The nil-reset poll now only matters on the fallback path; adapter emits the push only after the session has assistant usage (`lastAssistantTotalUsage !== null`), which is why the fallback stays.
+22. **ACP rate-limit handling: push-first, stderr classification as fallback.** Diagnosed live (agent `bc17dbb4450d553a`, 2026-07-20): an upstream "API Error: Rate limit reached" makes the adapter error the `session/prompt` request and EXIT (status 1) — pre-fix that read as a generic crash, and restart-with-resume looped straight back into the hard limit. Two layers now: (1) claude-agent-acp@0.60.0 PUSHES `usage_update` + `_claude/rateLimit` (status, `resetsAt` ms, type) mid-turn → Translator emits a full `%Event.RateLimitStatus{}` → precise timed retry, and an `allowed` push un-parks the agent immediately. (2) Fallback for the adapter-death shape (and pre-v2 containers): `Connection` classifies the prompt-error reply + rate-limit stderr on `{:acp_closed, …}` and emits a `:rejected` with nil reset → 60s poll. The nil-reset poll now only matters on the fallback path; adapter emits the push only after the session has assistant usage (`lastAssistantTotalUsage !== null`), which is why the fallback stays.
 
 23. **Classify the harness 401 (unauthenticated CLI) as a distinct, actionable error — not a generic crash.** Diagnosed live (2026-07-20): the identity's `~/.loopyard/env` lost `CLAUDE_CODE_OAUTH_TOKEN` (see the `Env` store-decay fix — atomic write + non-clobbering read), so the in-container `claude` 401'd and the adapter EXITED on every `session/prompt`. That surfaced as `"CLI crashed — restarting and resuming where it left off"` + `"Turn failed — tap Send to retry"` — identical to a memory/resume crash, so debugging chased resume/compaction logic for hours when the fix was "put the token back." The adapter's stderr on an auth failure is distinctive ("Not logged in" / 401 / "Please run /login"); `Connection` should classify it the way it classifies rate-limit stderr (#22) and emit a dedicated `:auth_expired`-style event so ChatAgent renders the WHY/CONSEQUENCE/ACTION error it already has for auth ("Claude isn't authenticated in this workspace → every turn will crash → push a fresh `CLAUDE_CODE_OAUTH_TOKEN` on the Workstation page"). Bonus: before giving up, ChatAgent could run one `Env.sync_home/1` — if the store has the token but the container's env is stale (exactly this incident), that self-heals without any human action. Would have turned a multi-hour hunt into a one-line diagnosis.
 
@@ -141,7 +131,7 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 10. **Cache `resolve_container` / `agent_container` resolution per turn.** Every container tool call (`exec`/`grep`/`glob`/`tree`/`file_info`/`logs`/`ports`) now resolves its target via `Workspace.agent_container/1`, which does up to two `docker inspect` calls (compose container, then the cheap `WorkContainer`). That's correct but adds ~20–60ms per tool call on a hot agent loop. Cheap win: memoize the resolved container name on the agent's ETS state, invalidated when preview is started/stopped (those are the only transitions that change which container is the exec target). Keep the lazy `ensure_working/1` self-heal on cache miss.
 
-21. **Collapsed tool cards keep their full bodies in the DOM — lazy-render on expand.** → **Promoted to [Epic #67](https://github.com/loopyard/loopyard/issues/67)** (chat DOM audit: lazy card bodies, LV-streams evaluation, pagination #8, measurement harness); details live there. Confirmed against a real long session (Safari tab at 2.5GB): the transcript window caps at 160 messages, but every closed `<details>` card (tool output, file read, grep) retains up to `@result_line_cap` (300) lines of content — syntax-highlighted file cards are thousands of DOM nodes each, collapsed or not. Hidden ≠ deallocated. Fix direction: render card bodies only when open (summary click → `phx-click` sets an expanded-set assign; body renders server-side on demand — ~50ms LAN roundtrip on first expand is fine), or move the transcript to LiveView streams with `limit:` so pruning genuinely removes nodes. Pairs with #8 (pagination).
+21. **Chat transcript: LiveView streams / real pruning.** The lazy half of [Epic #67](https://github.com/loopyard/loopyard/issues/67) shipped — `Messages.ToolResults` renders a tool-result body only while expanded (live tail, errors, or a viewer's click; `lazy?/1` + `result_expanded?/1` in `tool_results.ex`), so collapsed scrollback no longer holds thousands of highlighted nodes. Still open from the epic: move the transcript to LiveView streams with `limit:` so the 160-message window prunes nodes from the DOM rather than re-rendering the whole list, plus the measurement harness that proves it. Pairs with #8 (pagination).
 
 8. **Paginate chat messages (load recent, fetch older on scroll-up).** Currently all messages are rendered into the DOM on mount (400+ for long-lived agents). At scale this will bog down both the server (serializing the full list) and the browser (laying out hundreds of nodes). Load the last ~50 messages on mount, prepend older batches when the user scrolls to the top. Hard parts: maintaining scroll position when prepending content, coordinating with LiveView's DOM diffing, and deciding the fetch boundary (ETS slice vs. cursor). The `ScrollBottom` hook already tracks scroll position — extend it to detect "at top" and `pushEvent` to request more.
 
@@ -150,7 +140,7 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 12. **Weave Aural (ambient sound) into the workspace experience.** _Partially shipped:_ a persistent app-wide ambient bed now lives in the root layout (`root.html.heex` `#ambient` + the `AmbientAudio` app.js hook), and the whole app runs in one `live_session` so the bed survives navigation. Off by default (autoplay policy); a corner toggle starts it and the choice persists in localStorage. It streams the global `activity` channel, which `ActivitySound` already drives from live agent events. **Still open:** (a) per-scope channels — switch the bed to `project-<id>` as you enter a project so each sounds distinct (today it's one global channel for continuity; changing `src` restarts the stream, so a crossfade is needed); (b) per-participant mute/volume beyond the on/off toggle (it's multiplayer — one person's audio ≠ everyone's; a volume slider + the two-channel proximity mix `ActivitySound` already emits); (c) richer signal→bed mapping (decision-waiting vs build-running distinct textures). Lives near the collaborative-listening direction (Presence + per-room channel) already sketched for Aural.
 
 13. **Cascading TTL — let the system fall asleep in tiers.** The town-hall line
-    (`/queue`, `Loopyard.Attention`) already self-decays: an unanswered question
+    (`/notifications`, `Loopyard.Attention`) already self-decays: an unanswered question
     ages out on its TTL (the brokers reap dead waiters). Extend that decay
     upward: a question times out → after its own idle TTL a *workspace* with no
     live attention falls asleep (cluster down, agent CLI reaped) → after a longer
@@ -162,10 +152,10 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
     tiered cascade + lazy wake. (Deferred deliberately until the queue UI proved
     out.)
 
-14. **Global "needs you" badge — the town hall, reachable from anywhere.** `/queue`
+14. **Global "needs you" badge — the town hall, reachable from anywhere.** `/notifications`
     exists and is tear-out-able, but you still have to navigate to it. Add a
     small always-present count badge (app-wide chrome) that shows the blocking-item
-    count and links to `/queue`, so from any page you can see "3 agents waiting"
+    count and links to `/notifications`, so from any page you can see "3 agents waiting"
     and jump. Cleanest wiring: an `on_mount` hook on the `:app` live_session that
     subscribes to global activity + assigns the count, rendered as a floating
     element in `app.html.heex`. Keep it defensive (rescue, safe default) — it runs
@@ -183,7 +173,7 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 - When you ship behavior, update the doc that owns the concern in the same commit. See the "Update docs when you ship a major change" rule in `CLAUDE.md`.
 
 ## Attention: pending cards without live waiters must stay in the line
-`Attention.line` (feeds /operator "For you" + /queue) lists only items with a
+`Attention.line` (feeds /operator "For you" + /notifications) lists only items with a
 live waiter; `Questions.pending_all` prunes dead waiters and marks the card
 :timeout. But the queued model means a card can be answerable long after its
 waiter died (answers persist + reach the agent). Result: the longest-waiting
@@ -206,27 +196,12 @@ of staff hunts so the human doesn't.
    in ChatAgent. Collapse `:auto_restart_context` onto the `restart_session_now`
    path (it only additionally needs the re-send prompt + seed).
 2. **Case-table complexity**: `LoopyardWeb.Components.ToolSummary.summarize`
-   (CC 74) and `Viewers.FileType` (CC 45) are giant case trees — convert to
-   data (module-attribute maps) so adding a tool/extension is a row, not a
-   clause. Low risk, cosmetic-mechanical.
+   (CC 74) is a giant case tree — convert to data (a module-attribute map) so
+   adding a tool is a row, not a clause. Low risk, cosmetic-mechanical.
+   (`Viewers.FileType` already went data-driven — `@text_extensions` & co.)
 3. **Property-based tests still absent** despite TESTING.md prescribing
    StreamData for `StreamBuffer`, `AgentLog` replay, `StateMachine`, and tool
    input validators. Zero `ExUnitProperties` usages in test/.
-4. **Operator.Digest has no tests** — the notify-when-done GenServer (watch
-   registration, TTL sweep, dedup, pending-flush-on-idle) is the operator's
-   money path; needs a focused GenServer test with fabricated Activity events.
-
-5. **Survive a Docker-daemon outage decisively.** Colima hard-crashed
-   (runtime state "empty value", socket refused) and every agent thrashed
-   into harness-spawn error walls (`{:closed, {:exit_status, 1}}` — exec into
-   dead containers) until a human restarted the VM. Wanted: a daemon-health
-   probe (cheap `docker version` on a timer or Docker.Observer's event stream
-   dying) that flips a fleet-level status — pause session spawns while it's
-   down (they can only fail), one calm operator-chat line with the fix
-   (`colima start`), auto-resume when the daemon returns. Same shape as the
-   auth-outage flow. Also: re-apply `fs.inotify.max_user_instances=1024`
-   inside the VM automatically on reconnect (lost on every VM restart).
-
 6. **Detail-panel action buttons feel dominant.** Brad's parked call
    (Jul 2026): keep the labeled slabs for now — icon-only + tooltips is
    mobile-hostile (no hover), and the labels are the safety on Restart/Remove.
@@ -245,3 +220,46 @@ of staff hunts so the human doesn't.
    the same `chrome={:desktop}` idea applied to identity. Not done here
    because `question_card`/`approval_card`/`secret_card` render into the chat
    stream too, where the chip is the ONLY identity and must stay.
+
+8. **`WorkspaceGroup` is still `strategy: :one_for_all`** (`workspace_group.ex`,
+   `Supervisor.init/2`). Left over from the post-migration audit (HIGH #3, now
+   in `plans/archive/post-migration-audit.md`): one crashing child —
+   ContainerMonitor, the checkpointer, a source child — restarts the whole
+   group, ServiceManager and every agent included, so an unrelated crash
+   costs the user every harness in the workspace. The children don't share
+   state that requires restarting together; `:one_for_one` (or `:rest_for_one`
+   with ServiceManager first) with the same `max_restarts: 10, max_seconds: 60`
+   budget is the fix. Verify with a crash-one-child test that asserts the
+   agents' pids survive.
+
+9. **`RestartController.release/1` docstring lies.** The moduledoc says release
+   "clears the flag and respawns the agent via the normal start_agent path";
+   the function only clears the quarantine fields in ETS, purges crash
+   history, and publishes `Released` — nothing respawns (the function's own
+   comment says leaving it to the operator is deliberate). Either make the
+   docstring say that, or make `/system/quarantine`'s release button offer the
+   respawn explicitly. A reader trusting the doc will click Release and wait
+   for an agent that never comes back.
+
+10. **`Attention.line/1` takes a `host` it ignores.** `def line(_host \\ nil)`
+    (`attention.ex`) — paths stopped depending on the host when the inbox
+    moved to `Notifications`, but `dashboard_live.ex` and `operator_live.ex`
+    still compute and pass one. Drop the parameter and the two call-site
+    lookups (and check `counts_by_workspace/1`, which still takes it) so the
+    signature stops implying a dependency that doesn't exist.
+
+## Security
+
+1. **The SSH daemon is unauthenticated and bound to every interface.**
+   `Loopyard.SSHServer` starts unconditionally from `application.ex` (there is
+   no off switch — `SSH_PORT` unset means `0`, i.e. the OS picks a free port,
+   not "disabled"), with `no_auth_needed: true` and an `:ssh.daemon/2` call
+   that passes no `ip:` option, so it listens on all interfaces. Username =
+   container name, no password — anyone who can reach the host on the LAN and
+   find the port (random is not hidden; a scan finds it) gets a shell in any
+   container. App auth is deferred by design (local-only trust), but this is
+   the one listener that is reachable off-box AND grants exec. The fix is
+   already specified in `plans/ssh-integration.md`: bind the local daemon to
+   `127.0.0.1`, and require public-key auth (`no_auth_needed: false` +
+   enrolled `authorized_keys`) for the network daemon. Ship the loopback bind
+   now; it is one option in `ssh_opts`.

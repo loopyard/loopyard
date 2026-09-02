@@ -12,6 +12,16 @@ defmodule Loopyard.MixProject do
       # listeners. Without this it warns on every reloaded request in dev.
       listeners: [Phoenix.CodeReloader],
       aliases: aliases(),
+      dialyzer: [
+        # PLT under priv/plts so CI can cache it (ci.yml caches that path;
+        # the default lives in _build and was never hitting the cache).
+        plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
+        # Mix tasks call Mix.*; test support modules reference ExUnit; HotReload
+        # calls IEx.Helpers.recompile/0.
+        plt_add_apps: [:mix, :ex_unit, :iex],
+        ignore_warnings: ".dialyzer_ignore.exs",
+        list_unused_filters: true
+      ],
       deps: deps(),
       releases: releases(),
       description:
@@ -80,7 +90,10 @@ defmodule Loopyard.MixProject do
       # Quality tools
       {:excoveralls, "~> 0.18", only: :test},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: :dev, runtime: false},
+      # :test too — the CI quality job runs under MIX_ENV=test, and for as long as
+      # this was :dev-only "mix dialyzer" there failed with "task not found",
+      # silently, behind continue-on-error.
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
       {:boundary, "~> 0.10", runtime: false},

@@ -1,6 +1,6 @@
 defmodule Loopyard.ChatAgent.PromptDriftTest do
   @moduledoc """
-  Surface #19 of plans/agent-sanity.md.
+  Surface #19 of plans/archive/agent-sanity.md.
 
   `build_system_prompt` is rebuilt from scratch on every `start_session`,
   pulling the latest CLAUDE.md + tool set. When `init_resume` brings

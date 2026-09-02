@@ -33,19 +33,17 @@ defmodule Loopyard.Source.Local do
   def add_project(path, _opts \\ []) do
     path = Path.expand(path)
 
-    cond do
-      not File.dir?(path) ->
-        {:error, "Directory does not exist: #{path}"}
-
-      true ->
-        # If mutagen isn't installed, we still register the project so the
-        # UI can show it — Local workspaces will just report :errored on
-        # their sync card until mutagen is installed. Better than a hard
-        # fail that blocks the user from even seeing the project.
-        case Git.repo_root(path) do
-          {:ok, repo_root} -> {:ok, build_project(repo_root, is_git: true)}
-          {:error, _} -> {:ok, build_project(path, is_git: false)}
-        end
+    if File.dir?(path) do
+      # If mutagen isn't installed, we still register the project so the
+      # UI can show it — Local workspaces will just report :errored on
+      # their sync card until mutagen is installed. Better than a hard
+      # fail that blocks the user from even seeing the project.
+      case Git.repo_root(path) do
+        {:ok, repo_root} -> {:ok, build_project(repo_root, is_git: true)}
+        {:error, _} -> {:ok, build_project(path, is_git: false)}
+      end
+    else
+      {:error, "Directory does not exist: #{path}"}
     end
   end
 

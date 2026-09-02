@@ -1,4 +1,4 @@
-> **Superseded (Sep 2, 2026)** by [notifications-and-agents.md](notifications-and-agents.md): the operator is the first SYSTEM agent, one of many, at `/agents/:id`; its rail retired (its needs-you list is `/notifications`). Kept for the history of the cockpit idea.
+> Archived Sept 2026 — merged. The operator cockpit is `LoopyardWeb.OperatorLive` (`/operator`), `Loopyard.Operator`, `Operator.Digest`; see CLAUDE.md → "The Operator — the cockpit".
 
 # Plan: The Operator — one chief-of-staff agent + surface
 

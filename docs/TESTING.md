@@ -9,7 +9,7 @@
 ## Running tests
 
 ```bash
-mix test                           # Default (excludes :docker, :slow, :terminal, :ssh, :recovery)
+mix test                           # Default (excludes :docker, :slow, :terminal, :ssh, :recovery, :macos)
 mix test --trace                   # Verbose output
 LOOPYARD_DOCKER_TESTS=1 mix test --include docker   # Include Docker integration tests
 mix test path/to/test.exs          # Run specific file
@@ -27,6 +27,7 @@ Tests must finish in under 30 seconds. Per-test timeout is 2 seconds. If a test 
 | `@tag :terminal` | Requires PTY | Terminal echo, script(1) tests |
 | `@tag :ssh` | Requires SSH server | SSH connection tests |
 | `@tag :recovery` | Tests crash recovery | Agent restart, session backoff |
+| `@tag :macos` | Host-specific stat shellouts | `system_stats_test.exs` — `host_cpu`/`host_memory` shell out to macOS-only tools |
 
 All excluded by default in `test_helper.exs`.
 
@@ -38,10 +39,26 @@ All excluded by default in `test_helper.exs`.
   id: "test-#{:rand.uniform(100_000)}",
   name: "Test Agent",
   working_dir: tmp_dir,
-  bind_mount: tmp_dir,
   started_by: "test"
 )
 ```
+
+(There is no `bind_mount` option — host access is disabled everywhere and `Initializer` hardcodes `bind_mount: nil`; see SECURITY.md §0.)
+
+What lives in `test/support/`:
+
+| Helper | What it's for |
+|---|---|
+| `Loopyard.AgentCase` | Case template for modules that boot `ChatAgent`s — ONE isolated temp workspace group per module (`setup_all`), so no module shares the checkout's group with another. `use` it instead of `ExUnit.Case` when you call `start_agent/1`. |
+| `Loopyard.TestHelpers.start_agent/1` | Boots an agent under the right workspace supervisor; gives it a fresh temp workspace when `:working_dir` is omitted. |
+| `Loopyard.TestHelpers.eventually/2` | Polls a fun every 10 ms until truthy or flunks after `timeout_ms` (default 1 s) — the replacement for `Process.sleep` before an assertion. |
+| `Loopyard.TestHelpers.ensure_workspace/1` | Starts (or finds) the workspace subtree for a path; returns the `workspace_id`. |
+| `Loopyard.TestHelpers.destroy_workspace/1` | Stops a workspace subtree and destroys its volumes — except for the shared cwd-derived id, where it only stops the subtree (its volume may be real). |
+| `Loopyard.TestSupport.RecordingBackend` | A `Loopyard.Harness` that records every `start_session/1`'s opts and lets the test choose `session_id/1` / fail the next start — proves `resume:` is threaded through every restart path. |
+| `Loopyard.Test.FakeVolumeIO` | Process-dictionary stand-in for `VolumeIO` reads; swap in via `:volume_reader`, seed with `seed/2`. |
+| `Loopyard.Test.FakeAttachmentWriter` | On-disk (OS tmp dir) stand-in for `VolumeIO`'s attachment WRITE path — cross-process, so a LiveView's writes are readable from the test. Wired via `:attachment_writer` in `config/test.exs`. |
+| `Loopyard.Test.FakeContainerIO` | Process-dictionary stand-in for `ContainerIO` (the operator's attachment store). Wired via `:container_io`. |
+| `LoopyardWeb.ConnCase` / `LoopyardWeb.ChannelCase` | Standard Phoenix case templates (`@endpoint`, verified routes, `Phoenix.ChannelTest`) for controller/LiveView and channel tests. |
 
 Always use random IDs to avoid test interference. Always clean up in `on_exit`:
 
@@ -161,7 +178,7 @@ Test file: `test/loopyard/service_manager_terminate_test.exs`
 - **No mocks of our own code.** If you're tempted to mock a context module, refactor to pass data instead.
 - **Inject dependencies at the boundary.** `Docker.exec_in`, `VolumeIO`, and `Loopyard.Harness` are the boundaries; tests configure or stub these, not the callers.
 - **Never run an agent in the shared checkout workspace.** `TestHelpers.start_agent/1` gives every test its own temp workspace when you omit `:working_dir`; passing `File.cwd!()` puts your agent under the ONE workspace group every other cwd test shares, and a neighbour that crashes or restarts that group kills your agent mid-test (`:sys.get_state` → "no process", the classic "flaky under load" failure). The Sept 2026 audit moved all 18 agent tests off it. Reach for `File.cwd!()` only when the test is ABOUT the repo (git history, evals).
-- **No `Process.sleep` as a wait.** Wait on the event (`assert_receive` the broadcast, poll a state with a short interval), never a fixed sleep. A sleep is either too long (suite time) or too short (flake under load). The 2s per-test timeout is the tripwire.
+- **No `Process.sleep` as a wait.** Wait on the event (`assert_receive` the broadcast, or `TestHelpers.eventually(fn -> … end)` which polls every 10 ms), never a fixed sleep. A sleep is either too long (suite time) or too short (flake under load). The 2s per-test timeout is the tripwire.
 - **`async: true` unless the test touches global state.** Registries, ETS, `Application.put_env`, the shared workspace, Docker. Everything else (pure functions, `render_component`, struct/parsing logic) runs concurrently for free.
 
 ## When to write tests
@@ -204,7 +221,7 @@ Run as part of the normal `mix test` suite — no special tag needed unless a pr
 Agent tools must go through Docker, never the host filesystem. Tests should verify this boundary:
 
 - **Tool tests** should verify operations go through `Docker.exec_in` or `VolumeIO`, never host `File` operations. If a tool reads a file, it should use `VolumeIO.read_file/2` (which runs a `docker run` under the hood), not `File.read/1`.
-- **Truncation tests** should verify agents get bounded output. `Helpers.truncate_for_agent/1` caps tool output at ~80 lines. Test that long output is truncated and short output passes through unchanged.
+- **Truncation tests** should verify agents get bounded output. `Helpers.truncate_for_agent/2` passes output through untouched up to 8,000 bytes (`@max_agent_output`, override with `max:`); past that it keeps only the last 80 lines (`tail:`) behind a "showing last N lines" header. Test that long output is truncated and short output passes through unchanged.
 - **Tests tagged `:docker`** require a running Docker daemon. These test the real Docker path (volume I/O, container exec, compose lifecycle). Excluded from default runs.
 
 ## Speed profile
@@ -218,12 +235,15 @@ which ~215 ms was `VolumeIO.mirror_dir` spawning the real `docker` CLI past
 the daemon gate — see CODE_RULES "Every Docker shell-out honours the daemon
 gate". Gating it took the agent suites from 47 s to 19 s. Smaller levers:
 `Loopyard.AgentCase` (one workspace group per module), 10 ms helper polling,
-a 1 ms backoff base in the crash-loop test. Parallelism is not a lever — the
+a 1 ms backoff base in the crash-loop test, and test-env overrides for the
+three waits production needs but a test doesn't (`:sync_ready_probe_ms`,
+`:interrupt_deadline_ms`, `:rate_limit_retry_grace_ms` — see CONFIG.md).
+Parallelism is not a lever — the
 sync modules share the process registries. Profile before guessing:
 `:timer.tc` around `TestHelpers.start_agent/1` found this in one run.
 
 ## Known test issues
 
-- Claude CLI not available in test environment — `send_message` triggers stream errors (expected, non-blocking)
-- Docker tests excluded by default — run with `LOOPYARD_DOCKER_TESTS=1 mix test --include docker` (the env var re-enables the daemon gate from config/test.exs)
+- No real harness in test — `config/test.exs` sets `default_harness: Loopyard.Harness.Fake`, so `send_message` runs a no-op turn and no CLI subprocess is ever spawned. Pass `backend: Loopyard.TestSupport.RecordingBackend` in `start_agent/1` opts when a test needs to observe session starts.
+- Docker tests excluded by default — run with `LOOPYARD_DOCKER_TESTS=1 mix test --include docker` (the env var re-enables the daemon gate from config/test.exs). Add `LOOPYARD_LONG_TIMEOUTS=1` to raise the per-test timeout from 2 s to 30 s — `docker version` alone can take 1–2 s on a cold daemon (CI's docker-e2e job sets it).
 - Some tests may flake under full-suite load due to 2s timeout — if a test consistently needs more time, tag it `:slow`
