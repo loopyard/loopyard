@@ -393,11 +393,28 @@ defmodule Loopyard.Compose do
       |> Enum.map(fn {name, svc} ->
         svc = update_volumes_placeholder(svc, code_volume)
         svc = assign_registry_ports(svc, workspace_id, name)
+        svc = harden_service(svc)
         {name, svc}
       end)
       |> Map.new()
     end)
   end
+
+  # Defense-in-depth injected into every agent-authored service (mirrors the
+  # WorkContainer flags): no-new-privileges blocks setuid escalation, and the
+  # dangerous capabilities are dropped. The validator already rejects an agent
+  # SUPPLYING privileged/cap_add/security_opt, and this runs AFTER validation,
+  # so we're adding protection, never overriding an agent grant. See #74.
+  @dropped_caps ~w(SYS_ADMIN SYS_PTRACE SYS_MODULE SYS_RAWIO SYS_BOOT SYS_TIME
+                   MAC_ADMIN MAC_OVERRIDE NET_ADMIN DAC_READ_SEARCH LINUX_IMMUTABLE)
+
+  defp harden_service(svc) when is_map(svc) do
+    svc
+    |> Map.put("security_opt", ["no-new-privileges:true"])
+    |> Map.put("cap_drop", @dropped_caps)
+  end
+
+  defp harden_service(svc), do: svc
 
   defp ensure_code_volume(compose, code_volume) do
     volumes = Map.get(compose, "volumes", %{}) || %{}

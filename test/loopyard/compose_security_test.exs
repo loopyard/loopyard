@@ -449,4 +449,16 @@ defmodule Loopyard.ComposeSecurityTest do
       refute Map.has_key?(config["volumes"] || %{}, home_volume)
     end
   end
+
+  describe "process_agent_compose/2 — hardening injection (#74)" do
+    test "every service gets no-new-privileges and dropped caps" do
+      compose = "services:\n  web:\n    image: myapp\n"
+      assert {:ok, json} = Compose.process_agent_compose(compose, "test-ws")
+      out = Jason.decode!(json)
+      svc = out["services"]["web"]
+      assert svc["security_opt"] == ["no-new-privileges:true"]
+      assert "SYS_ADMIN" in svc["cap_drop"]
+      assert "SYS_PTRACE" in svc["cap_drop"]
+    end
+  end
 end
