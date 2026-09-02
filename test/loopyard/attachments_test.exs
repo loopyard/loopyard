@@ -116,6 +116,67 @@ defmodule Loopyard.AttachmentsTest do
     end
   end
 
+  describe "prompt_blocks/2" do
+    alias Loopyard.Test.FakeVolumeIO
+
+    setup do
+      prev = Application.get_env(:loopyard, :volume_reader)
+      Application.put_env(:loopyard, :volume_reader, FakeVolumeIO)
+
+      on_exit(fn ->
+        if prev,
+          do: Application.put_env(:loopyard, :volume_reader, prev),
+          else: Application.delete_env(:loopyard, :volume_reader)
+      end)
+
+      :ok
+    end
+
+    @shot %{
+      path: "/workspace/.loopyard/uploads/x-shot.png",
+      name: "x-shot.png",
+      mime: "image/png",
+      size: 4
+    }
+
+    test "text goes verbatim, images ride along as base64 image blocks" do
+      volume = FakeVolumeIO.seed("vol-pb", [{"/workspace/.loopyard/uploads/x-shot.png", "PNG!"}])
+      text = Attachments.annotate("look", [@shot, @log])
+
+      assert [
+               %{"type" => "text", "text" => ^text},
+               %{"type" => "image", "data" => data, "mimeType" => "image/png"}
+             ] = Attachments.prompt_blocks(text, %{volume: volume, image?: true})
+
+      assert Base.decode64!(data) == "PNG!"
+    end
+
+    test "a harness without image support, or no volume, gets the lone text block" do
+      text = Attachments.annotate("look", [@shot])
+
+      assert [%{"type" => "text"}] =
+               Attachments.prompt_blocks(text, %{volume: "v", image?: false})
+
+      assert [%{"type" => "text"}] = Attachments.prompt_blocks(text, %{volume: nil, image?: true})
+
+      assert [%{"type" => "text", "text" => "plain"}] =
+               Attachments.prompt_blocks("plain", %{volume: "v", image?: true})
+    end
+
+    test "an unreadable or oversize image stays path-only instead of failing the turn" do
+      volume = FakeVolumeIO.seed("vol-pb2", [])
+
+      text =
+        Attachments.annotate("", [
+          @shot,
+          %{@shot | size: 6 * 1024 * 1024, path: "/workspace/.loopyard/uploads/big.png"}
+        ])
+
+      assert [%{"type" => "text"}] =
+               Attachments.prompt_blocks(text, %{volume: volume, image?: true})
+    end
+  end
+
   test "image?/1 is by mime, and svg is not inlined" do
     assert Attachments.image?(@png)
     refute Attachments.image?(@log)

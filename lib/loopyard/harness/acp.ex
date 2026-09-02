@@ -72,6 +72,9 @@ defmodule Loopyard.Harness.ACP do
       # With an agent_id the Connection can route the harness's native
       # AskUserQuestion (ACP form elicitation) to that agent's question card.
       |> maybe_put(:agent_id, Keyword.get(opts, :agent_id))
+      # The code volume behind /workspace: attached images are read from it
+      # and sent inline as prompt image blocks (see stream/2).
+      |> maybe_put(:volume, Keyword.get(opts, :volume) || volume_for(opts))
 
     ready_timeout =
       if Keyword.get(opts, :resume), do: @resume_ready_timeout, else: @ready_timeout
@@ -218,6 +221,13 @@ defmodule Loopyard.Harness.ACP do
   # declare NO client fs capability so the harness uses the container's own
   # filesystem natively (validated: docker exec -i transport + handshake work;
   # full prompt/fs validation gated on an in-container inference credential).
+  defp volume_for(opts) do
+    case Keyword.get(opts, :workspace_id) do
+      ws when is_binary(ws) and ws != "" -> Loopyard.Workspace.volume_name_for(ws)
+      _ -> nil
+    end
+  end
+
   defp runtime_opts(opts) do
     case Keyword.get(opts, :container) do
       nil ->
@@ -264,10 +274,17 @@ defmodule Loopyard.Harness.ACP do
 
   @impl true
   def stream(conn, prompt) do
+    # Attachments: the prompt text carries `📎 Attached:` marker lines; when
+    # the adapter takes image blocks (Claude's does) the images are read out
+    # of the volume and ride along INLINE, so the model sees the screenshot
+    # this turn — no Read round-trip. Built here, in the caller (the turn
+    # Task), not in the Connection's GenServer loop.
+    blocks = Loopyard.Attachments.prompt_blocks(prompt, Connection.prompt_context(conn))
+
     Stream.resource(
       fn ->
         ref = make_ref()
-        Connection.prompt(conn, prompt, self(), ref)
+        Connection.prompt(conn, blocks, self(), ref)
         ref
       end,
       fn ref ->

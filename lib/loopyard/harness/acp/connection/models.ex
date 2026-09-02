@@ -28,6 +28,13 @@ defmodule Loopyard.Harness.ACP.Connection.Models do
     caps["loadSession"] == true
   end
 
+  # Whether the adapter takes `image` content blocks in session/prompt
+  # (ACP `promptCapabilities.image`). Absent → false → attachments go
+  # path-only and the agent Reads them.
+  def image_prompt_supported?(msg) do
+    get_in(msg, ["result", "agentCapabilities", "promptCapabilities", "image"]) == true
+  end
+
   def extract_models(result) when is_map(result) do
     case find_model_config_option(result["configOptions"]) do
       %{"options" => opts} = opt when is_list(opts) ->
