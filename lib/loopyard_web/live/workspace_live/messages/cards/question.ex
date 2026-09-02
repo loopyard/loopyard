@@ -239,7 +239,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
                 deselect and Answer dims) AND ARMS in the same tap — the
                 orange "Dismiss decision" is already there for the second tap;
               * nothing selected → "Dismiss" ARMS: it swaps for the orange
-                "Dismiss decision", which does it; any other tap disarms.
+                "Confirm dismissal", which does it; any other tap disarms.
             Arm/disarm toggle a class rather than inline display, so the
             has-checked rules keep working while armed. --%>
             <button
@@ -308,7 +308,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
                 StreamCard.action_class(variant: :primary)
               ]}
             >
-              Dismiss decision
+              Confirm dismissal
             </button>
             <.link
               :if={!@q[:multi] && @chat_path}
