@@ -95,7 +95,9 @@ defmodule Loopyard.ChatAgent.TurnHelpers do
   def warm_interrupt(%{session: session, backend: backend}) do
     task = Task.async(fn -> backend.cancel_turn(session) end)
 
-    case Task.yield(task, @interrupt_deadline_ms) || Task.shutdown(task, :brutal_kill) do
+    deadline = Application.get_env(:loopyard, :interrupt_deadline_ms, @interrupt_deadline_ms)
+
+    case Task.yield(task, deadline) || Task.shutdown(task, :brutal_kill) do
       {:ok, :ok} -> true
       _ -> false
     end

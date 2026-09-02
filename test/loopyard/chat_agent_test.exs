@@ -176,7 +176,7 @@ defmodule Loopyard.ChatAgentTest do
 
     test "messages have unique IDs after send", %{id: id} do
       ChatAgent.send_message(id, "hello")
-      Process.sleep(200)
+      Loopyard.TestHelpers.eventually(fn -> user_message?(ChatAgent.get_state(id)) end)
 
       state = ChatAgent.get_state(id)
       # Should have at least the user message
@@ -196,7 +196,7 @@ defmodule Loopyard.ChatAgentTest do
 
     test "get_message returns message by ID", %{id: id} do
       ChatAgent.send_message(id, "test lookup")
-      Process.sleep(200)
+      Loopyard.TestHelpers.eventually(fn -> user_message?(ChatAgent.get_state(id)) end)
 
       state = ChatAgent.get_state(id)
       msg = Enum.find(state.messages, &(&1.role == :user))
@@ -394,7 +394,13 @@ defmodule Loopyard.ChatAgentTest do
 
       # Stop the agent — this triggers terminate/2
       ChatAgent.stop_agent(id)
-      Process.sleep(200)
+
+      Loopyard.TestHelpers.eventually(fn ->
+        match?(
+          {_, c} when c != 0,
+          System.cmd("kill", ["-0", "#{os_pid}"], stderr_to_stdout: true)
+        )
+      end)
 
       # The OS process should be dead now
       {_, exit_code} = System.cmd("kill", ["-0", "#{os_pid}"], stderr_to_stdout: true)
@@ -881,4 +887,9 @@ defmodule Loopyard.ChatAgentTest do
       assert session_after != session_before
     end
   end
+
+  defp user_message?(%{messages: msgs}) when is_list(msgs),
+    do: Enum.any?(msgs, &(&1[:role] == :user))
+
+  defp user_message?(_), do: false
 end

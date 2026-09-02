@@ -388,7 +388,8 @@ defmodule Loopyard.Source.Local.SyncMonitor do
           end
         end,
         max_attempts: @ready_probe_attempts,
-        backoff: {:fixed, @ready_probe_delay}
+        backoff:
+          {:fixed, Application.get_env(:loopyard, :sync_ready_probe_ms, @ready_probe_delay)}
       )
 
     case result do

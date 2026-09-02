@@ -161,7 +161,7 @@ Test file: `test/loopyard/service_manager_terminate_test.exs`
 - **No mocks of our own code.** If you're tempted to mock a context module, refactor to pass data instead.
 - **Inject dependencies at the boundary.** `Docker.exec_in`, `VolumeIO`, and `Loopyard.Harness` are the boundaries; tests configure or stub these, not the callers.
 - **Never run an agent in the shared checkout workspace.** `TestHelpers.start_agent/1` gives every test its own temp workspace when you omit `:working_dir`; passing `File.cwd!()` puts your agent under the ONE workspace group every other cwd test shares, and a neighbour that crashes or restarts that group kills your agent mid-test (`:sys.get_state` → "no process", the classic "flaky under load" failure). The Sept 2026 audit moved all 18 agent tests off it. Reach for `File.cwd!()` only when the test is ABOUT the repo (git history, evals).
-- **No `Process.sleep` as a wait.** Wait on the event (`assert_receive` the broadcast, poll a state with a short interval), never a fixed sleep. A sleep is either too long (suite time) or too short (flake under load). The 2s per-test timeout is the tripwire.
+- **No `Process.sleep` as a wait.** Wait on the event (`assert_receive` the broadcast, or `TestHelpers.eventually(fn -> … end)` which polls every 10 ms), never a fixed sleep. A sleep is either too long (suite time) or too short (flake under load). The 2s per-test timeout is the tripwire.
 - **`async: true` unless the test touches global state.** Registries, ETS, `Application.put_env`, the shared workspace, Docker. Everything else (pure functions, `render_component`, struct/parsing logic) runs concurrently for free.
 
 ## When to write tests
@@ -218,7 +218,10 @@ which ~215 ms was `VolumeIO.mirror_dir` spawning the real `docker` CLI past
 the daemon gate — see CODE_RULES "Every Docker shell-out honours the daemon
 gate". Gating it took the agent suites from 47 s to 19 s. Smaller levers:
 `Loopyard.AgentCase` (one workspace group per module), 10 ms helper polling,
-a 1 ms backoff base in the crash-loop test. Parallelism is not a lever — the
+a 1 ms backoff base in the crash-loop test, and test-env overrides for the
+three waits production needs but a test doesn't (`:sync_ready_probe_ms`,
+`:interrupt_deadline_ms`, `:rate_limit_retry_grace_ms` — see CONFIG.md).
+Parallelism is not a lever — the
 sync modules share the process registries. Profile before guessing:
 `:timer.tc` around `TestHelpers.start_agent/1` found this in one run.
 

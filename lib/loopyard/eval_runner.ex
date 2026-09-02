@@ -839,7 +839,9 @@ defmodule Loopyard.EvalRunner do
         {:error, :timeout}
 
       true ->
-        Process.sleep(1_000)
+        # Poll every second, but never overshoot the deadline by one.
+        remaining = deadline - System.monotonic_time(:millisecond)
+        Process.sleep(max(min(1_000, remaining), 10))
         wait_for_workspace_container_loop(container, deadline, workspace_id)
     end
   end
