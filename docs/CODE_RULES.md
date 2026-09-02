@@ -613,3 +613,15 @@ so `h-screen` left the page taller than the screen) and carries
 behavior: none }`. A pull at a panel's top then has nothing to chain into;
 the bars cannot be dragged off. Only the panels scroll.
 
+## The inbox: raise through the funnels, never scan
+
+Every decision card (question / approval / secret request) is appended via
+`ChatAgent.MessageWindow.append_message_ets/2` and its status flipped via
+`update_message_now/3`. Those two calls are what tell `Loopyard.Notifications`
+an item was raised or settled. A new card kind or a new way to settle one
+MUST go through them — a card written to ETS any other way is invisible to
+the inbox until the reconcile sweep catches it (up to 60 s), and a status
+flipped any other way leaves a phantom open item for as long. Never compute
+"what's waiting on a human" by scanning agent summaries; read the store
+(`Notifications.open/1`, `Attention.line/0`). It used to be a scan on every
+render of four surfaces and inside every push payload.
