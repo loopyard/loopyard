@@ -50,6 +50,9 @@ defmodule Loopyard.Application do
       {Registry, keys: :unique, name: Loopyard.ServiceManagerRegistry},
       {Registry, keys: :unique, name: Loopyard.WorkspaceRegistry},
       {Registry, keys: :unique, name: Loopyard.WorkspaceAgentRegistry},
+      # Per-identity SystemGroup registry — the system agents' counterpart of
+      # WorkspaceRegistry (Loopyard.Agents.SystemGroup).
+      {Registry, keys: :unique, name: Loopyard.Agents.SystemGroupRegistry},
       {Registry, keys: :unique, name: Loopyard.SyncMonitorRegistry},
       {Registry, keys: :unique, name: Loopyard.TerminalRegistry},
       # Workspace.Setup uses this to track in-flight setup tasks per
@@ -64,6 +67,8 @@ defmodule Loopyard.Application do
       # workspace_id is nil.
       {DynamicSupervisor, name: Loopyard.AgentSupervisor, strategy: :one_for_one},
       Loopyard.WorkspaceSupervisor,
+      # System agents' groups (one per workstation identity), started on demand.
+      Loopyard.Agents.SystemSupervisor,
       Loopyard.PortRegistry,
       {Registry, keys: :unique, name: Loopyard.PortExposerRegistry},
       {DynamicSupervisor, name: Loopyard.PortExposerSupervisor, strategy: :one_for_one},

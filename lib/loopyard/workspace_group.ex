@@ -110,9 +110,8 @@ defmodule Loopyard.WorkspaceGroup do
   end
 
   @doc "The registered name of the per-workspace agent DynamicSupervisor."
-  def agent_sup_name(workspace_id) do
-    {:via, Registry, {@agent_registry, workspace_id}}
-  end
+  def agent_sup_name(workspace_id),
+    do: Loopyard.ChatAgent.RestartController.agent_sup_name(workspace_id)
 
   defp agent_sup_pid(workspace_id) do
     case Registry.lookup(@agent_registry, workspace_id) do

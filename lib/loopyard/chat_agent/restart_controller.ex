@@ -67,23 +67,36 @@ defmodule Loopyard.ChatAgent.RestartController do
   # ── Public API ──
 
   def start_link(opts) do
-    workspace_id = Keyword.fetch!(opts, :workspace_id)
-    GenServer.start_link(__MODULE__, opts, name: via(workspace_id))
+    GenServer.start_link(__MODULE__, opts, name: via(key_from(opts)))
   end
 
+  # The controller's KEY: a workspace id (WorkspaceGroup passes `workspace_id:`)
+  # or a system scope `{:system, identity}` (SystemGroup passes `scope:`). The
+  # key names the registry entry, the agent DynamicSupervisor, and the crash
+  # history rows.
+  defp key_from(opts), do: Keyword.get(opts, :scope) || Keyword.fetch!(opts, :workspace_id)
+
   @doc """
-  Start a ChatAgent under this workspace. Refuses if the agent is
-  already quarantined — operator must `release/1` first.
+  The registered name of the agent DynamicSupervisor for a scope key (a
+  workspace id or `{:system, identity}`). Both groups register theirs in
+  `Loopyard.WorkspaceAgentRegistry`; the key space is any term.
+  """
+  def agent_sup_name(key), do: {:via, Registry, {Loopyard.WorkspaceAgentRegistry, key}}
+
+  @doc """
+  Start a ChatAgent under the scope `key` (a workspace id, or
+  `{:system, identity}`). Refuses if the agent is already quarantined —
+  someone must `release/1` first.
 
   Returns `{:ok, pid}` | `{:error, :quarantined}` |
   `{:error, :workspace_not_running}` | `{:error, reason}`.
   """
-  def start_agent(workspace_id, agent_opts) do
+  def start_agent(key, agent_opts) do
     id = Keyword.fetch!(agent_opts, :id)
 
     case quarantined?(id) do
       true -> {:error, :quarantined}
-      false -> do_start_agent(workspace_id, agent_opts)
+      false -> do_start_agent(key, agent_opts)
     end
   end
 
@@ -104,8 +117,7 @@ defmodule Loopyard.ChatAgent.RestartController do
         cleared = Map.drop(summary, [:quarantined, :quarantine_reason, :quarantine_crashed_at])
         :ets.insert(:chat_agents, {agent_id, cleared})
 
-        workspace_id = Map.get(summary, :workspace_id)
-        if workspace_id, do: purge_history_for(workspace_id, agent_id)
+        purge_history_for(Loopyard.Agents.scope_key(summary), agent_id)
 
         :telemetry.execute(@telemetry_released, %{count: 1}, %{agent_id: agent_id})
 
@@ -192,17 +204,17 @@ defmodule Loopyard.ChatAgent.RestartController do
   @doc false
   # Used by WorkspaceGroup.start_agent/2 as the entry point. Public
   # so the supervisor can reach this GenServer without a naming hack.
-  def registered_name(workspace_id), do: via(workspace_id)
+  def registered_name(key), do: via(key)
 
   # ── GenServer ──
 
   @impl true
   def init(opts) do
-    workspace_id = Keyword.fetch!(opts, :workspace_id)
+    key = key_from(opts)
     Loopyard.StateKeeper.ensure_tables!()
 
     state = %{
-      workspace_id: workspace_id,
+      key: key,
       # Map: monitor_ref → {agent_id, agent_opts}. Lives only in
       # process state — when this controller restarts, monitors are
       # dead anyway and new ones get attached on the next
@@ -244,28 +256,27 @@ defmodule Loopyard.ChatAgent.RestartController do
   def handle_call({:purge_history, agent_id}, _from, state) do
     # Audit-2 MEDIUM #5: same process that owns handle_agent_down's
     # read-modify-write owns the delete, so they serialize.
-    :ets.delete(@history_table, history_key(state.workspace_id, agent_id))
+    :ets.delete(@history_table, history_key(state.key, agent_id))
     {:reply, :ok, state}
   end
 
   @impl true
   def handle_call({:start_agent, agent_opts}, _from, state) do
-    workspace_id = state.workspace_id
+    key = state.key
     id = Keyword.fetch!(agent_opts, :id)
 
-    # Inject workspace_id into the agent's opts so ChatAgent.init/1
-    # can store it in state. Without this, agents started via
-    # WorkspaceGroup.start_agent(ws_id, opts) end up with
-    # state.workspace_id == nil and any tool that calls
-    # `Helpers.resolve_container(agent_id)` returns
-    # "Agent X has no workspace". Caller-supplied workspace_id wins
-    # if explicitly provided (rare, but matches production paths).
-    agent_opts = Keyword.put_new(agent_opts, :workspace_id, workspace_id)
+    # A WORKSPACE controller injects its workspace_id into the agent's opts
+    # so ChatAgent.init/1 stores it (without it, every container tool said
+    # "Agent X has no workspace"). A system controller's agents have none —
+    # their scope is the identity — so nothing is injected. Caller-supplied
+    # workspace_id wins if explicitly provided.
+    agent_opts =
+      if is_binary(key), do: Keyword.put_new(agent_opts, :workspace_id, key), else: agent_opts
 
     # The actual GenServer start goes through the DynamicSupervisor
     # so OTP owns child spec, shutdown, and link management. We just
     # monitor the pid that comes back.
-    sup_name = Loopyard.WorkspaceGroup.agent_sup_name(workspace_id)
+    sup_name = agent_sup_name(key)
 
     case DynamicSupervisor.start_child(sup_name, {Loopyard.ChatAgent, agent_opts}) do
       {:ok, pid} ->
@@ -301,11 +312,11 @@ defmodule Loopyard.ChatAgent.RestartController do
     {count, window_ms} = threshold()
 
     history =
-      read_history(state.workspace_id, agent_id)
+      read_history(state.key, agent_id)
       |> Enum.filter(&(now - &1 <= window_ms))
 
     history = [now | history]
-    write_history(state.workspace_id, agent_id, history)
+    write_history(state.key, agent_id, history)
 
     if length(history) >= count do
       {:noreply, state} = quarantine(state, agent_id, {:boot_failed, reason})
@@ -331,13 +342,13 @@ defmodule Loopyard.ChatAgent.RestartController do
   @impl true
   def handle_info(msg, state) do
     Logger.warning(
-      "[RestartController] ws=#{state.workspace_id} unhandled: #{inspect(msg, limit: 200)}"
+      "[RestartController] #{inspect(state.key)} unhandled: #{inspect(msg, limit: 200)}"
     )
 
     :telemetry.execute(
       [:loopyard, :actor, :unknown_message],
       %{count: 1},
-      %{actor: __MODULE__, workspace_id: state.workspace_id, msg: inspect(msg, limit: 200)}
+      %{actor: __MODULE__, scope: state.key, msg: inspect(msg, limit: 200)}
     )
 
     {:noreply, state}
@@ -349,7 +360,7 @@ defmodule Loopyard.ChatAgent.RestartController do
   # counted. Clean up tracking state + persisted history.
   defp handle_agent_down(state, agent_id, _opts, :normal) do
     state = update_in(state.agent_opts, &Map.delete(&1, agent_id))
-    clear_history(state.workspace_id, agent_id)
+    clear_history(state.key, agent_id)
     {:noreply, state}
   end
 
@@ -357,13 +368,13 @@ defmodule Loopyard.ChatAgent.RestartController do
     # Supervisor-initiated shutdown (e.g. workspace tearing down).
     # Treat same as :normal.
     state = update_in(state.agent_opts, &Map.delete(&1, agent_id))
-    clear_history(state.workspace_id, agent_id)
+    clear_history(state.key, agent_id)
     {:noreply, state}
   end
 
   defp handle_agent_down(state, agent_id, _opts, {:shutdown, _}) do
     state = update_in(state.agent_opts, &Map.delete(&1, agent_id))
-    clear_history(state.workspace_id, agent_id)
+    clear_history(state.key, agent_id)
     {:noreply, state}
   end
 
@@ -375,11 +386,11 @@ defmodule Loopyard.ChatAgent.RestartController do
     {count, window_ms} = threshold()
 
     history =
-      read_history(state.workspace_id, agent_id)
+      read_history(state.key, agent_id)
       |> Enum.filter(&(now - &1 <= window_ms))
 
     history = [now | history]
-    write_history(state.workspace_id, agent_id, history)
+    write_history(state.key, agent_id, history)
 
     Logger.warning(
       "[RestartController] #{agent_id} crashed (#{length(history)}/#{count} in window): " <>
@@ -433,7 +444,7 @@ defmodule Loopyard.ChatAgent.RestartController do
 
     # Clear tracking — if operator releases, we start fresh. History
     # is in ETS; tracking is in-process.
-    clear_history(state.workspace_id, agent_id)
+    clear_history(state.key, agent_id)
     state = update_in(state.agent_opts, &Map.delete(&1, agent_id))
     {:noreply, state}
   end
@@ -442,8 +453,7 @@ defmodule Loopyard.ChatAgent.RestartController do
     # Respawn with the same opts. The ChatAgent GenServer handles
     # resume-from-ETS via `resume: true` already; we pass opts
     # verbatim so whatever the original caller set carries through.
-    workspace_id = state.workspace_id
-    sup_name = Loopyard.WorkspaceGroup.agent_sup_name(workspace_id)
+    sup_name = agent_sup_name(state.key)
 
     # Add resume: true so the respawned agent picks up existing state.
     opts = Keyword.put(agent_opts, :resume, true)
@@ -472,11 +482,8 @@ defmodule Loopyard.ChatAgent.RestartController do
 
   # ── Internals ──
 
-  defp do_start_agent(workspace_id, agent_opts) do
-    case Registry.lookup(
-           Loopyard.ChatAgent.RestartControllerRegistry,
-           workspace_id
-         ) do
+  defp do_start_agent(key, agent_opts) do
+    case Registry.lookup(Loopyard.ChatAgent.RestartControllerRegistry, key) do
       [{pid, _}] ->
         # ChatAgent.init starts the Claude CLI session synchronously, so this call
         # blocks on the CLI coming up. When the workspace supervisor also has to be
@@ -502,7 +509,7 @@ defmodule Loopyard.ChatAgent.RestartController do
     )
   end
 
-  defp via(workspace_id) do
-    {:via, Registry, {Loopyard.ChatAgent.RestartControllerRegistry, workspace_id}}
+  defp via(key) do
+    {:via, Registry, {Loopyard.ChatAgent.RestartControllerRegistry, key}}
   end
 end

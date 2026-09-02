@@ -60,18 +60,32 @@ defmodule Loopyard.ChatAgent.Lifecycle do
         bind_mount: summary[:bind_mount],
         workspace_id: summary[:workspace_id],
         volume: summary[:volume],
+        template_id: summary[:template_id],
+        scope: Loopyard.Agents.scope(summary),
+        workstation_identity: summary[:workstation_identity],
+        container: summary[:container],
         resume: true
       ]
       |> Enum.reject(fn {_k, v} -> is_nil(v) end)
 
-    supervisor =
-      if summary[:workspace_id] do
-        Loopyard.WorkspaceGroup.agent_sup_name(summary[:workspace_id])
-      else
-        Loopyard.AgentSupervisor
+    # By SCOPE: a workspace agent restarts under its WorkspaceGroup; a system
+    # agent under its identity's SystemGroup (started on demand) — both through
+    # the RestartController, so crash history + quarantine apply.
+    result =
+      case Loopyard.Agents.scope_key(summary) do
+        {:system, identity} ->
+          with {:ok, _} <- Loopyard.Agents.SystemSupervisor.ensure_group(identity) do
+            Loopyard.Agents.SystemGroup.start_agent(identity, opts)
+          end
+
+        ws_id ->
+          DynamicSupervisor.start_child(
+            Loopyard.WorkspaceGroup.agent_sup_name(ws_id),
+            {Loopyard.ChatAgent, opts}
+          )
       end
 
-    case DynamicSupervisor.start_child(supervisor, {Loopyard.ChatAgent, opts}) do
+    case result do
       {:ok, _pid} -> :ok
       {:error, reason} -> {:error, reason}
     end
@@ -117,11 +131,9 @@ defmodule Loopyard.ChatAgent.Lifecycle do
     # the log record is belt-and-suspenders for replay.
     case :ets.lookup(@ets_table, id) do
       [{^id, summary}] ->
-        ws_id = summary[:workspace_id]
+        path = Persistence.log_path_for(summary)
 
-        if ws_id do
-          path = Persistence.log_path(ws_id)
-
+        if path do
           try do
             AgentLog.append({:agent_removed, id}, log_path: path, version: 1)
           rescue
@@ -166,15 +178,18 @@ defmodule Loopyard.ChatAgent.Lifecycle do
   # via the workspace's agent supervisor (no restart) when we know the workspace,
   # else a direct stop; never raises.
   defp terminate_process(id) do
-    ws_id =
+    key =
       case :ets.lookup(@ets_table, id) do
-        [{^id, summary}] -> summary[:workspace_id]
+        [{^id, summary}] -> Loopyard.Agents.scope_key(summary)
         _ -> nil
       end
 
     case Registry.lookup(Loopyard.ChatAgentRegistry, id) do
-      [{pid, _}] when is_binary(ws_id) ->
-        DynamicSupervisor.terminate_child(Loopyard.WorkspaceGroup.agent_sup_name(ws_id), pid)
+      [{pid, _}] when not is_nil(key) ->
+        case Registry.lookup(Loopyard.WorkspaceAgentRegistry, key) do
+          [{sup, _}] -> DynamicSupervisor.terminate_child(sup, pid)
+          [] -> if Process.alive?(pid), do: GenServer.stop(pid, :normal, 3_000)
+        end
 
       [{pid, _}] ->
         if Process.alive?(pid), do: GenServer.stop(pid, :normal, 3_000)

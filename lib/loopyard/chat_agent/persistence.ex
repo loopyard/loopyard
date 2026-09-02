@@ -20,20 +20,35 @@ defmodule Loopyard.ChatAgent.Persistence do
   end
 
   @doc """
-  The operator agent's log — per workstation identity (it has no workspace).
-  Same ETF-log format, so its chat persists + replays like any other.
+  A workstation identity's SYSTEM agents' log — every workspace-less agent of
+  that identity, in one file with one writer (the SystemGroup's Checkpointer),
+  mirroring the per-workspace `agents.log`.
+  """
+  def system_log_path(identity),
+    do: Path.join(Loopyard.Workstation.dir(identity), "agents.log")
+
+  @doc """
+  The operator's OLD log, from before system agents had a group — read by the
+  migration only (`Loopyard.Agents.migrate!/1`).
   """
   def operator_log_path(identity),
     do: Path.join(Loopyard.Workstation.dir(identity), "operator-agent.log")
 
-  # Where THIS agent's log lives: a workspace agent → its workspace log; the
-  # operator (no workspace, but bound to a container + identity) → its
-  # per-workstation operator log; otherwise no persistence.
+  @doc "Where an agent's log lives, from its state or summary; nil = no persistence."
+  def log_path_for(state), do: state_log_path(state)
+
+  # Where THIS agent's log lives: by SCOPE — a workspace agent → its workspace
+  # log; a system agent → its identity's agents log; otherwise none. A row
+  # from before scopes existed (the operator: no workspace, a container) is a
+  # system agent too.
+  defp state_log_path(%{scope: :system, workstation_identity: id}) when is_binary(id),
+    do: system_log_path(id)
+
   defp state_log_path(%{workspace_id: ws}) when is_binary(ws), do: log_path(ws)
 
   defp state_log_path(%{workstation_identity: id, container: c})
        when is_binary(id) and is_binary(c),
-       do: operator_log_path(id)
+       do: system_log_path(id)
 
   defp state_log_path(_), do: nil
 
@@ -46,7 +61,7 @@ defmodule Loopyard.ChatAgent.Persistence do
       path ->
         # Log the full summary so replay produces complete ETS entries
         agent_data = summary_fn.(state) |> Map.delete(:messages)
-        safe_append({:agent, state.id, agent_data}, path, state.id, state.workspace_id)
+        safe_append({:agent, state.id, agent_data}, path, state.id, scope_key(state))
     end
   end
 
@@ -54,7 +69,7 @@ defmodule Loopyard.ChatAgent.Persistence do
   def persist_message(state, msg) do
     case state_log_path(state) do
       nil -> :ok
-      path -> safe_append({:msg, state.id, msg}, path, state.id, state.workspace_id)
+      path -> safe_append({:msg, state.id, msg}, path, state.id, scope_key(state))
     end
   end
 
@@ -65,7 +80,7 @@ defmodule Loopyard.ChatAgent.Persistence do
         :ok
 
       path ->
-        safe_append({:msg_update, state.id, msg_id, changes}, path, state.id, state.workspace_id)
+        safe_append({:msg_update, state.id, msg_id, changes}, path, state.id, scope_key(state))
     end
   end
 
@@ -81,9 +96,11 @@ defmodule Loopyard.ChatAgent.Persistence do
   # :ok so the caller keeps serving from memory. Persistence failure
   # is OBSERVABLE at /system/events but doesn't kill agents.
   # See plans/agent-sanity.md #17.
-  defp safe_append(event, path, agent_id, workspace_id) do
+  defp scope_key(state), do: Loopyard.Agents.scope_key(state)
+
+  defp safe_append(event, path, agent_id, key) do
     try do
-      append_via_writer(event, path, workspace_id)
+      append_via_writer(event, path, key)
       :ok
     rescue
       e ->
@@ -121,8 +138,8 @@ defmodule Loopyard.ChatAgent.Persistence do
   # silent record-loss race. When there's no Checkpointer (isolated tests,
   # not-yet-started workspace), there's also no concurrent compactor, so a
   # direct append is race-free too. Raises on failure (caught by safe_append).
-  defp append_via_writer(event, path, workspace_id) do
-    case checkpointer_for(workspace_id) do
+  defp append_via_writer(event, path, key) do
+    case checkpointer_for(key) do
       nil ->
         AgentLog.append(event, log_path: path, version: @log_version)
 
@@ -135,8 +152,8 @@ defmodule Loopyard.ChatAgent.Persistence do
 
   defp checkpointer_for(nil), do: nil
 
-  defp checkpointer_for(workspace_id) do
-    case Registry.lookup(Loopyard.AgentLog.CheckpointerRegistry, workspace_id) do
+  defp checkpointer_for(key) do
+    case Registry.lookup(Loopyard.AgentLog.CheckpointerRegistry, key) do
       [{pid, _}] -> pid
       [] -> nil
     end
