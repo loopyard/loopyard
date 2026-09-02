@@ -520,7 +520,7 @@ defmodule LoopyardWeb.ReviewLive do
         scrolled away and the band above collapse; an empty chat area with
         the composer at its foot is what a fresh thread should look like.
         Prompt bands are NOT sticky here — the slide has its own chrome. --%>
-        <div id={"thread-" <> @card.dom_id} class="min-h-screen">
+        <div id={"thread-" <> @card.dom_id} class="min-h-screen scroll-mt-36">
           <p :if={@blocked?} class="px-1 py-3 text-body text-zinc-500 dark:text-zinc-400">
             This is the operator's own question, and it's waiting on your answer
             before it can do anything else — including discuss it. Answer it
@@ -564,6 +564,7 @@ defmodule LoopyardWeb.ReviewLive do
             phx-submit="send_message"
             phx-hook="ChatForm"
             data-re={@ref}
+            data-scroll-to={"thread-" <> @card.dom_id}
             class="flex items-end gap-2"
           >
             <textarea
