@@ -98,6 +98,30 @@ defmodule Loopyard.ChatAgent.HarnessControl do
   def current(state),
     do: Catalog.fetch(Keyword.get(Map.get(state, :session_opts) || [], :harness)).id
 
+  @doc """
+  The ONE chat error for a harness that can't sign in, WHY / CONSEQUENCE /
+  ACTION. Every spawn-failure site (crash recovery, backoff retry, compaction
+  restart) hands an `{:auth_failed, error}` reason here instead of its own
+  generic copy: "send another message to retry" is not an action when there
+  is no credential — it fails identically forever — and an agent running
+  Codex must never be told to check `claude`. The fix lives on the
+  Workstation page, so that's where this points.
+  """
+  def auth_failed_copy(state, error) do
+    harness = Catalog.fetch(current(state))
+
+    "#{harness.label} isn't signed in in this box (#{auth_detail(error)}). " <>
+      "CONSEQUENCE: this agent can't run until it is; your messages are preserved. " <>
+      "ACTION: connect #{harness.label} on the Workstation page — set " <>
+      "#{Enum.join(harness.credential_keys, " or ")}, or run its login command in the " <>
+      "box console — then click Restart."
+  end
+
+  defp auth_detail(%{"message" => m}) when is_binary(m),
+    do: String.replace_prefix(m, "Internal error: ", "")
+
+  defp auth_detail(other), do: inspect(other)
+
   defp put_or_delete_model(session_opts, nil), do: Keyword.delete(session_opts, :model)
   defp put_or_delete_model(session_opts, model), do: Keyword.put(session_opts, :model, model)
 end

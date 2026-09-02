@@ -217,12 +217,18 @@ defmodule Loopyard.ChatAgent.SessionManager do
         fail_msg = %{
           role: :error,
           content:
-            "Failed to reconnect to the agent harness: #{inspect(reason)}. " <>
-              "WHY: the harness session died, and trying to spawn a new one failed. " <>
-              "CONSEQUENCE: your message was saved but won't be processed until the harness is back. " <>
-              "ACTION: (1) check the harness is installed in the container and authenticated, " <>
-              "(2) click Restart in the sidebar, " <>
-              "(3) send your message again. Prior conversation context is preserved.",
+            case reason do
+              {:auth_failed, error} ->
+                Loopyard.ChatAgent.HarnessControl.auth_failed_copy(state, error)
+
+              _ ->
+                "Failed to reconnect to the agent harness: #{inspect(reason)}. " <>
+                  "WHY: the harness session died, and trying to spawn a new one failed. " <>
+                  "CONSEQUENCE: your message was saved but won't be processed until the harness is back. " <>
+                  "ACTION: (1) check the harness is installed in the container and authenticated, " <>
+                  "(2) click Restart in the sidebar, " <>
+                  "(3) send your message again. Prior conversation context is preserved."
+            end,
           timestamp: DateTime.utc_now()
         }
 
@@ -532,20 +538,10 @@ defmodule Loopyard.ChatAgent.SessionManager do
   end
 
   # The retry-exhausted error, WHY / CONSEQUENCE / ACTION. Named by harness —
-  # an agent running Codex must never be told to check `claude`.
-  #
-  # An auth failure gets its own copy: "send another message to retry" is not
-  # an action when the harness has no credential — it would fail the same way
-  # forever. The fix lives on the Workstation page, so point there.
-  defp retry_failed_copy(state, _consecutive, {:auth_failed, error}, _max) do
-    harness = Loopyard.Harness.Catalog.fetch(Loopyard.ChatAgent.HarnessControl.current(state))
-
-    "#{harness.label} isn't signed in in this box (#{auth_detail(error)}). " <>
-      "CONSEQUENCE: this agent can't run until it is; your messages are preserved. " <>
-      "ACTION: connect #{harness.label} on the Workstation page — set " <>
-      "#{Enum.join(harness.credential_keys, " or ")}, or run its login command in the " <>
-      "box console — then click Restart."
-  end
+  # an agent running Codex must never be told to check `claude`. An auth
+  # failure takes the shared sign-in copy (`HarnessControl.auth_failed_copy/2`).
+  defp retry_failed_copy(state, _consecutive, {:auth_failed, error}, _max),
+    do: Loopyard.ChatAgent.HarnessControl.auth_failed_copy(state, error)
 
   defp retry_failed_copy(state, consecutive, reason, max_consecutive_crashes) do
     harness = Loopyard.Harness.Catalog.label(Loopyard.ChatAgent.HarnessControl.current(state))
@@ -558,9 +554,4 @@ defmodule Loopyard.ChatAgent.SessionManager do
       "click Restart. After #{max_consecutive_crashes} consecutive failures the " <>
       "agent will auto-quarantine until you intervene."
   end
-
-  defp auth_detail(%{"message" => m}) when is_binary(m),
-    do: String.replace_prefix(m, "Internal error: ", "")
-
-  defp auth_detail(other), do: inspect(other)
 end

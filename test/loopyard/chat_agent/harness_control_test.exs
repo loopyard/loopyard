@@ -63,6 +63,25 @@ defmodule Loopyard.ChatAgent.HarnessControlTest do
 
   defp full(state), do: state
 
+  describe "auth_failed_copy/2" do
+    test "names the harness, the adapter's reason and the keys — never another harness's CLI",
+         %{state: state} do
+      state = Map.put(state, :session_opts, harness: :codex)
+
+      copy =
+        HarnessControl.auth_failed_copy(state, %{
+          "message" => "Internal error: CODEX_API_KEY or OPENAI_API_KEY is not set"
+        })
+
+      assert copy =~ "Codex isn't signed in"
+      assert copy =~ "CODEX_API_KEY or OPENAI_API_KEY is not set"
+      refute copy =~ "Internal error"
+      assert copy =~ "Workstation page"
+      # The bug this pins: a Codex agent was told to check `claude --version`.
+      refute copy =~ ~r/claude/i
+    end
+  end
+
   describe "current/1" do
     test "reads the harness out of session_opts", %{state: state} do
       assert HarnessControl.current(state) == :claude

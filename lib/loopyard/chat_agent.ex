@@ -818,11 +818,19 @@ defmodule Loopyard.ChatAgent do
         err = %{
           role: :error,
           content:
-            "Context compaction couldn't restart the harness (#{inspect(reason)}). " <>
-              "WHY: the old session was stopped to compact context, but spawning the fresh one failed. " <>
-              "CONSEQUENCE: this turn didn't run; your conversation is preserved. " <>
-              "ACTION: send another message — the agent will spawn a new CLI and resume. " <>
-              "If it keeps failing, click Restart or check /system/events.",
+            case reason do
+              # No credential: retrying can't help — the shared sign-in copy
+              # says which harness and where to fix it.
+              {:auth_failed, error} ->
+                Loopyard.ChatAgent.HarnessControl.auth_failed_copy(state, error)
+
+              _ ->
+                "Context compaction couldn't restart the harness (#{inspect(reason)}). " <>
+                  "WHY: the old session was stopped to compact context, but spawning the fresh one failed. " <>
+                  "CONSEQUENCE: this turn didn't run; your conversation is preserved. " <>
+                  "ACTION: send another message — the agent will spawn a new harness and resume. " <>
+                  "If it keeps failing, click Restart or check /system/events."
+            end,
           timestamp: DateTime.utc_now()
         }
 
