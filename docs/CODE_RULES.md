@@ -600,9 +600,9 @@ content and painted it OVER the bar (the purple turn card popped above
 scroller: nothing inside can then outrank the chrome, whatever the
 compositor does. `#messages` and each decision slide's scroller carry it,
 plus `overscroll-y-contain` (no chaining into the page — the bounce itself
-STAYS; the rubber band is part of the feel and is never the fix), and the
-bars are `transform-gpu` so they are composited layers the rubber-band layer
-can't paint through.
+STAYS; the rubber band is part of the feel and is never the fix). Do NOT
+`transform-gpu` the bars: a composited sticky bar smeared a translucent band
+across the iOS status-bar region.
 
 ## App-shell pages lock the document
 

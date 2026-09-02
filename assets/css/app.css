@@ -66,7 +66,7 @@ body {
  * around. The secondary row pins directly below the primary (h-14 = 3.5rem),
  * so both stay reachable. */
 .app-bar {
-  @apply sticky top-0 z-30 bg-brand-paper dark:bg-brand-ink transform-gpu;
+  @apply sticky top-0 z-30 bg-brand-paper dark:bg-brand-ink;
 }
 
 /* APP SHELL pages (the Operator's chat and decisions): the DOCUMENT does not
@@ -90,14 +90,16 @@ html:has([data-app-shell]) body {
  * the back arrow. With the scroller isolated, nothing inside can outrank
  * .app-bar (z-30) or .app-bar-secondary (z-20), whatever WebKit does. */
 
-/* And the bars are `transform-gpu`: their own composited layers, so the
- * compositor orders them above a scrolling layer instead of letting a
- * rubber-band paint through them. The panels KEEP their bounce
- * (`overscroll-y-contain`: no chaining into the page, rubber band intact) —
- * the bounce is part of the feel and is never the thing to remove. */
+/* NOT `transform-gpu` on the bars: forcing them into composited layers put
+ * a translucent smear across the safe-area/status-bar region on iOS ("I
+ * thought my vision was going bad"). The document lock (data-app-shell)
+ * and the isolated scrollers are what keep the bars in place. The panels
+ * KEEP their bounce (`overscroll-y-contain`: no chaining into the page,
+ * rubber band intact) — the bounce is part of the feel and is never the
+ * thing to remove. */
 
 .app-bar-secondary {
-  @apply sticky top-14 z-20 bg-brand-paper dark:bg-brand-ink transform-gpu;
+  @apply sticky top-14 z-20 bg-brand-paper dark:bg-brand-ink;
 }
 
 /* Anything scrolled INTO view has to clear the pinned bar above it. Without
