@@ -95,6 +95,7 @@ Lives in the code volume under `.loopyard/workspace/`. Agents write these; Loopy
 | `.loopyard/workspace/Dockerfile` | Workspace container image build recipe. |
 | `.loopyard/workspace/docker-compose.yml` | Compose project for the workspace. Processed by `Compose.process_agent_compose/3` — host mounts, privileged, host networking, host port pins, and external networks are rejected. See [SECURITY.md](SECURITY.md). |
 | `.loopyard/workspace/agents.log` | Append-only ETF log of agent events. Compacted at boot when it exceeds 5 MB. |
+| `~/.loopyard/notifications.log` | The inbox store's own ETF log (`Loopyard.Notifications.Log`): every raised/settled item as an upsert; compacted to one snapshot past 5,000 records. Replayed into the `:notifications` ETS table at boot. |
 
 ## Per-workspace metadata on host
 

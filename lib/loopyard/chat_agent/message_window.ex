@@ -92,22 +92,33 @@ defmodule Loopyard.ChatAgent.MessageWindow do
   def append_message_ets(agent_id, msg) do
     msg = Map.put_new_lazy(msg, :id, fn -> generate_msg_id() end)
 
-    case Registry.lookup(Loopyard.ChatAgentRegistry, agent_id) do
-      [{pid, _}] ->
-        GenServer.cast(pid, {:append_external_message, msg})
-        msg
+    appended =
+      case Registry.lookup(Loopyard.ChatAgentRegistry, agent_id) do
+        [{pid, _}] ->
+          GenServer.cast(pid, {:append_external_message, msg})
+          msg
 
-      [] ->
-        # No GenServer running — direct ETS write
-        case :ets.lookup(@ets_table, agent_id) do
-          [{^agent_id, summary}] ->
-            :ets.insert(@ets_table, {agent_id, %{summary | messages: summary.messages ++ [msg]}})
-            msg
+        [] ->
+          # No GenServer running — direct ETS write
+          case :ets.lookup(@ets_table, agent_id) do
+            [{^agent_id, summary}] ->
+              :ets.insert(
+                @ets_table,
+                {agent_id, %{summary | messages: summary.messages ++ [msg]}}
+              )
 
-          [] ->
-            nil
-        end
-    end
+              msg
+
+            [] ->
+              nil
+          end
+      end
+
+    # THE FUNNEL: every decision card (question / approval / secret request)
+    # enters the transcript here, so this is where the inbox learns of it.
+    # A cast — the append path never blocks on the store.
+    if appended, do: Loopyard.Notifications.card_raised(agent_id, msg)
+    appended
   end
 
   @doc "Update a message by ID. Goes through GenServer if alive, falls back to direct ETS."
@@ -143,6 +154,11 @@ defmodule Loopyard.ChatAgent.MessageWindow do
     :ets.insert(:card_patches, {{agent_id, msg_id}, changes})
 
     result = patch_ets_and_broadcast(agent_id, msg_id, &Map.merge(&1, changes))
+
+    # THE OTHER FUNNEL: a card's status flip (answered / approved / submitted /
+    # declined / timeout) settles its inbox item. Also a cast.
+    if Map.has_key?(changes, :status),
+      do: Loopyard.Notifications.card_status(agent_id, msg_id, changes.status)
 
     case Registry.lookup(Loopyard.ChatAgentRegistry, agent_id) do
       [{pid, _}] ->

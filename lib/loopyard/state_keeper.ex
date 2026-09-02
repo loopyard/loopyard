@@ -79,6 +79,11 @@ defmodule Loopyard.StateKeeper do
     # ordered_set keyed by a monotonic seq; the Digest GenServer writes, the
     # tool reads direct.
     {:operator_digest, [:named_table, :public, :ordered_set, {:read_concurrency, true}]},
+    # Loopyard.Notifications — the inbox: every open decision (question /
+    # approval / secret) and finished-turn item, keyed by item id. The
+    # Notifications GenServer is the single writer (and keeps its own ETF log);
+    # every surface that used to derive "what's waiting" reads direct.
+    {:notifications, [:named_table, :public, :set, {:read_concurrency, true}]},
     # Loopyard.Operator.Jobs — the operator's WORKER QUEUE. One entry per
     # workspace you've dispatched work to ({ws_id, %{agent_id, read_count}}). The
     # "delta since you last looked" = current msg count − read_count; dive-in /

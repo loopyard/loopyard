@@ -345,6 +345,30 @@ All owned by `StateKeeper`. Created once in `init/1`.
 | `:docker_observer` | set | Container/volume snapshot from Docker.Observer |
 | `:loopyard_evals` | set | Eval run state |
 
+## Notifications — the inbox store
+
+`Loopyard.Notifications` is ONE durable store of everything waiting on a human
+(decisions: a `:question` / `:approval` / `:secret` card an agent is blocked
+on) and, next, of what happened (`:finished` turns). One GenServer is the
+single writer; reads go straight to StateKeeper's `:notifications` ETS table;
+every change is appended to the store's own log (`~/.loopyard/notifications.log`)
+and broadcast through `Events.Notifications` (`Added` / `Changed`).
+
+**Items get in through the two card funnels.** Every decision card enters the
+transcript via `ChatAgent.MessageWindow.append_message_ets/2` and settles via
+`update_message_now/3`; those call `card_raised/2` and `card_status/3` (casts —
+the append path never blocks on the store). `Notifications.Reconcile` diffs the
+pending cards against the open items once after boot, whenever an agent
+starts/resumes (coalesced), and every 60 s — the card is the truth for a
+decision, so any path that bypasses the funnels still converges.
+
+**Readers.** `Loopyard.Attention.line/0` is now a read of the store's decision
+subset in inbox order (`Notifications.Priority`: approvals, questions, secrets,
+finished-with-changes, finished; newest first within a tier; pins on top),
+decorated with the live card from the agent's ETS summary. It used to be a
+derived query that copied every agent's whole message list out of ETS on every
+render of the dashboard, the rail and the deck, and inside every push payload.
+
 ## Agent persistence
 
 Agents and messages are persisted to an append-only ETF log at `~/.loopyard/workspaces/{id}/.loopyard/workspace/agents.log`.

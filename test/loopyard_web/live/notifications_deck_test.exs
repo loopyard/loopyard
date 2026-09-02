@@ -54,7 +54,19 @@ defmodule LoopyardWeb.NotificationsDeckTest do
       {id, %{id: id, name: name, status: :idle, messages: msgs}}
     )
 
-    on_exit(fn -> :ets.delete(:chat_agents, id) end)
+    # Cards written straight into ETS never pass the message funnels — this is
+    # the restart-replay shape — so sweep, as the store does when an agent
+    # resumes.
+    Loopyard.Notifications.reconcile()
+    Loopyard.Notifications.sync()
+
+    on_exit(fn ->
+      :ets.delete(:chat_agents, id)
+
+      for %{agent_id: ^id, id: nid} <- Loopyard.Notifications.all(),
+          do: :ets.delete(:notifications, nid)
+    end)
+
     id
   end
 

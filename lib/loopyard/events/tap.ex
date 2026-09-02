@@ -47,7 +47,7 @@ defmodule Loopyard.Events.Tap do
   use GenServer
 
   @table :events_tap
-  @topics ["chat_agents", "docker_observer", "workspace_services"]
+  @topics ["chat_agents", "docker_observer", "workspace_services", "notifications"]
   @max_records 500
   # 2KB truncation matches the system-prompt cap; keeps per-event
   # storage bounded without being so small that payloads become

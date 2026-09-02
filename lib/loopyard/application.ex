@@ -111,6 +111,9 @@ defmodule Loopyard.Application do
       # compact "what finished" ring to StateKeeper's :operator_digest so the
       # operator can PULL it (recent_activity tool) with none of it in its
       # context. Inert when :operator_digest_enabled? is false (test env).
+      # The inbox store — replays its own log into StateKeeper's :notifications,
+      # then keeps it true from the card funnels + a slow reconcile sweep.
+      Loopyard.Notifications,
       Loopyard.Operator.Digest,
 
       # Proactive harness memory management (Layer 2). Periodically reclaims a

@@ -1,24 +1,22 @@
 defmodule Loopyard.Attention do
   @moduledoc """
-  The **town-hall line** — every live blocking item across all agents, in one
-  place. A blocking item is anything an agent is stuck waiting on a human for: a
-  question (`ask_user`/AskUserQuestion), a secret request, or a blocking
-  approval. Agents "form a line at the mic"; you walk the line answering.
+  The **line** — every open decision across all agents, in one place: a
+  question (`ask_user`/AskUserQuestion), a secret request, or an approval the
+  agent is stuck waiting on a human for.
 
-  **Self-decaying by construction.** The underlying broker stores
-  (`Harness.Questions` / `SecretRequests` / `Approvals`) reap dead or timed-out
-  waiters as they are read (`pending_all/0`), so a question nobody answers inside
-  its TTL simply ages out of the line — a stall clears itself, no error, no
-  manual cleanup. Reading the line is what advances the decay.
-
-  ETS-cheap: a linear scan of three small tables + one `get_state` per agent that
-  actually has a pending item. Safe to call on every render / activity tick.
+  A READ of `Loopyard.Notifications` — the decision subset of the inbox, in
+  inbox order — decorated with each item's live card (`msg`) from the agent's
+  ETS summary. This used to be a derived query (three broker tables plus a
+  scan of every agent's whole message list) recomputed on every render of the
+  dashboard, the rail and the deck, and inside every push payload; the store
+  raises an item once and this is O(items). The item shape is unchanged so
+  every caller keeps working.
 
   Grouping is by workspace (`counts_by_workspace/1`) — "this workspace has N
   blocking things" — with the operator's own items (no workspace) under `nil`.
   """
-  alias Loopyard.{ChatAgent, WorkspaceTree}
-  alias Loopyard.Harness.{Questions, SecretRequests, Approvals}
+  alias Loopyard.Notifications
+  alias Loopyard.Notifications.Item
 
   @type item :: %{
           id: String.t(),
@@ -36,38 +34,13 @@ defmodule Loopyard.Attention do
         }
 
   @doc """
-  The line: blocking items across all agents, oldest-first (first hand up, first
-  at the mic). Pass the request host so workspace links resolve correctly.
+  The line: open decisions across all agents, in inbox order (approvals, then
+  questions, then secrets; newest first within a tier). `host` is accepted
+  for call-site compatibility; paths no longer depend on it.
   """
   @spec line(String.t() | nil) :: [item()]
-  def line(host \\ nil) do
-    raw = raw_items()
-
-    # CONCURRENTLY. get_state/1 is a GenServer call with a 500ms cap, so
-    # resolving N agents serially made this O(N x 500ms) in the worst case —
-    # and this function is on the mount path for the dashboard AND the operator
-    # rail. One wedged agent used to delay every other agent's lookup behind
-    # it; now a slow one only spends its own budget.
-    states =
-      raw
-      |> Enum.map(fn {_kind, _id, e} -> e.agent_id end)
-      |> Enum.uniq()
-      |> Task.async_stream(&{&1, safe_state(&1)},
-        max_concurrency: 16,
-        timeout: 1_000,
-        on_timeout: :kill_task,
-        ordered: false
-      )
-      |> Enum.reduce(%{}, fn
-        {:ok, {aid, state}}, acc -> Map.put(acc, aid, state)
-        {:exit, _}, acc -> acc
-      end)
-
-    ws_lookup = workspace_lookup(host)
-
-    raw
-    |> Enum.map(&decorate(&1, states, ws_lookup))
-    |> Enum.sort_by(& &1.asked_at, DateTime)
+  def line(_host \\ nil) do
+    Notifications.open(:decisions) |> Enum.map(&to_item/1)
   end
 
   @doc """
@@ -80,142 +53,40 @@ defmodule Loopyard.Attention do
     |> Map.new(fn {ws, items} -> {ws, length(items)} end)
   end
 
-  @doc "Total number of agents waiting at the mic."
+  @doc "Total number of open decisions."
   @spec count(String.t() | nil) :: non_neg_integer()
-  def count(host \\ nil), do: line(host) |> length()
+  def count(_host \\ nil), do: Notifications.count(:decisions)
 
   # --- internals ---
 
-  defp raw_items do
-    ets =
-      Enum.map(Questions.pending_all(), fn {id, e} -> {:question, id, e} end) ++
-        Enum.map(SecretRequests.pending_all(), fn {id, e} -> {:secret, id, e} end) ++
-        Enum.map(Approvals.pending_all(), fn {id, e} -> {:approval, id, e} end)
-
-    # UNION with pending CARDS from the durable message store: broker entries
-    # are ephemeral (waiter pruning, restarts), but the card is the truth —
-    # "For you" must show every open question even when its entry is gone.
-    seen = MapSet.new(ets, fn {_k, _id, e} -> {e.agent_id, e[:msg_id]} end)
-
-    cards =
-      for %{id: aid} = st <- agent_summaries(),
-          # Only the recent tail: pending cards live near it, and this scan runs
-          # on every rail tick / Reviewer refresh — full-history scans across the
-          # fleet made typing jank (client saw 250ms+ main-thread gaps).
-          msg <- st |> Map.get(:messages, []) |> Enum.take(-200),
-          msg[:status] == :pending,
-          kind = card_kind(msg[:role]),
-          kind != nil,
-          not MapSet.member?(seen, {aid, msg[:id]}) do
-        {kind, msg[:question_id] || msg[:approval_id] || msg[:request_id] || msg[:id],
-         %{
-           agent_id: aid,
-           msg_id: msg[:id],
-           questions: msg[:questions] || [],
-           name: msg[:name]
-         }}
-      end
-
-    ets ++ cards
-  end
-
-  defp card_kind(:question), do: :question
-  defp card_kind(:secret_request), do: :secret
-  defp card_kind(:approval), do: :approval
-  defp card_kind(_), do: nil
-
-  defp agent_summaries do
-    # Pure-ETS read — list_agents/0 freshens each summary with a 500ms
-    # GenServer call per agent, which this every-rail-tick scan must not pay.
-    Loopyard.ChatAgent.list_agent_summaries()
-  rescue
-    _ -> []
-  catch
-    _, _ -> []
-  end
-
-  defp decorate({kind, id, entry}, states, ws_lookup) do
-    st = Map.get(states, entry.agent_id)
-    msg = find_msg(st, entry[:msg_id])
-    ws_id = st && Map.get(st, :workspace_id)
-    ws = Map.get(ws_lookup, ws_id, %{})
-
+  defp to_item(%Item{} = n) do
     %{
-      id: id,
-      kind: kind,
-      agent_id: entry.agent_id,
-      agent_name: (st && Map.get(st, :name)) || "Agent",
-      workspace_id: ws_id,
-      workspace_name: Map.get(ws, :workspace_name),
-      project_id: Map.get(ws, :project_id),
-      project_name: Map.get(ws, :project_name),
-      path: path(ws_id, ws, entry.agent_id),
-      msg: msg,
-      label: label(kind, entry, msg),
-      asked_at: asked_at(msg)
+      id: n.id,
+      kind: n.kind,
+      agent_id: n.agent_id,
+      agent_name: n.agent_name || "Agent",
+      workspace_id: n.workspace_id,
+      workspace_name: n.workspace_name,
+      project_id: n.project_id,
+      project_name: n.project_name,
+      path: n.path,
+      msg: find_msg(n.agent_id, n.msg_id),
+      label: n.label,
+      asked_at: n.raised_at
     }
   end
 
-  defp find_msg(nil, _), do: nil
-  defp find_msg(_st, nil), do: nil
-  defp find_msg(st, msg_id), do: st |> Map.get(:messages, []) |> Enum.find(&(&1.id == msg_id))
+  # The live card, from the agent's ETS summary (card patches already
+  # applied — the canonical multiplayer read). One lookup per item; never a
+  # GenServer call on a render path.
+  defp find_msg(_agent_id, nil), do: nil
 
-  defp asked_at(%{timestamp: %DateTime{} = t}), do: t
-  defp asked_at(_), do: DateTime.from_unix!(0)
-
-  defp label(:question, entry, _msg) do
-    case entry[:questions] do
-      [%{prompt: p} | rest] when is_binary(p) and p != "" ->
-        if rest == [], do: p, else: "#{p} (+#{length(rest)} more)"
-
-      _ ->
-        "A question"
-    end
-  end
-
-  defp label(:secret, entry, _msg), do: "Secret: #{entry[:name] || "value"}"
-  defp label(:approval, _entry, %{action: %{verb: verb}}), do: "Approval: #{verb}"
-  defp label(:approval, _entry, _msg), do: "Approval requested"
-
-  # Where answering this item lives. Workspace agents → their chat; the operator
-  # (no workspace) → /operator.
-  defp path(nil, _ws, _agent_id), do: "/operator"
-
-  defp path(ws_id, %{project_id: pid}, agent_id) when is_binary(pid),
-    do: "/projects/#{pid}/workspaces/#{ws_id}/agents/#{agent_id}"
-
-  defp path(_ws_id, _ws, _agent_id), do: "/operator"
-
-  defp workspace_lookup(host) do
-    for p <- WorkspaceTree.global(host), ws <- p.workspaces, into: %{} do
-      {ws.id, %{project_id: p.id, project_name: p.name, workspace_name: ws.name}}
-    end
-  rescue
-    _ -> %{}
-  end
-
-  # get_state is a 500ms GenServer call with an ETS fallback (a wedged agent must
-  # not hang the queue). Belt-and-suspenders around it here too.
-  # ETS FIRST. This is a render path — it feeds the dashboard's decisions card
-  # and the operator rail — and all it needs is the agent's name, workspace and
-  # messages, which is exactly what the ETS summary carries. `get_state/1` asks
-  # the GenServer first and only falls back to ETS after a 500ms timeout, so an
-  # agent that was merely BUSY (mid-turn, or still starting after a reboot)
-  # made every one of those pages wait half a second before rendering. That was
-  # the ~512ms mount the SlowMountLogger kept reporting: not work, a timeout.
-  #
-  # The summary is the canonical read for multiplayer views by design, and it
-  # already has card patches applied — so this is also the MORE correct read,
-  # not just the faster one. The GenServer call remains as the fallback for an
-  # agent with no row yet (booting), where it returns promptly anyway.
-  defp safe_state(agent_id) do
+  defp find_msg(agent_id, msg_id) do
     case :ets.lookup(:chat_agents, agent_id) do
-      [{^agent_id, summary}] -> summary
-      [] -> ChatAgent.get_state(agent_id)
+      [{^agent_id, summary}] -> Enum.find(Map.get(summary, :messages, []), &(&1[:id] == msg_id))
+      _ -> nil
     end
   rescue
     _ -> nil
-  catch
-    _, _ -> nil
   end
 end
