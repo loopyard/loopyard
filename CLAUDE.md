@@ -444,11 +444,18 @@ level (`Aural.Channel.set_activity/2`).
 
 ## Attention & the Reviewer (questions that never get lost)
 
-**Relevance is card state, not waiter liveness.** A question/approval/secret is
-"waiting" while its CARD (role `:question`/`:approval`/`:secret_request`,
-`status: :pending`) is in the message store. Broker ETS entries are ephemeral
-(waiter pruning, restarts); `Attention.line/0` UNIONS pending cards from agent
-summaries with broker entries, so "For you" can never lose an item. Answering
+**The inbox is a STORE, and the card is its truth.** `Loopyard.Notifications`
+holds every open item — a decision (question / approval / secret) or a
+finished turn — durably (its own log), prioritised (`Notifications.Priority`),
+broadcast on change (`Events.Notifications`). Every decision card enters the
+transcript through `MessageWindow.append_message_ets/2` and settles through
+`update_message_now/3`; those two funnels raise and settle the item, and
+`Notifications.Reconcile` sweeps the pending cards (after boot, on agent
+resume, every 60 s) so any path that bypasses them converges. NEVER derive
+"what's waiting" by scanning agents — `Attention.line/0` is a read of the store.
+Retract goes through `Notifications.Retract` (the broker's own reply path,
+never a kill). Push (`Notifications.Push`) and chimes (`ActivitySound`) ride
+the store's events, not the tool call sites. Answering
 an orphaned card works: `Questions.with_entry` rebuilds the broker entry from
 the card, and a completed waiterless answer resolves the card + enqueues the
 selections to the agent (`deliver_late_answer`).
