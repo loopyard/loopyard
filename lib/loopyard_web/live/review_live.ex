@@ -28,6 +28,7 @@ defmodule LoopyardWeb.ReviewLive do
   alias Loopyard.{ChatAgent, Events}
   alias Loopyard.ChatAgent.Thread
   alias LoopyardWeb.Components.Common
+  alias Brand
   alias LoopyardWeb.Live.WorkspaceLive.Messages
   alias LoopyardWeb.Live.WorkspaceLive.Messages.Cards
   alias LoopyardWeb.ReviewLive.Deck
@@ -478,7 +479,8 @@ defmodule LoopyardWeb.ReviewLive do
         pending?: assigns.card.msg.status == :pending,
         awaiting?: awaiting_reply?(assigns.thread),
         blocked?: operator_blocked?(assigns.operator_id, assigns.card),
-        who: Deck.who_asked(assigns.card.slide)
+        who: Deck.who_asked(assigns.card.slide),
+        operator_source?: Deck.operator?(assigns.card.slide)
       )
 
     ~H"""
@@ -511,17 +513,38 @@ defmodule LoopyardWeb.ReviewLive do
         ago" with "8 of 11" opposite, in the same calm meta voice as the rest
         of the card, so it flicks with the decision instead of looking like a
         second bar that flicks. The one bar that stays put says Decisions. --%>
+          <%!-- THE BYLINE. Who's asking, wearing their own mark: the operator is the
+        trefoil (the brand mark is its face); a workspace agent is its
+        project · workspace identity, then its name. Age in words. Position
+        as a row of dots — the swipe affordance you can read at a glance —
+        while the deck is short enough; "n of N" past that. --%>
           <div class="flex items-center gap-2 min-w-0 mb-1 text-lead text-zinc-500 dark:text-zinc-400">
             <span
-              aria-hidden="true"
+              :if={@operator_source?}
               class={[
-                "flex-none w-2 h-2 rounded-full",
-                Common.state_light((@pending? && :needs_you) || :asleep)
+                "flex-none",
+                (@pending? && "text-orange-500") || "text-zinc-400 dark:text-zinc-500"
               ]}
-            ></span>
-            <span class="min-w-0 truncate">
-              From <span class="font-medium text-zinc-700 dark:text-zinc-200">{@who}</span>
-              <span :if={@card.slide.asked_at}> · {Deck.ago(@card.slide.asked_at)}</span>
+              aria-hidden="true"
+            >
+              <Brand.mark class="w-5 h-5" />
+            </span>
+            <span :if={@operator_source?} class="min-w-0 truncate">
+              <span class="font-semibold text-zinc-800 dark:text-zinc-100">Operator</span>
+              <span :if={@card.slide.asked_at}> asked {Deck.ago_words(@card.slide.asked_at)}</span>
+            </span>
+            <span :if={!@operator_source?} class="min-w-0 flex items-center gap-1.5 truncate">
+              <Common.workspace_identity
+                project={@card.slide.project_name}
+                workspace={@card.slide.workspace_name}
+                state={(@pending? && :needs_you) || :asleep}
+                class="min-w-0"
+              />
+              <span class="truncate">
+                ·
+                <span class="font-semibold text-zinc-800 dark:text-zinc-100">{@card.slide.agent_name}</span>
+                <span :if={@card.slide.asked_at}> asked {Deck.ago_words(@card.slide.asked_at)}</span>
+              </span>
             </span>
             <span class="ml-auto flex-none inline-flex items-center gap-1 text-meta tabular-nums whitespace-nowrap">
               <a
@@ -532,7 +555,21 @@ defmodule LoopyardWeb.ReviewLive do
               >
                 ‹
               </a>
-              {@index} of {@total}
+              <span
+                :if={@total <= 12}
+                class="inline-flex items-center gap-1"
+                aria-label={"#{@index} of #{@total}"}
+              >
+                <span
+                  :for={i <- 1..@total}
+                  class={[
+                    "block rounded-full",
+                    (i == @index && "w-2 h-2 bg-orange-500") ||
+                      "w-1.5 h-1.5 bg-zinc-300 dark:bg-zinc-600"
+                  ]}
+                ></span>
+              </span>
+              <span :if={@total > 12}>{@index} of {@total}</span>
               <a
                 href={(@next && "#slide-" <> @next.dom_id) || "#slide-end"}
                 aria-label="Next decision"

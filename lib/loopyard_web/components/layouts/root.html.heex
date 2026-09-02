@@ -25,7 +25,12 @@
     <meta name="theme-color" content="#18181b" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <%!-- OPAQUE, not black-translucent: in the home-screen install iOS paints a
+    translucent scrim (a gradient) over whatever sits under the status bar —
+    it read as a smear across every page's top bar. Opaque black matches the
+    ink theme-color above; the page starts below the status bar, so the
+    safe-area-top inset is 0 and the bars sit flush under it. --%>
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="apple-mobile-web-app-title" content="Loopyard" />
     <link rel="apple-touch-icon" href="/icons/icon-180.png" />
     <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
