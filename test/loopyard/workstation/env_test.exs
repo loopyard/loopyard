@@ -79,10 +79,10 @@ defmodule Loopyard.Workstation.EnvTest do
       assert :ok = Env.put("FLY_ACCESS_TOKEN", "tok-123", id)
 
       assert_receive %Loopyard.Events.Workstation.CredentialsChanged{
-                       workstation_id: ^id,
-                       source: :env,
-                       key: "FLY_ACCESS_TOKEN"
-                     }
+        workstation_id: ^id,
+        source: :env,
+        key: "FLY_ACCESS_TOKEN"
+      }
     end
 
     test "delete/2 broadcasts too — disconnecting is also a state change", %{id: id} do
@@ -92,10 +92,10 @@ defmodule Loopyard.Workstation.EnvTest do
       Env.delete("FLY_ACCESS_TOKEN", id)
 
       assert_receive %Loopyard.Events.Workstation.CredentialsChanged{
-                       workstation_id: ^id,
-                       source: :env,
-                       key: "FLY_ACCESS_TOKEN"
-                     }
+        workstation_id: ^id,
+        source: :env,
+        key: "FLY_ACCESS_TOKEN"
+      }
     end
   end
 end

@@ -32,7 +32,7 @@ defmodule LoopyardWeb.DashboardSummaryTest do
       # badges were bare <span>s floated with ml-auto inside the heading row,
       # so the test that matters is: the health word lives INSIDE the link.
       assert html =~ ~r{<a[^>]+href="/system"[^>]*>.*?(healthy|degraded|down|not ready)}s
-      assert html =~ ~s|href="/review"|
+      assert html =~ ~s|href="/decisions"|
     end
   end
 

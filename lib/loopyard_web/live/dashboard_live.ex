@@ -322,7 +322,7 @@ defmodule LoopyardWeb.DashboardLive do
                  only question that matters — six WHAT? — and answers none of
                  them; the breakdown by kind does. --%>
             <.gauge
-              navigate="/review"
+              navigate="/decisions"
               tone={(!@attention_loaded? && :calm) || (@waiting > 0 && :needs_you) || :calm}
             >
               {cond do
@@ -339,7 +339,7 @@ defmodule LoopyardWeb.DashboardLive do
                    makes you go look; the question makes you answer it. --%>
               <.link
                 :for={item <- Enum.take(@attention, 4)}
-                navigate={(item.msg && "/review/#{item.agent_id}/#{item.msg.id}") || "/review"}
+                navigate={(item.msg && "/decisions/#{item.agent_id}/#{item.msg.id}") || "/decisions"}
                 class="block -mx-2 px-2 py-3 md:py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
               >
                 <span class="text-body text-zinc-700 dark:text-zinc-200 line-clamp-2">
@@ -354,7 +354,7 @@ defmodule LoopyardWeb.DashboardLive do
               </.link>
               <.link
                 :if={length(@attention) > 4}
-                navigate="/review"
+                navigate="/decisions"
                 class="block -mx-2 px-2 py-3 md:py-1.5 text-body font-medium text-orange-700 dark:text-orange-400 hover:underline"
               >
                 +{length(@attention) - 4} more to decide →

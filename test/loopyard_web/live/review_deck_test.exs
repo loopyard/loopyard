@@ -62,7 +62,7 @@ defmodule LoopyardWeb.ReviewDeckTest do
     seed_agent("Alpha", [pending_question("m-alpha", "First decision?")])
     seed_agent("Beta", [pending_question("m-beta", "Second decision?")])
 
-    {:ok, _view, html} = live(conn, "/review")
+    {:ok, _view, html} = live(conn, "/decisions")
 
     assert html =~ "First decision?"
 
@@ -74,7 +74,7 @@ defmodule LoopyardWeb.ReviewDeckTest do
     seed_agent("Alpha", [pending_question("m-alpha", "First decision?")])
     seed_agent("Beta", [pending_question("m-beta", "Second decision?")])
 
-    {:ok, view, _html} = live(conn, "/review")
+    {:ok, view, _html} = live(conn, "/decisions")
     html = render(view)
 
     sections = Regex.scan(~r/<section[^>]*id="decision-[^"]+"/, html)
@@ -89,7 +89,7 @@ defmodule LoopyardWeb.ReviewDeckTest do
   test "the scroller is marked as a snap deck", %{conn: conn} do
     seed_agent("Alpha", [pending_question("m-alpha", "First decision?")])
 
-    {:ok, _view, html} = live(conn, "/review")
+    {:ok, _view, html} = live(conn, "/decisions")
 
     # The snap lives on `html` via `html:has([data-snap-deck])` — the shell is
     # min-h-screen, so the DOCUMENT scrolls and snap set on the inner column
@@ -102,7 +102,7 @@ defmodule LoopyardWeb.ReviewDeckTest do
     aid = seed_agent("Alpha", [pending_question("m-alpha", "First decision?")])
     seed_agent("Beta", [pending_question("m-beta", "Second decision?")])
 
-    {:ok, _view, html} = live(conn, "/review/#{aid}/m-alpha")
+    {:ok, _view, html} = live(conn, "/decisions/#{aid}/m-alpha")
 
     assert html =~ "First decision?"
 
@@ -114,7 +114,7 @@ defmodule LoopyardWeb.ReviewDeckTest do
     aid = seed_agent("Alpha", [pending_question("m-alpha", "First decision?")])
     seed_agent("Beta", [pending_question("m-beta", "Second decision?")])
 
-    {:ok, view, html} = live(conn, "/review")
+    {:ok, view, html} = live(conn, "/decisions")
     assert html =~ "First decision?"
 
     # Settle it the way the real answer path does: the card flips in ETS and a

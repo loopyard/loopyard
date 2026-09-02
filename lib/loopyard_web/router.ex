@@ -44,11 +44,17 @@ defmodule LoopyardWeb.Router do
       live "/workspaces", ProjectListLive, :index
       # Opens (creating on first visit) the operating identity's operator agent.
       live "/operator", OperatorLive, :index
-      # The town hall — every blocking question/secret/approval across all agents
-      # in one tear-out line. Self-decaying (Loopyard.Attention).
+      # DECISIONS — every pending question/secret/approval across all agents,
+      # one deck (Loopyard.Attention). `/decisions/:agent/:msg` is one decision
+      # with its discussion thread. `/review*` is the old name, kept so pasted
+      # links keep working.
+      live "/decisions", ReviewLive, :index
+      live "/decisions/history", ReviewLive, :history
+      live "/decisions/:agent_id/:msg_id", ReviewLive, :item
       live "/review", ReviewLive, :index
       live "/review/history", ReviewLive, :history
       live "/review/:agent_id/:msg_id", ReviewLive, :item
+      live "/projects/:project_id/workspaces/:workspace_id/decisions", ReviewLive, :workspace
       live "/projects/:project_id/workspaces/:workspace_id/review", ReviewLive, :workspace
       # Full-page ambient-sound control. In the live_session so navigating here
       # (and back) is a live patch — the root-layout audio engine keeps playing.

@@ -85,7 +85,7 @@ defmodule LoopyardWeb.OperatorLive.Rail do
   defp attention_row(assigns) do
     ~H"""
     <.link
-      navigate={(@item.msg && "/review/#{@item.agent_id}/#{@item.msg.id}") || @fallback}
+      navigate={(@item.msg && "/decisions/#{@item.agent_id}/#{@item.msg.id}") || @fallback}
       class="block rounded-sm px-2 py-2 lg:py-1.5 text-body text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
     >
       <span class="line-clamp-2">{attention_summary(@item)}</span>
@@ -106,7 +106,7 @@ defmodule LoopyardWeb.OperatorLive.Rail do
           <.attention_row
             :for={item <- @operator_attention}
             item={item}
-            fallback="/review"
+            fallback="/decisions"
           />
         </div>
       </section>
@@ -154,11 +154,11 @@ defmodule LoopyardWeb.OperatorLive.Rail do
             <.attention_row
               :for={item <- Enum.take(Map.get(@attention_by_ws, i.id, []), 3)}
               item={item}
-              fallback={"/projects/#{i.project_id}/workspaces/#{i.id}/review"}
+              fallback={"/projects/#{i.project_id}/workspaces/#{i.id}/decisions"}
             />
             <.link
               :if={length(Map.get(@attention_by_ws, i.id, [])) > 3}
-              navigate={"/projects/#{i.project_id}/workspaces/#{i.id}/review"}
+              navigate={"/projects/#{i.project_id}/workspaces/#{i.id}/decisions"}
               class="block px-2 py-1 text-body text-orange-700 dark:text-orange-400 hover:underline"
             >
               +{length(Map.get(@attention_by_ws, i.id, [])) - 3} more →

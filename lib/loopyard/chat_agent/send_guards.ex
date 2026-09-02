@@ -45,6 +45,25 @@ defmodule Loopyard.ChatAgent.SendGuards do
     end
   end
 
+  @doc """
+  Park a message for the next free turn and tell the world: queue it (loudly
+  refusing when full), refresh the ETS summary so the live queue band updates,
+  and re-broadcast the status. The one path every "agent is busy, hold this"
+  clause in ChatAgent takes — a thinking turn, a backoff, a rate limit, or an
+  agent parked inside its own ask.
+  """
+  def park_for_later(state, text) do
+    state =
+      case park_send(state, text) do
+        {:ok, state} -> Map.put(state, :last_enqueue, :ok)
+        :full -> state |> queue_full_note() |> Map.put(:last_enqueue, :full)
+      end
+
+    :ets.insert(:chat_agents, {state.id, Loopyard.ChatAgent.summary(state)})
+    Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: state.status})
+    state
+  end
+
   def queue_full_note(state) do
     note = %{
       role: :error,

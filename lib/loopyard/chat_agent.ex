@@ -29,6 +29,7 @@ defmodule Loopyard.ChatAgent do
     SessionManager,
     Summary,
     StreamHandler,
+    Thread,
     TurnHelpers
   }
 
@@ -449,8 +450,18 @@ defmodule Loopyard.ChatAgent do
       # forever while the user's reply sits "Queued"). Record the
       # message as a normal user turn-input so it's visible, then
       # resolve the question.
+      #
+      # EXCEPT a message ABOUT a decision (ChatAgent.Thread marker): that's a
+      # question for the agent, not the answer to its card — never deliver it
+      # as the answer. Parked inside its own ask the agent can't take a prompt
+      # either, so it queues and goes out when the turn ends (card answered,
+      # or the ask times out).
+      Loopyard.Harness.Questions.pending_for_agent?(state.id) and state.status != :idle and
+          not is_nil(elem(Thread.split(text), 1)) ->
+        {:noreply, SendGuards.park_for_later(state, text)}
+
       Loopyard.Harness.Questions.pending_for_agent?(state.id) and state.status != :idle ->
-        user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
+        user_msg = Thread.user_message(text)
         {state, user_msg} = append_message(state, user_msg)
         Persistence.persist_message(state, user_msg)
 
@@ -459,7 +470,7 @@ defmodule Loopyard.ChatAgent do
           msg: user_msg
         })
 
-        Loopyard.Harness.Questions.answer_with_text(state.id, text)
+        Loopyard.Harness.Questions.answer_with_text(state.id, Thread.display(text))
         {:noreply, state}
 
       # ORPHANED question: a question reports "pending" but the agent is :idle.
@@ -505,21 +516,7 @@ defmodule Loopyard.ChatAgent do
         # turn-EXECUTION concern; it must not block the inbox. So park the message
         # in the queue (shown in the queue panel) instead of slapping it into the
         # chat stream — it enters the history only when actually sent on drain.
-        state =
-          case SendGuards.park_send(state, text) do
-            {:ok, state} -> Map.put(state, :last_enqueue, :ok)
-            :full -> state |> SendGuards.queue_full_note() |> Map.put(:last_enqueue, :full)
-          end
-
-        # Refresh the ETS summary so the live queue panel updates.
-        :ets.insert(@ets_table, {state.id, summary(state)})
-
-        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{
-          id: state.id,
-          status: state.status
-        })
-
-        {:noreply, state}
+        {:noreply, SendGuards.park_for_later(state, text)}
 
       is_binary(state.auth_error) or state.status == :auth_expired ->
         # CONFIRMED auth outage (auth_error persists until a turn proves the
@@ -1550,7 +1547,10 @@ defmodule Loopyard.ChatAgent do
       GenServer.cast(self(), :restart_session)
       {:noreply, state}
     else
-      user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
+      # A message ABOUT a decision carries its reference as a marker line
+      # (ChatAgent.Thread): shown without it, stamped `re:`, and the model
+      # gets the card itself in place of the marker.
+      user_msg = Thread.user_message(text)
       {state, user_msg} = append_message(state, user_msg)
       Persistence.persist_message(state, user_msg)
 
@@ -1563,7 +1563,7 @@ defmodule Loopyard.ChatAgent do
       # failed-prompt banner.
       start_turn(
         %{state | turn_retry_count: 0, failed_prompt: nil, current_turn_origin: :human},
-        text
+        Thread.frame_prompt(text)
       )
     end
   end
@@ -1587,7 +1587,7 @@ defmodule Loopyard.ChatAgent do
     else
       state =
         Enum.reduce(list, state, fn text, st ->
-          msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
+          msg = Thread.user_message(text)
           {st, msg} = append_message(st, msg)
           Persistence.persist_message(st, msg)
 
@@ -1601,7 +1601,7 @@ defmodule Loopyard.ChatAgent do
 
       start_turn(
         %{state | turn_retry_count: 0, failed_prompt: nil, current_turn_origin: :human},
-        Loopyard.Turn.batch_prompt(list)
+        Loopyard.Turn.batch_prompt(Enum.map(list, &Thread.frame_prompt/1))
       )
     end
   end

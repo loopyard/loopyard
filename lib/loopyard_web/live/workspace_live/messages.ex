@@ -78,6 +78,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   #  :actions — reasoning + tool calls; outputs collapsed (click to drill down)
   #  :chat  — just the conversation; activity hidden (still drillable by switching back)
   attr :detail_level, :atom, default: :trace
+  # Sender identity for a :user message (the workstation name, "Brad" — not a
+  # generic "You"), and whether it's the prompt the agent is answering now.
+  attr :user_label, :string, default: "You"
+  attr :active?, :boolean, default: false
 
   # The two interactive mini-app cards live in Messages.Cards (extracted to keep
   # this file under its line cap). chat_msg delegates the matching roles.

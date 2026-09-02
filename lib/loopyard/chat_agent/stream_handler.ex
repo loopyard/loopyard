@@ -62,6 +62,15 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     now = DateTime.utc_now()
     id = state.id
     assistant_msg = %{role: :assistant, content: content, timestamp: now}
+
+    # A reply to a message ABOUT a decision belongs to that decision too —
+    # that's what lets the decision page show the answer where it was asked.
+    assistant_msg =
+      case Loopyard.ChatAgent.Thread.reply_re(state) do
+        nil -> assistant_msg
+        ref -> Map.put(assistant_msg, :re, ref)
+      end
+
     {state, assistant_msg} = append_message(state, assistant_msg)
     # Full text arrived — clear any accumulated partial so a
     # subsequent stream_error/timeout doesn't re-emit it. Unflushed delta
