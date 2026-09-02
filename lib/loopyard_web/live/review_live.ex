@@ -586,18 +586,24 @@ defmodule LoopyardWeb.ReviewLive do
           the way back to the decision while the thread flies under it. --%>
             <a
               href={"#top-" <> @card.dom_id}
-              class="hidden group-data-[stuck]:flex items-center gap-3 px-4 md:px-6 py-3 min-h-16 border-l-4 border-orange-500 bg-orange-50 dark:bg-orange-500/10 text-lead text-zinc-900 dark:text-zinc-50 shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
+              class="hidden group-data-[stuck]:block px-4 md:px-6 py-3 border-l-4 border-orange-500 bg-orange-50 dark:bg-orange-500/10 text-zinc-900 dark:text-zinc-50 shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
             >
-              <span class="min-w-0 flex-1">
-                <span class="block text-meta text-zinc-500 dark:text-zinc-400">
+              <%!-- Byline top-left, one round "back up" top-right, then the
+              question under both at chat size, four lines at most — it was
+              ten lines tall with a chip beside three lines of text. --%>
+              <span class="flex items-center gap-3">
+                <span class="min-w-0 flex-1 truncate text-meta text-zinc-500 dark:text-zinc-400">
                   From {@who}<span :if={@card.slide.asked_at}> · {Deck.ago(@card.slide.asked_at)}</span>
                   · {@index} of {@total}
                 </span>
-                <span class="block line-clamp-3">{@prompt}</span>
+                <span
+                  aria-label="Back to the decision"
+                  class="flex-none inline-flex items-center justify-center w-9 h-9 rounded-full bg-orange-600 text-white text-lead"
+                >
+                  ↑
+                </span>
               </span>
-              <span class="flex-none inline-flex items-center min-h-11 px-3 rounded-sm bg-orange-600 text-white text-body font-semibold">
-                {(@pending? && "Answer ↑") || "Back ↑"}
-              </span>
+              <span class="mt-1 block line-clamp-4 text-lead">{@prompt}</span>
             </a>
           </div>
 
