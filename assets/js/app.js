@@ -439,15 +439,19 @@ function legacyCopy(text) {
 }
 
 // StickyShadow — put on a scroll container; toggles `data-stuck` on each
-// `[data-sticky-header]` inside it the moment that header pins to the top (i.e.
-// rows begin sliding UNDER it). Paired with a `data-[stuck]:shadow-…` class so the
-// shadow appears ONLY while a header is actually stuck, never at rest.
+// `[data-sticky-header]` inside it the moment that header pins (i.e. rows begin
+// sliding UNDER it). Paired with a `data-[stuck]:…` class so the stuck look
+// appears ONLY while a header is actually stuck, never at rest. A header's own
+// `top` offset counts: one pinned at `top-11` under another bar is stuck at
+// 44px, not 0 — the decisions deck stacks its collapsed-card band under the
+// "asked by" row that way.
 Hooks.StickyShadow = {
   mounted() {
     this.update = () => {
       const top = this.el.getBoundingClientRect().top
       this.el.querySelectorAll("[data-sticky-header]").forEach((h) => {
-        h.toggleAttribute("data-stuck", h.getBoundingClientRect().top <= top + 0.5)
+        const offset = parseFloat(getComputedStyle(h).top) || 0
+        h.toggleAttribute("data-stuck", h.getBoundingClientRect().top <= top + offset + 0.5)
       })
     }
     this.el.addEventListener("scroll", this.update, {passive: true})

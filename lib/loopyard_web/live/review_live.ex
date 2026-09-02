@@ -531,18 +531,11 @@ defmodule LoopyardWeb.ReviewLive do
       class="w-full h-full flex-none snap-start snap-always overflow-y-auto overscroll-y-contain focus:outline-none"
     >
       <div class="mx-auto w-full max-w-2xl">
-        <%!-- Sticky header = who's asking, at rest. STUCK (card scrolled under
-        it) = the collapsed decision: the question in an orange band. A
-        real link back to the slide's top, so "tap to expand" is just a
-        scroll. --%>
-        <header
-          data-sticky-header
-          class={[
-            "group sticky top-0 z-10 bg-brand-paper dark:bg-brand-ink border-b border-transparent",
-            "data-[stuck]:border-orange-200 dark:data-[stuck]:border-orange-500/30",
-            "data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
-          ]}
-        >
+        <div id={"top-" <> @card.dom_id}></div>
+        <%!-- WHO'S ASKING + where you are in the deck. Pinned to the slide's
+        top always, so the position and the prev/next links stay in reach
+        while you're deep in a discussion. --%>
+        <header class="sticky top-0 z-10 bg-brand-paper dark:bg-brand-ink border-b border-zinc-200 dark:border-zinc-800">
           <div class="flex items-center gap-2 min-w-0 px-4 md:px-6 min-h-11 text-meta text-zinc-500 dark:text-zinc-400">
             <span
               aria-hidden="true"
@@ -583,15 +576,6 @@ defmodule LoopyardWeb.ReviewLive do
               </a>
             </span>
           </div>
-          <a
-            href={"#slide-" <> @card.dom_id}
-            class="hidden group-data-[stuck]:flex items-center gap-3 px-4 md:px-6 py-2 border-l-4 border-orange-500 bg-orange-50 dark:bg-orange-500/10 text-body text-zinc-800 dark:text-zinc-100"
-          >
-            <span class="min-w-0 flex-1 line-clamp-2">{@prompt}</span>
-            <span class="flex-none text-meta font-semibold text-orange-700 dark:text-orange-400">
-              {(@pending? && "Answer ↑") || "↑"}
-            </span>
-          </a>
         </header>
 
         <div class="px-4 md:px-6 pt-2 pb-4">
@@ -636,11 +620,33 @@ defmodule LoopyardWeb.ReviewLive do
             </.link>
           </div>
 
-          <%!-- THE DISCUSSION — scroll down into it and the decision collapses
-          into the header above. --%>
-          <div id={"thread-" <> @card.dom_id} class="pt-6">
-            <div class="section-label px-1 pb-1">About this decision</div>
+          <%!-- THE DISCUSSION. Its header is the collapsing decision: at rest a
+          plain section label between the card and the thread; placed AFTER
+          the card and sticky under the "asked by" row, it pins exactly when
+          the card has scrolled away — and then (data-stuck, from the slide's
+          StickyShadow hook) it becomes the card, collapsed: the question in
+          an orange band, a real link back to the top so "tap to expand" is
+          just a scroll. Pure sticky placement decides WHEN; one attribute
+          decides the LOOK. --%>
+          <div
+            data-sticky-header
+            class="group sticky top-11 z-10 -mx-4 md:-mx-6 mt-6 bg-brand-paper dark:bg-brand-ink"
+          >
+            <div class="group-data-[stuck]:hidden section-label px-5 md:px-7 pb-1">
+              About this decision
+            </div>
+            <a
+              href={"#top-" <> @card.dom_id}
+              class="hidden group-data-[stuck]:flex items-center gap-3 px-4 md:px-6 py-2 border-l-4 border-orange-500 bg-orange-50 dark:bg-orange-500/10 text-body text-zinc-800 dark:text-zinc-100 shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
+            >
+              <span class="min-w-0 flex-1 line-clamp-2">{@prompt}</span>
+              <span class="flex-none text-meta font-semibold text-orange-700 dark:text-orange-400">
+                {(@pending? && "Answer ↑") || "↑"}
+              </span>
+            </a>
+          </div>
 
+          <div id={"thread-" <> @card.dom_id}>
             <p
               :if={@thread == [] and !@blocked?}
               class="px-1 py-2 text-body text-zinc-500 dark:text-zinc-400"
