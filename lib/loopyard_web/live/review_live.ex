@@ -320,6 +320,19 @@ defmodule LoopyardWeb.ReviewLive do
 
     ~H"""
     <div class="h-screen flex flex-col bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x safe-area-top">
+      <%!-- THE one bar, and it stays put while the slides flick under it: what
+      you're flipping through is Decisions. Who's asking lives IN each slide
+      as content, so nothing that looks like navigation moves. --%>
+      <Nav.bar height="h-14" pad="px-2 md:px-4" gap="gap-2">
+        <Nav.back_button navigate="/operator" label="Back to the operator" />
+        <h1 class="min-w-0 truncate text-lead font-semibold">
+          {(@history? && "Past decisions") || "Decisions"}
+        </h1>
+        <:actions>
+          <Common.mode_nav id="mode-decisions" active={:operator} />
+        </:actions>
+      </Nav.bar>
+
       <%!-- THE DECK: a horizontal scroll-snap carousel, one decision per slide,
       swiped with the browser's own scrolling (no JS gestures — nothing that
       competes with iOS back). `overscroll-x-contain` stops the rubber band
@@ -350,12 +363,6 @@ defmodule LoopyardWeb.ReviewLive do
 
       <%!-- Nothing on the deck: the "you're done" beat, with the one bar it needs. --%>
       <div :if={@cards == []} class="flex-1 flex flex-col min-h-0">
-        <Nav.bar height="h-14" pad="px-2 md:px-4" gap="gap-2">
-          <Nav.back_button navigate="/operator" label="Back to the operator" />
-          <h1 class="min-w-0 truncate text-lead font-semibold">
-            {(@history? && "Past decisions") || "Decisions"}
-          </h1>
-        </Nav.bar>
         <div class="flex-1 flex flex-col items-center justify-center gap-4 py-24">
           <p class="text-body text-zinc-400 dark:text-zinc-500">
             {(@history? && "No decisions asked yet.") || "Nothing waiting on you."}
@@ -409,60 +416,43 @@ defmodule LoopyardWeb.ReviewLive do
       tabindex="-1"
       class="w-full h-full flex-none snap-start snap-always overflow-y-auto overscroll-y-contain focus:outline-none"
     >
-      <div id={"top-" <> @card.dom_id}></div>
-      <%!-- The slide's bar. CHROME: z-30 like every .app-bar, so nothing in the
-      content (the collapsed band at z-10, a prompt band) can ride over it. --%>
-      <div class="sticky top-0 z-30 flex items-center gap-1 h-14 px-2 md:px-4 bg-brand-paper dark:bg-brand-ink border-b border-zinc-200 dark:border-zinc-800">
-        <Nav.back_button navigate="/operator" label="Back to the operator" />
-        <span
-          aria-hidden="true"
-          class={[
-            "flex-none w-2 h-2 rounded-full ml-1",
-            Common.state_light((@pending? && :needs_you) || :asleep)
-          ]}
-        ></span>
-        <h1 class="min-w-0 flex-1 truncate text-lead font-semibold">
-          {@who}
-          <span
-            :if={@card.slide.asked_at}
-            class="font-normal text-zinc-500 dark:text-zinc-400"
-          >
-            · {Deck.ago(@card.slide.asked_at)}
-          </span>
-        </h1>
-        <%!-- Position + neighbours. Anchors to the neighbour slides — the
-        carousel scrolls them into view natively. Full 44px targets. --%>
-        <span class="flex-none inline-flex items-center text-meta text-zinc-500 dark:text-zinc-400 tabular-nums">
-          <a
-            :if={@prev}
-            href={"#slide-" <> @prev.dom_id}
-            aria-label="Previous decision"
-            class="focus-ring inline-flex items-center justify-center w-11 h-11 rounded-sm text-lead hover:bg-zinc-100 dark:hover:bg-zinc-800"
-          >
-            ‹
-          </a>
-          <span :if={!@prev} class="inline-block w-11" aria-hidden="true"></span>
-          <span class="whitespace-nowrap">{@index} of {@total}</span>
-          <a
-            :if={@next}
-            href={"#slide-" <> @next.dom_id}
-            aria-label="Next decision"
-            class="focus-ring inline-flex items-center justify-center w-11 h-11 rounded-sm text-lead hover:bg-zinc-100 dark:hover:bg-zinc-800"
-          >
-            ›
-          </a>
-          <a
-            :if={!@next}
-            href="#slide-end"
-            aria-label="End of the deck"
-            class="focus-ring inline-flex items-center justify-center w-11 h-11 rounded-sm text-lead hover:bg-zinc-100 dark:hover:bg-zinc-800"
-          >
-            ›
-          </a>
-        </span>
-      </div>
-
       <div class="mx-auto w-full max-w-2xl px-4 md:px-6 pt-3">
+        <div id={"top-" <> @card.dom_id}></div>
+        <%!-- WHO'S ASKING, as content — not chrome. "From the Operator · 21d
+        ago" with "8 of 11" opposite, in the same calm meta voice as the rest
+        of the card, so it flicks with the decision instead of looking like a
+        second bar that flicks. The one bar that stays put says Decisions. --%>
+        <div class="flex items-center gap-2 min-w-0 mb-3 text-meta text-zinc-500 dark:text-zinc-400">
+          <span
+            aria-hidden="true"
+            class={[
+              "flex-none w-2 h-2 rounded-full",
+              Common.state_light((@pending? && :needs_you) || :asleep)
+            ]}
+          ></span>
+          <span class="min-w-0 truncate">
+            From <span class="font-medium text-zinc-700 dark:text-zinc-200">{@who}</span>
+            <span :if={@card.slide.asked_at}> · {Deck.ago(@card.slide.asked_at)}</span>
+          </span>
+          <span class="ml-auto flex-none inline-flex items-center gap-1 tabular-nums whitespace-nowrap">
+            <a
+              :if={@prev}
+              href={"#slide-" <> @prev.dom_id}
+              aria-label="Previous decision"
+              class="focus-ring tap-target hidden md:inline-flex items-center justify-center w-7 h-7 rounded-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            >
+              ‹
+            </a>
+            {@index} of {@total}
+            <a
+              href={(@next && "#slide-" <> @next.dom_id) || "#slide-end"}
+              aria-label="Next decision"
+              class="focus-ring tap-target hidden md:inline-flex items-center justify-center w-7 h-7 rounded-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            >
+              ›
+            </a>
+          </span>
+        </div>
         <%!-- ONE question of a multi-question ask is a bare block, so it needs
         the band around it. A whole card (approval, secret, a settled
         question receipt) already IS a band. No eyebrow on a pending one and
@@ -500,7 +490,7 @@ defmodule LoopyardWeb.ReviewLive do
         the LOOK. --%>
         <div
           data-sticky-header
-          class="group sticky top-14 z-10 -mx-4 md:-mx-6 mt-4 bg-brand-paper dark:bg-brand-ink"
+          class="group sticky top-0 z-10 -mx-4 md:-mx-6 mt-4 bg-brand-paper dark:bg-brand-ink"
         >
           <%!-- Big enough to read AND to hit: two lines of the question at
           chat size, a full-height row, and a filled Answer chip — this is
@@ -520,7 +510,7 @@ defmodule LoopyardWeb.ReviewLive do
         scrolled away and the band above collapse; an empty chat area with
         the composer at its foot is what a fresh thread should look like.
         Prompt bands are NOT sticky here — the slide has its own chrome. --%>
-        <div id={"thread-" <> @card.dom_id} class="min-h-screen scroll-mt-36">
+        <div id={"thread-" <> @card.dom_id} class="min-h-screen scroll-mt-24">
           <p :if={@blocked?} class="px-1 py-3 text-body text-zinc-500 dark:text-zinc-400">
             This is the operator's own question, and it's waiting on your answer
             before it can do anything else — including discuss it. Answer it
@@ -602,20 +592,6 @@ defmodule LoopyardWeb.ReviewLive do
       id="slide-end"
       class="w-full h-full flex-none snap-start snap-always overflow-y-auto flex flex-col"
     >
-      <div class="sticky top-0 z-30 flex items-center gap-1 h-14 px-2 md:px-4 bg-brand-paper dark:bg-brand-ink border-b border-zinc-200 dark:border-zinc-800">
-        <Nav.back_button navigate="/operator" label="Back to the operator" />
-        <h1 class="min-w-0 flex-1 truncate text-lead font-semibold">
-          {(@history? && "Past decisions") || "Decisions"}
-        </h1>
-        <a
-          :if={@last}
-          href={"#slide-" <> @last.dom_id}
-          aria-label="Previous decision"
-          class="focus-ring inline-flex items-center justify-center w-11 h-11 rounded-sm text-lead text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-        >
-          ‹
-        </a>
-      </div>
       <div class="flex-1 flex flex-col items-center justify-center gap-4 py-24 px-6">
         <p class="text-body text-zinc-400 dark:text-zinc-500">
           {(@history? && "That's every past decision.") || "That's everything waiting on you."}
