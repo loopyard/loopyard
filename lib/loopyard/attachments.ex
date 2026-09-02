@@ -398,7 +398,11 @@ defmodule Loopyard.Attachments do
         end
 
       true ->
-        {upload, mime_for(upload), false}
+        # Labelled an image (a browser types by extension) but the bytes say
+        # otherwise: store it as opaque data so nothing ever renders it as one.
+        mime = mime_for(upload)
+        mime = if String.starts_with?(mime, "image/"), do: "application/octet-stream", else: mime
+        {upload, mime, false}
     end
   end
 
