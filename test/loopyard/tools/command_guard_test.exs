@@ -101,4 +101,32 @@ defmodule Loopyard.Tools.CommandGuardTest do
       end
     end
   end
+
+  describe "git/1 — blocks host-side config/alias injection" do
+    test "rejects -c config injection (alias shell RCE vector)" do
+      assert {:error, _} = CommandGuard.git(["-c", "alias.x=!sh -c 'id'", "x"])
+      assert {:error, _} = CommandGuard.git(["-c", "core.pager=sh -c evil", "log"])
+    end
+
+    test "rejects -C (run in another directory), pack overrides, exec-path" do
+      assert {:error, _} = CommandGuard.git(["-C", "/etc", "status"])
+      assert {:error, _} = CommandGuard.git(["clone", "--upload-pack", "sh -c x", "u", "d"])
+      assert {:error, _} = CommandGuard.git(["--exec-path=/tmp/evil", "status"])
+    end
+
+    test "ALLOWS ordinary porcelain" do
+      for argv <- [
+            ["status"],
+            ["diff", "--stat"],
+            ["add", "-A"],
+            ["commit", "-m", "msg"],
+            ["log", "--oneline", "-20"],
+            ["push", "origin", "HEAD"],
+            ["pull", "--rebase"],
+            ["checkout", "-b", "feature"]
+          ] do
+        assert :ok == CommandGuard.git(argv), "expected :ok for #{inspect(argv)}"
+      end
+    end
+  end
 end

@@ -30,6 +30,18 @@ defmodule Loopyard.Workspace.WorkContainerTest do
     assert name == "#{Loopyard.Docker.prefix()}#{ws}-work"
     assert WorkContainer.running?(ws)
 
+    # Hardened against host escape (#74): no-new-privileges blocks setuid
+    # escalation and the dangerous caps are dropped, so a breakout is defanged.
+    assert {:ok, secopt} =
+             Docker.docker(["inspect", "--format", "{{.HostConfig.SecurityOpt}}", name])
+
+    assert secopt =~ "no-new-privileges"
+
+    assert {:ok, capdrop} =
+             Docker.docker(["inspect", "--format", "{{.HostConfig.CapDrop}}", name])
+
+    assert capdrop =~ "SYS_ADMIN"
+
     # The agent's eye view: it execs here and sees the branch's code at /workspace.
     assert {:ok, out} = WorkContainer.exec(ws, "cat /workspace/hello.txt")
     assert out =~ "from the volume"
