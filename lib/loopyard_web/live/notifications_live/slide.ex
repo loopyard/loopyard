@@ -1,6 +1,6 @@
-defmodule LoopyardWeb.ReviewLive.Slide do
+defmodule LoopyardWeb.NotificationsLive.Slide do
   @moduledoc """
-  One decision's slide on the deck (`LoopyardWeb.ReviewLive`): the byline,
+  One decision's slide on the deck (`LoopyardWeb.NotificationsLive`): the byline,
   the card, the collapsing band, the discussion thread and the composer —
   plus the end slide past the last decision. Function components only; the
   LiveView owns the state and hands each slide its card, thread and queue.
@@ -12,7 +12,7 @@ defmodule LoopyardWeb.ReviewLive.Slide do
   alias LoopyardWeb.Components.Common
   alias LoopyardWeb.Live.WorkspaceLive.Messages
   alias LoopyardWeb.Live.WorkspaceLive.Messages.Cards
-  alias LoopyardWeb.ReviewLive.Deck
+  alias LoopyardWeb.NotificationsLive.Deck
   alias Phoenix.LiveView.JS
 
   attr :card, :map, required: true
@@ -328,7 +328,7 @@ defmodule LoopyardWeb.ReviewLive.Slide do
           {(@history? && "That's every past decision.") || "That's everything waiting on you."}
         </p>
         <.link
-          navigate={(@history? && "/decisions") || "/decisions/history"}
+          navigate={(@history? && "/notifications") || "/notifications/history"}
           class="text-body font-medium inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
         >
           {(@history? && "← Back to pending") || "Past decisions →"}

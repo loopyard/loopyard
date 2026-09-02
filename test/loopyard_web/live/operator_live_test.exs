@@ -11,7 +11,7 @@ defmodule LoopyardWeb.OperatorLiveTest do
     # Decisions used to be a tab under the operator; the row read as two
     # chats. It's a peer now: the mode nav links to /decisions, and nothing on
     # this page is a pane toggle.
-    assert has_element?(view, "a[href='/decisions'][aria-label='Decisions']")
+    assert has_element?(view, "a[href='/notifications'][aria-label='Notifications']")
     refute html =~ "/operator/decisions"
     refute html =~ "phx-value-v=\"rail\""
     assert Process.alive?(view.pid)

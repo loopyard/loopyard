@@ -1,6 +1,6 @@
-defmodule LoopyardWeb.ReviewLive do
+defmodule LoopyardWeb.NotificationsLive do
   @moduledoc """
-  `/decisions` — the TEAM's inbox: every decision waiting on a human, one
+  `/notifications` — the TEAM's inbox: every decision waiting on a human, one
   DECK you swipe through (plans/decisions.md). Its own root, a peer of the
   operator (not a tab under it): agents raise decisions with their own tools
   (`ask_user`, approvals, `request_secret`) — each shows in that agent's chat
@@ -30,7 +30,7 @@ defmodule LoopyardWeb.ReviewLive do
 
   alias Loopyard.{ChatAgent, Events}
   alias Loopyard.ChatAgent.Thread
-  alias LoopyardWeb.ReviewLive.{Deck, Slide}
+  alias LoopyardWeb.NotificationsLive.{Deck, Slide}
   alias LoopyardWeb.Components.AppShell
 
   @tick_ms 3_000
@@ -341,7 +341,7 @@ defmodule LoopyardWeb.ReviewLive do
     assigns = assign(assigns, :cards, cards)
 
     ~H"""
-    <.review_deck
+    <.notifications_deck
       cards={@cards}
       target={@target}
       advance_from={@advance_from}
@@ -374,11 +374,11 @@ defmodule LoopyardWeb.ReviewLive do
   attr :operator_id, :string, default: nil
   attr :user_label, :string, default: "You"
 
-  def review_deck(assigns) do
+  def notifications_deck(assigns) do
     assigns = assign(assigns, :total, length(assigns.cards))
 
     ~H"""
-    <AppShell.shell title="Decisions" mode={:decisions} mode_id="mode-decisions">
+    <AppShell.shell title="Notifications" mode={:notifications} mode_id="mode-notifications">
       <div class="flex-1 min-w-0 min-h-0 flex flex-col">
         <%!-- PAST decisions is the same deck with a different source; one quiet
       line says so, and the way back to the pending ones. --%>
@@ -388,7 +388,7 @@ defmodule LoopyardWeb.ReviewLive do
         >
           <span class="font-medium text-zinc-700 dark:text-zinc-200">Past decisions</span>
           <.link
-            navigate="/decisions"
+            navigate="/notifications"
             class="ml-auto text-violet-600 dark:text-violet-400 hover:underline"
           >
             ← Back to pending
@@ -433,7 +433,7 @@ defmodule LoopyardWeb.ReviewLive do
             </p>
             <.link
               :if={!@history?}
-              navigate="/decisions/history"
+              navigate="/notifications/history"
               class="text-body font-medium inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
             >
               Past decisions →

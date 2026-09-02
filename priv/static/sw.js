@@ -23,14 +23,14 @@ self.addEventListener("push", (event) => {
       icon: "/icons/icon-192.png",
       badge: "/icons/icon-192.png",
       tag: data.tag || undefined,
-      data: { url: data.url || "/review" },
+      data: { url: data.url || "/notifications" },
     })
   )
 })
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close()
-  const url = (event.notification.data && event.notification.data.url) || "/review"
+  const url = (event.notification.data && event.notification.data.url) || "/notifications"
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
       for (const c of list) {

@@ -79,7 +79,7 @@ elements still sit under 44px on mobile and it composes its own `PAST HOUR` /
 **G. Reviewer scroll/snap.** Replace prev/next arrows with a scroll-snap deck
 (`scroll-snap-type: y proximity`, `scroll-snap-align: start` — proximity so a
 question taller than the viewport doesn't fight the user). It's a state
-restructure: ReviewLive renders one slide with subscriptions keyed to it.
+restructure: NotificationsLive renders one slide with subscriptions keyed to it.
 
 **Deliberate exception:** the question card's Skip/Chat stay at 40px, under the
 44px floor. They're sized down relative to Answer so discarding a question

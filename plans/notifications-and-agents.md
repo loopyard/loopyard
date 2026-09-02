@@ -65,7 +65,7 @@ moot one, reprioritise; on a finished item it does the "keep going".
 | `Tools.ControlPlane` (`:operator` ACP scope) | overview / peek / dispatch / ports / create / notify_when_done | + notifications tools (list / act / retract / prioritise / watch) |
 | `LoopyardWeb.OperatorLive` (`/operator`) | the operator's chat | `/agents/:id` — one page per global agent; `/operator` → the first |
 | `ChatAgent.list_agent_summaries/0` / `WorkspaceTree` | the tree read | the flat read the Agents panel (`/agents`) needs |
-| `LoopyardWeb.ReviewLive` (`/decisions`) | the deck, from `Attention.line` | `NotificationsLive` (`/notifications`): reads the store; both kinds render; desktop master-detail |
+| `LoopyardWeb.NotificationsLive` (`/decisions`) | the deck, from `Attention.line` | `NotificationsLive` (`/notifications`): reads the store; both kinds render; desktop master-detail |
 | `Loopyard.WebPush.notify_question` | push for questions (PWA), bell toggle in the rail | `notify/4` by kind; finished items too |
 | `Events.Activity` (global) | fed by every agent's turn end | the source of finished/idle items |
 

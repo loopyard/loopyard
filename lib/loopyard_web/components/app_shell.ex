@@ -2,8 +2,8 @@ defmodule LoopyardWeb.Components.AppShell do
   @moduledoc """
   The app-shell page: ONE bar ("Loopyard › <page>", mode nav) over content
   that scrolls INSIDE it. The two roots that are single pages use it — the
-  operator (`/operator`, your private chat into Loopyard) and decisions
-  (`/decisions`, the team's inbox). Each is its own place with one bar; there
+  operator (`/operator`, your private chat into Loopyard) and notifications
+  (`/notifications`, the team's inbox). Each is its own place with one bar; there
   are no tabs between them, because they are peers, not siblings under one
   thing. The bar never moves; only the content under it does.
   """

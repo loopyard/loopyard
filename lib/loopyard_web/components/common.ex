@@ -542,7 +542,7 @@ defmodule LoopyardWeb.Components.Common do
   There is no "current" state to style, because it never represents where you
   already are.
 
-  DECISIONS ride beside it: the team's inbox (`/decisions`) is its own root —
+  NOTIFICATIONS ride beside it: the team's inbox (`/notifications`) is its own root —
   multiplayer, anyone answers — reachable from every bar, hidden only when
   you're already there.
 
@@ -555,7 +555,7 @@ defmodule LoopyardWeb.Components.Common do
   """
   attr :active, :atom,
     default: nil,
-    values: [nil, :workspaces, :operator, :decisions, :system]
+    values: [nil, :workspaces, :operator, :notifications, :system]
 
   attr :id, :string, default: nil
   attr :class, :string, default: nil
@@ -568,13 +568,13 @@ defmodule LoopyardWeb.Components.Common do
       anywhere, so the bed is the app's soundtrack, not a page you visit.
       Keyed off the placement id like the ambient indicator below. --%>
       <LoopyardWeb.Components.Sound.pill :if={@id} id={@id <> "-sound"} class="mr-1" />
-      <%!-- DECISIONS — the team's inbox, its own root. Not an altitude: a
+      <%!-- NOTIFICATIONS — the team's inbox, its own root. Not an altitude: a
       place. Everywhere but on itself. --%>
       <.link
-        :if={@active != :decisions}
-        navigate="/decisions"
-        aria-label="Decisions"
-        title="Decisions — what's waiting on a human, across every workspace"
+        :if={@active != :notifications}
+        navigate="/notifications"
+        aria-label="Notifications"
+        title="Notifications — what's waiting on a human, across every workspace"
         class={mode_btn(false)}
       >
         <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5" aria-hidden="true">

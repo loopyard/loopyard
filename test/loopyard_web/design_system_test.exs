@@ -53,7 +53,7 @@ defmodule LoopyardWeb.DesignSystemTest do
     files = [
       "lib/loopyard_web/live/workspace_live/messages/cards.ex",
       "lib/loopyard_web/components/stream_card.ex",
-      "lib/loopyard_web/live/review_live.ex"
+      "lib/loopyard_web/live/notifications_live.ex"
     ]
 
     offenders = for f <- files, String.contains?(File.read!(f), "amber-"), do: f
@@ -219,7 +219,7 @@ defmodule LoopyardWeb.DesignSystemTest do
         "lib/loopyard_web/live/dashboard_live.ex",
         "lib/loopyard_web/live/message_live.ex",
         "lib/loopyard_web/live/operator_live.ex",
-        "lib/loopyard_web/live/review_live.ex",
+        "lib/loopyard_web/live/notifications_live.ex",
         "lib/loopyard_web/live/sound_live.ex",
         "lib/loopyard_web/live/workspace_live.ex"
       ])

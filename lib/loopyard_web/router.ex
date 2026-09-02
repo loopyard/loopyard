@@ -44,23 +44,35 @@ defmodule LoopyardWeb.Router do
       live "/workspaces", ProjectListLive, :index
       # Opens (creating on first visit) the operating identity's operator agent.
       live "/operator", OperatorLive, :index
-      # DECISIONS — its own root, a peer of the operator, not a tab under it:
-      # the TEAM's inbox of every pending question/secret/approval across all
-      # agents, one deck (Loopyard.Attention), anyone can answer.
-      # `/decisions/:agent/:msg` is one decision with its discussion thread.
-      # `/operator/decisions*` and `/review*` are old names, kept so pasted
-      # links keep working.
-      live "/operator/decisions", ReviewLive, :index
-      live "/operator/decisions/history", ReviewLive, :history
-      live "/operator/decisions/:agent_id/:msg_id", ReviewLive, :item
-      live "/decisions", ReviewLive, :index
-      live "/decisions/history", ReviewLive, :history
-      live "/decisions/:agent_id/:msg_id", ReviewLive, :item
-      live "/review", ReviewLive, :index
-      live "/review/history", ReviewLive, :history
-      live "/review/:agent_id/:msg_id", ReviewLive, :item
-      live "/projects/:project_id/workspaces/:workspace_id/decisions", ReviewLive, :workspace
-      live "/projects/:project_id/workspaces/:workspace_id/review", ReviewLive, :workspace
+      # NOTIFICATIONS — its own root, a peer of the operator, not a tab under
+      # it: the TEAM's inbox of everything waiting on a human across all
+      # agents (decisions today: question / secret / approval; finished-turn
+      # items next), one deck (Loopyard.Attention), anyone can answer.
+      # `/notifications/:agent/:msg` is one item with its discussion thread.
+      # `/decisions*`, `/operator/decisions*` and `/review*` are old names,
+      # kept so pasted links (and cached push payloads) keep working.
+      live "/notifications", NotificationsLive, :index
+      live "/notifications/history", NotificationsLive, :history
+      live "/notifications/:agent_id/:msg_id", NotificationsLive, :item
+      live "/decisions", NotificationsLive, :index
+      live "/decisions/history", NotificationsLive, :history
+      live "/decisions/:agent_id/:msg_id", NotificationsLive, :item
+      live "/operator/decisions", NotificationsLive, :index
+      live "/operator/decisions/history", NotificationsLive, :history
+      live "/operator/decisions/:agent_id/:msg_id", NotificationsLive, :item
+      live "/review", NotificationsLive, :index
+      live "/review/history", NotificationsLive, :history
+      live "/review/:agent_id/:msg_id", NotificationsLive, :item
+
+      live "/projects/:project_id/workspaces/:workspace_id/notifications",
+           NotificationsLive,
+           :workspace
+
+      live "/projects/:project_id/workspaces/:workspace_id/decisions",
+           NotificationsLive,
+           :workspace
+
+      live "/projects/:project_id/workspaces/:workspace_id/review", NotificationsLive, :workspace
       # Full-page ambient-sound control. In the live_session so navigating here
       # (and back) is a live patch — the root-layout audio engine keeps playing.
       live "/sound", SoundLive, :index

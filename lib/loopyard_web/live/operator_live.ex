@@ -407,7 +407,7 @@ defmodule LoopyardWeb.OperatorLive do
           sub,
           "Notifications on",
           "You'll get decisions here — tapping one opens it.",
-          "/decisions"
+          "/notifications"
         )
 
         {:reply, %{ok: true}, socket}

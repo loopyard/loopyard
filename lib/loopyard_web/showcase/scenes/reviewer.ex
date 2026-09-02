@@ -8,7 +8,7 @@ defmodule LoopyardWeb.Showcase.Scenes.Reviewer do
   alias LoopyardWeb.Showcase.Mock
 
   @impl true
-  def component, do: &LoopyardWeb.ReviewLive.review_deck/1
+  def component, do: &LoopyardWeb.NotificationsLive.notifications_deck/1
 
   @impl true
   def assigns do

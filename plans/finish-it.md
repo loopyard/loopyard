@@ -109,7 +109,7 @@ Composes its own `PAST HOUR` / `TODAY` rows instead of
 ## P2-7. Reviewer scroll/snap
 
 Replace prev/next arrows with a scroll-snap deck (`scroll-snap-type: y
-proximity`, `scroll-snap-align: start`). State restructure: ReviewLive renders
+proximity`, `scroll-snap-align: start`). State restructure: NotificationsLive renders
 one slide with subscriptions keyed to it.
 
 ---

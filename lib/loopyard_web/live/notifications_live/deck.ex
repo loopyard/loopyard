@@ -1,6 +1,6 @@
-defmodule LoopyardWeb.ReviewLive.Deck do
+defmodule LoopyardWeb.NotificationsLive.Deck do
   @moduledoc """
-  Building the decisions deck — the pure half of `LoopyardWeb.ReviewLive`.
+  Building the decisions deck — the pure half of `LoopyardWeb.NotificationsLive`.
 
   One slide per DECISION: each pending question of a multi-question ask is its
   own slide; an approval or secret is one slide. Slides carry everything the
