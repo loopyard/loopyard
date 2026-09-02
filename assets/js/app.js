@@ -150,10 +150,10 @@ Hooks.SoundPanel = {
     this.iconOff = this.el.querySelector('[data-sound-icon="off"]')
     this.state = this.el.querySelector("[data-sound-state]")
 
-    this.power.addEventListener("click", () =>
+    if (this.power) this.power.addEventListener("click", () =>
       window.dispatchEvent(new CustomEvent("ambient:toggle"))
     )
-    this.slider.addEventListener("input", (e) =>
+    if (this.slider) this.slider.addEventListener("input", (e) =>
       window.dispatchEvent(new CustomEvent("ambient:set-volume", {detail: parseFloat(e.target.value)}))
     )
 

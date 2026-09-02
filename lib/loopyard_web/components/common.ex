@@ -556,6 +556,11 @@ defmodule LoopyardWeb.Components.Common do
   def mode_nav(assigns) do
     ~H"""
     <nav class={["flex items-center", @class]} aria-label="Mode">
+      <%!-- The soundtrack rides next to the altitude control in EVERY bar —
+      play/pause (and on desktop the track + volume) reachable from
+      anywhere, so the bed is the app's soundtrack, not a page you visit.
+      Keyed off the placement id like the ambient indicator below. --%>
+      <LoopyardWeb.Components.Sound.pill :if={@id} id={@id <> "-sound"} class="mr-1" />
       <%!-- ONE control, not a row of peers. The operator sits ABOVE the
     workspaces — it's where you go to see everything at once — so the move
     is vertical: UP to the operator from a workspace, DOWN into the work
