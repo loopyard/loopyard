@@ -223,63 +223,15 @@ defmodule Loopyard.Operator.Digest do
   # What the agent ACTUALLY said it did — its closing sentence, not the fact
   # that a turn ended. "finished a turn" is true of every entry, so a digest of
   # them carries no information; the reader wants the outcome.
-  @summary_max 120
-
   defp last_said(agent_id) do
     case Loopyard.ChatAgent.get_state(agent_id) do
       %{messages: msgs} when is_list(msgs) ->
-        msgs
-        |> Enum.reverse()
-        |> Enum.find_value(&closing_sentence/1)
-        |> Kernel.||("finished a turn")
+        Loopyard.ChatAgent.TurnSummary.of_transcript(msgs) || "finished a turn"
 
       _ ->
         "finished a turn"
     end
   end
-
-  defp closing_sentence(%{role: :assistant, content: text}) when is_binary(text) do
-    text
-    |> String.split(~r/\n{2,}/, trim: true)
-    |> List.last()
-    |> case do
-      nil -> nil
-      para -> para |> strip_markup() |> first_sentence() |> presence()
-    end
-  end
-
-  defp closing_sentence(_), do: nil
-
-  # Digest rows are one plain line — headings, bullets, emphasis and code fences
-  # are noise once the text is stripped to a sentence.
-  defp strip_markup(text) do
-    text
-    |> String.replace(~r/```.*?```/s, "")
-    |> String.replace(~r/^[\s>#*\-]+/m, "")
-    |> String.replace(~r/[*`]/, "")
-    |> String.replace(~r/\s+/, " ")
-    |> String.trim()
-  end
-
-  defp first_sentence(text) do
-    text
-    |> String.split(~r/(?<=[.!?])\s+/, parts: 2)
-    |> hd()
-    |> clip()
-  end
-
-  # Cut on a word boundary — a summary sheared mid-word reads as corruption.
-  defp clip(text) when byte_size(text) <= @summary_max, do: text
-
-  defp clip(text) do
-    text
-    |> String.slice(0, @summary_max)
-    |> String.replace(~r/\s+\S*$/, "")
-    |> Kernel.<>("…")
-  end
-
-  defp presence(""), do: nil
-  defp presence(s), do: s
 
   # --- watch reactions ---
 

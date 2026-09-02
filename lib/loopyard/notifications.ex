@@ -115,8 +115,24 @@ defmodule Loopyard.Notifications do
 
   def card_status(_, _, _), do: :ok
 
-  @doc "Raise an arbitrary item (a finished-turn item, a test fixture)."
+  @doc "Raise an arbitrary item (a test fixture). No-op if already open."
   def raise_item(%Item{} = item), do: GenServer.cast(__MODULE__, {:raise, item})
+
+  @doc """
+  "Keep going": hand the agent its next prompt (the same path as the
+  operator's `dispatch`) and settle the finished item.
+  """
+  def keep_going(id, text) when is_binary(text) do
+    case get(id) do
+      %Item{status: :open, agent_id: aid} ->
+        with :ok <- Loopyard.ChatAgent.enqueue_message(aid, text) do
+          settle(id, :kept_going)
+        end
+
+      _ ->
+        {:error, :not_open}
+    end
+  end
 
   @doc "Settle an item by id with an outcome (acted on)."
   def settle(id, outcome \\ :done),
@@ -148,6 +164,7 @@ defmodule Loopyard.Notifications do
     Enum.each(items, fn {id, item} -> :ets.insert(@table, {id, item}) end)
 
     Events.ChatAgent.subscribe()
+    Events.Activity.subscribe_global()
     Process.send_after(self(), :boot_reconcile, @boot_reconcile_ms)
     Process.send_after(self(), :tick, @tick_ms)
 
@@ -224,6 +241,33 @@ defmodule Loopyard.Notifications do
   def handle_info(:coalesced_reconcile, state),
     do: {:noreply, %{run_reconcile(state) | reconcile_armed?: false}}
 
+  # A WORKSPACE agent finished a turn: one open "finished" item per agent,
+  # REPLACED by its next turn rather than stacked. Nothing to say and nothing
+  # changed is not an item (Brad: the idle stuff we don't care about). The
+  # operator's own turns are not notifications.
+  def handle_info(%Events.Activity.Event{kind: :turn_end, workspace_id: ws} = e, state)
+      when is_binary(ws) do
+    changes = Loopyard.ChangeCounts.get(ws)
+    summary = if e.summary in [nil, ""], do: nil, else: e.summary
+
+    if summary || (is_integer(changes) and changes > 0) do
+      {:noreply, put_finished(state, e, summary || "finished a turn", changes)}
+    else
+      {:noreply, state}
+    end
+  end
+
+  # Back to work → its finished item is moot.
+  def handle_info(
+        %Events.Activity.Event{kind: :status, summary: "thinking", agent_id: aid},
+        state
+      ) do
+    case get("fin:" <> aid) do
+      %Item{status: :open} = item -> {:noreply, settle_item(state, item, :settled, :resumed)}
+      _ -> {:noreply, state}
+    end
+  end
+
   # An agent removed on purpose: its open items are moot right now, not in
   # two minutes.
   def handle_info(%Events.ChatAgent.Removed{} = e, state) do
@@ -243,6 +287,46 @@ defmodule Loopyard.Notifications do
   end
 
   # ── internals ───────────────────────────────────────────────────────────
+
+  defp put_finished(state, %Events.Activity.Event{} = e, summary, changes) do
+    id = "fin:" <> e.agent_id
+    prior = get(id)
+
+    item = %Item{
+      id: id,
+      kind: :finished,
+      status: :open,
+      agent_id: e.agent_id,
+      agent_name: e.agent_name || "Agent",
+      workspace_id: e.workspace_id,
+      workspace_name: where(e.workspace_id).workspace_name,
+      project_id: e.project_id,
+      project_name: where(e.workspace_id).project_name,
+      path: Item.path(e.workspace_id, e.project_id, e.agent_id),
+      msg_id: nil,
+      label: summary,
+      raised_at: e.at || DateTime.utc_now(),
+      meta: %{changes: changes}
+    }
+
+    case prior do
+      %Item{status: :open} -> put(state, item, {:changed, :open})
+      _ -> put(state, item, :added)
+    end
+  end
+
+  defp where(ws_id) do
+    case Loopyard.WorkspaceRegistry.get_workspace(ws_id) do
+      %{} = ws ->
+        project = ws[:project_id] && Loopyard.ProjectRegistry.get_project(ws[:project_id])
+        %{workspace_name: ws[:name], project_name: project && project[:name]}
+
+      _ ->
+        %{workspace_name: nil, project_name: nil}
+    end
+  rescue
+    _ -> %{workspace_name: nil, project_name: nil}
+  end
 
   defp settle_item(state, %Item{} = item, status, outcome) do
     from = item.status

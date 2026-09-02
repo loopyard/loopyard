@@ -106,6 +106,74 @@ defmodule Loopyard.NotificationsTest do
     assert %Item{status: :settled, outcome: :timeout} = Notifications.get(qid)
   end
 
+  test "a workspace agent's turn end raises ONE finished item, replaced by the next, cleared by work",
+       %{aid: aid} do
+    Loopyard.Events.Notifications.subscribe()
+
+    turn_end = fn summary ->
+      Loopyard.Events.Activity.publish(%Loopyard.Events.Activity.Event{
+        agent_id: aid,
+        agent_name: "Tester",
+        workspace_id: "ws-" <> aid,
+        project_id: nil,
+        kind: :turn_end,
+        summary: summary,
+        at: DateTime.utc_now()
+      })
+    end
+
+    turn_end.("Wired the images in.")
+    Notifications.sync()
+    fid = "fin:" <> aid
+
+    assert %Item{kind: :finished, status: :open, label: "Wired the images in."} =
+             Notifications.get(fid)
+
+    assert_receive %Loopyard.Events.Notifications.Added{item: %Item{id: ^fid}}
+
+    turn_end.("Fixed the creds bag.")
+    Notifications.sync()
+    assert %Item{status: :open, label: "Fixed the creds bag."} = Notifications.get(fid)
+    assert Enum.count(Notifications.open([:finished]), &(&1.agent_id == aid)) == 1
+
+    # Nothing to say and nothing changed: not an item (the summary stays).
+    turn_end.("")
+    Notifications.sync()
+    assert %Item{label: "Fixed the creds bag."} = Notifications.get(fid)
+
+    Loopyard.Events.Activity.publish(%Loopyard.Events.Activity.Event{
+      agent_id: aid,
+      workspace_id: "ws-" <> aid,
+      kind: :status,
+      summary: "thinking",
+      at: DateTime.utc_now()
+    })
+
+    Notifications.sync()
+    assert %Item{status: :settled, outcome: :resumed} = Notifications.get(fid)
+
+    refute Enum.any?(Loopyard.Attention.line(), &(&1.id == fid)),
+           "finished items are not decisions"
+  end
+
+  test "the turn summary is the last assistant paragraph's first sentence, clipped on a word" do
+    alias Loopyard.ChatAgent.TurnSummary
+
+    msgs = [
+      %{role: :user, content: "go"},
+      %{role: :assistant, content: "## Done\n\nI **wired** the images in. Next I'd add the key."},
+      %{role: :tool, content: "ignored"}
+    ]
+
+    assert TurnSummary.of_transcript(msgs) == "I wired the images in."
+    assert TurnSummary.of_messages(Enum.reverse(msgs)) == "I wired the images in."
+    assert TurnSummary.of_transcript([%{role: :user, content: "x"}]) == nil
+
+    long = %{role: :assistant, content: String.duplicate("word ", 60) <> "end"}
+    s = TurnSummary.of_transcript([long])
+    assert String.ends_with?(s, "…") and byte_size(s) <= TurnSummary.max() + 3
+  end
+
   test "inbox order: approvals before questions before secrets, newest first within a tier" do
     now = DateTime.utc_now()
     at = fn secs -> DateTime.add(now, -secs, :second) end

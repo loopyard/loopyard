@@ -555,6 +555,13 @@ defmodule Loopyard.ChatAgent.StreamHandler do
         # panel still shows what's about to send.
         :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
+        # The turn's OUTCOME, once, here where the messages are in hand — the
+        # inbox raises "finished" items off it; nobody reconstructs it later.
+        Events.Activity.record(
+          id,
+          :turn_end,
+          Loopyard.ChatAgent.TurnSummary.of_messages(state.messages) || ""
+        )
 
         case drain_pending_sends(state) do
           {:noreply, drained} = result ->
