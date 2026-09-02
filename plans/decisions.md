@@ -465,3 +465,33 @@ finished/idle items exist to earn the broader word.
 Open: the DESKTOP shape of `/decisions`. The deck is a phone idea; a wide
 screen wants master-detail (pending list left, the chosen decision + its
 thread right; click, not swipe). Not built yet.
+
+### The bigger frame (Brad, later the same afternoon)
+
+"One operator chat" may be a fake corner. Step back and it's: a stream of
+NOTIFICATIONS (decisions to make, agents finished/idle), and AGENTS you run
+against that stream — any number of them, not tied to a project, watching
+workspaces and managing the workspace agents. The operator is then just the
+first of those: an agent chat like any other, multiplayer (one person on
+several devices; a few people reasoning together), private only once login
+exists. Workspaces keep working exactly as they do.
+
+How that maps onto what exists today:
+
+- **Notifications** = `Loopyard.Attention.line/0` (decisions, card-sourced,
+  durable) ∪ `Loopyard.Operator.Digest` (the turn-end completion ring the
+  operator pulls via `recent_activity`). A notifications feed is those two
+  unified into one durable, prioritised store with actions per item.
+- **Agents against notifications** = workspace-less ChatAgents with the
+  control-plane toolset (`Tools.ControlPlane`, ACP `:operator` scope). The
+  operator IS one; `Loopyard.Operator` only makes it a singleton. Generalise:
+  N "staff" agents, each URL-rooted (`/agents/:id` or similar), the operator
+  the first.
+- **Multiplayer** is already the default (PubSub fan-out, every device sees
+  the same chat); privacy is the login front-door plug (deferred).
+- **Push** exists for questions (`WebPush.notify_question`, the PushBell
+  toggle); extending it to "finished" items is small once those items exist.
+
+Nothing built on this yet — recorded so the next steps are sequenced against
+it: (1) the notifications store, (2) staff agents, (3) the desktop shape of
+/decisions.
