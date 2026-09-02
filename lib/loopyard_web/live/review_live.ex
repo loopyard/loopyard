@@ -507,7 +507,7 @@ defmodule LoopyardWeb.ReviewLive do
               href={"#top-" <> @card.dom_id}
               class="hidden group-data-[stuck]:flex items-center gap-3 px-4 md:px-6 py-3 min-h-16 border-l-4 border-orange-500 bg-orange-50 dark:bg-orange-500/10 text-lead text-zinc-900 dark:text-zinc-50 shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
             >
-              <span class="min-w-0 flex-1 line-clamp-2">{@prompt}</span>
+              <span class="min-w-0 flex-1 line-clamp-3">{@prompt}</span>
               <span class="flex-none inline-flex items-center min-h-11 px-3 rounded-sm bg-orange-600 text-white text-body font-semibold">
                 {(@pending? && "Answer ↑") || "Back ↑"}
               </span>
