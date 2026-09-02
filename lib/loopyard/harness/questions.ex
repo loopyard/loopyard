@@ -92,6 +92,13 @@ defmodule Loopyard.Harness.Questions do
         :ets.delete(@table, qid)
         update_msg(agent_id, msg_id, %{status: :answered, selections: selections})
         {:ok, selections}
+
+      # Withdrawn as moot (Notifications.Retract): the agent moves on as if
+      # every question were skipped; the card says why.
+      {:retracted, ^qid, reason} ->
+        :ets.delete(@table, qid)
+        update_msg(agent_id, msg_id, %{status: :retracted, retract_reason: reason})
+        {:ok, %{}}
     after
       @timeout_ms ->
         :ets.delete(@table, qid)
@@ -510,6 +517,53 @@ defmodule Loopyard.Harness.Questions do
   end
 
   # --- internals ---
+
+  @doc """
+  Retract a pending ask with a reason: the waiter (if alive) resumes the turn
+  as if every question were skipped; the card flips to `:retracted` either
+  way. A no-op for an ask that isn't pending.
+  """
+  @spec retract(String.t(), String.t()) :: :ok
+  def retract(qid, reason) when is_binary(qid) and is_binary(reason) do
+    case :ets.lookup(@table, qid) do
+      [{^qid, %{waiter: pid} = entry}] when is_pid(pid) ->
+        if Process.alive?(pid) do
+          send(pid, {:retracted, qid, reason})
+        else
+          :ets.delete(@table, qid)
+
+          update_msg(entry.agent_id, entry[:msg_id], %{status: :retracted, retract_reason: reason})
+        end
+
+        :ok
+
+      [{^qid, entry}] ->
+        :ets.delete(@table, qid)
+        update_msg(entry.agent_id, entry[:msg_id], %{status: :retracted, retract_reason: reason})
+        :ok
+
+      [] ->
+        # No broker entry (restart, pruned waiter): the card is the truth.
+        case rebuild_entry(qid) do
+          {:ok, entry} ->
+            :ets.delete(@table, qid)
+
+            update_msg(entry.agent_id, entry[:msg_id], %{
+              status: :retracted,
+              retract_reason: reason
+            })
+
+            :ok
+
+          _ ->
+            :ok
+        end
+    end
+  rescue
+    _ -> :ok
+  catch
+    _, _ -> :ok
+  end
 
   defp update_msg(_agent_id, nil, _changes), do: :ok
 

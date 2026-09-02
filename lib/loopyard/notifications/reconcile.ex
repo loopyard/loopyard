@@ -70,6 +70,10 @@ defmodule Loopyard.Notifications.Reconcile do
     end
   end
 
+  @doc "Withdraw a decision's card (see `Loopyard.Notifications.Retract`)."
+  def retract_card(%Item{} = item, reason),
+    do: Loopyard.Notifications.Retract.card(item, to_string(reason || "no longer needed"))
+
   defp agent_summaries do
     Loopyard.ChatAgent.list_agent_summaries()
   rescue

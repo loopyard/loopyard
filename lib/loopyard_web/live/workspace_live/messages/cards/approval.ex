@@ -78,6 +78,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Approval do
               @msg.status == :denied ->
                 "Declined"
 
+              @msg.status == :retracted ->
+                "Retracted"
+
               @msg.status == :failed ->
                 "Failed"
 
@@ -271,6 +274,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Approval do
             </span>
           <% :denied -> %>
             <span class="text-lead text-zinc-500 dark:text-zinc-400">Declined.</span>
+          <% :retracted -> %>
+            <span class="text-lead text-zinc-500 dark:text-zinc-400">
+              Retracted — {@msg[:retract_reason] || "no longer needed"}.
+            </span>
           <% :failed -> %>
             <span class="text-lead text-red-500">
               {case @action.verb do

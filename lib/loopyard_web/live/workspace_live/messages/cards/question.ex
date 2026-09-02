@@ -50,6 +50,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
             {case @msg.status do
               :pending -> "Decision"
               :timeout -> "No answer"
+              :retracted -> "Retracted"
               _ -> "Answered"
             end}
             <span
@@ -72,6 +73,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
 
         <div :if={@msg.status == :timeout} class="text-lead text-zinc-500 dark:text-zinc-400">
           No answer — the agent moved on.
+        </div>
+        <div :if={@msg.status == :retracted} class="text-lead text-zinc-500 dark:text-zinc-400">
+          Retracted — {@msg[:retract_reason] || "no longer needed"}. The agent moved on.
         </div>
       </LoopyardWeb.Components.StreamCard.band>
     </div>

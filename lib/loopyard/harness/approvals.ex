@@ -286,6 +286,30 @@ defmodule Loopyard.Harness.Approvals do
   @spec pending?(String.t()) :: boolean()
   def pending?(id), do: :ets.member(@table, id)
 
+  @doc """
+  Retract a pending approval with a reason. A BLOCKING one (a `propose_*` tool
+  waiting) is decided `:deny` so the turn continues; either model's card flips
+  to `:retracted` with the reason.
+  """
+  @spec retract(String.t(), String.t(), String.t() | nil, String.t()) :: :ok
+  def retract(id, agent_id, msg_id, reason) when is_binary(id) and is_binary(reason) do
+    resolve(agent_id, msg_id, %{status: :retracted, retract_reason: reason})
+
+    case :ets.lookup(@table, id) do
+      [{^id, %{waiter: pid}}] when is_pid(pid) ->
+        :ets.delete(@table, id)
+        if Process.alive?(pid), do: send(pid, {:decided, id, :deny})
+        :ok
+
+      _ ->
+        :ok
+    end
+  rescue
+    _ -> :ok
+  catch
+    _, _ -> :ok
+  end
+
   # --- internals ---
 
   # The project's GitHub remote (or nil for local-only).
