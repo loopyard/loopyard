@@ -76,7 +76,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
   attr :messages, :list, required: true
   attr :word, :string, required: true
   attr :agent_id, :string, required: true
-  attr :mode, :atom, default: :thinking
+
+  attr :mode, :atom,
+    default: :thinking,
+    values: [:thinking, :compacting, :restarting, :blocked],
+    doc: "what the turn is doing — :blocked is parked on a human, not working"
+
   # Lifetime cumulative tokens this agent has used (real usage, updated when
   # each turn settles). Kept for callers/tooltips, but NO LONGER shown in the
   # live footer — it's a cost odometer, not a context gauge (see below).
@@ -122,7 +127,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
       </span>
       <span class={["text-body font-semibold flex-none", @text_class]}>{@word}…</span>
       <span
-        :if={@turn_since}
+        :if={@turn_since && @mode != :blocked}
         id="turn-elapsed"
         phx-hook="Elapsed"
         phx-update="ignore"
@@ -134,7 +139,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
     the lifetime cumulative cost (that's in the sidebar) — so a busy
     agent with an empty context never looks like a runaway. --%>
       <span
-        :if={@ctx_pct > 0}
+        :if={@ctx_pct > 0 && @mode != :blocked}
         class={["text-body flex-none tabular-nums", @ctx_class]}
         title="context window filled this turn — compaction kicks in near full; lifetime token cost is in the sidebar"
       >
@@ -147,14 +152,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
     calls — it may be stuck" accusation that made healthy agents read as broken.
     Singular/plural so a fresh turn reads cleanly ("1 tool", "3 tools"). --%>
       <span
-        :if={(@tool_calls || 0) >= 1}
+        :if={(@tool_calls || 0) >= 1 && @mode != :blocked}
         class="text-body flex-none tabular-nums text-zinc-400"
         title="tool calls in this turn"
       >
         · {@tool_calls} {if @tool_calls == 1, do: "tool", else: "tools"}
       </span>
       <span
-        :if={@active_tool && @streaming_text == ""}
+        :if={@active_tool && @streaming_text == "" && @mode != :blocked}
         class="text-body flex-none truncate font-mono text-zinc-400"
       >
         · {short_tool(@active_tool)}
@@ -201,6 +206,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
           {"Compacting", "bg-amber-400",
            "border-amber-200/70 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/10",
            "text-amber-700 dark:text-amber-200", "text-amber-500/70 dark:text-amber-300/50"}
+
+        :blocked ->
+          {"Waiting on your answer", "bg-orange-400",
+           "border-orange-200/70 dark:border-orange-500/20 bg-orange-50 dark:bg-orange-500/10",
+           "text-orange-700 dark:text-orange-300", "text-orange-500/70 dark:text-orange-300/50"}
 
         :restarting ->
           {"Restarting harness", "bg-rose-400",

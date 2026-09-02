@@ -114,11 +114,25 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Status do
   agent sets :backoff while restarting a crashed CLI and :compacting while it
   summarizes a full context; everything else reads as the model thinking.
   """
-  def live_status_mode(agent) do
-    case agent.status do
-      :backoff -> :restarting
-      :compacting -> :compacting
-      _ -> :thinking
+  def live_status_mode(agent, messages \\ [], streaming_text \\ "") do
+    cond do
+      agent.status == :backoff ->
+        :restarting
+
+      agent.status == :compacting ->
+        :compacting
+
+      # The turn is BLOCKED inside ask_user / an approval: the harness isn't
+      # thinking, it's parked on a human. A violet spinner with a running
+      # timer read as busywork ("Drafting a question… 2h 10m") when nothing
+      # was happening but waiting. Live output wins — text still streaming
+      # means it IS working, whatever else is pending.
+      (streaming_text || "") == "" and
+          (awaiting_answer?(messages) or awaiting_approval?(messages)) ->
+        :blocked
+
+      true ->
+        :thinking
     end
   end
 

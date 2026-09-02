@@ -24,7 +24,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       pending_question: 1,
       question_prompt_preview: 1,
       building?: 1,
-      live_status_mode: 1,
+      live_status_mode: 3,
       active_turn_cutoff: 1
     ]
 
@@ -362,7 +362,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                 messages={@messages}
                 word={@thinking_word}
                 agent_id={@agent.id}
-                mode={live_status_mode(@agent)}
+                mode={live_status_mode(@agent, @messages, @streaming_text)}
                 streaming_text={@streaming_text}
                 active_tool={@agent[:active_tool]}
                 tool_calls={@agent[:tool_calls_this_turn] || 0}
