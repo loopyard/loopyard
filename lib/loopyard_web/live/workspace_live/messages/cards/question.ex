@@ -239,7 +239,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
                 deselect and Answer dims) AND ARMS in the same tap — the
                 orange "Dismiss decision" is already there for the second tap;
               * nothing selected → "Dismiss" ARMS: it swaps for the orange
-                "Confirm dismissal", which does it; any other tap disarms.
+                "Confirm dismissal", which does it. It stays armed while you
+                chat about the decision (a click-away disarm reverted it the
+                moment you tapped the composer); picking an option is what
+                stands it down.
             Arm/disarm toggle a class rather than inline display, so the
             has-checked rules keep working while armed. --%>
             <button
@@ -297,14 +300,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
               phx-click="skip_question"
               phx-value-question_id={@msg.question_id}
               phx-value-q={@q.id}
-              phx-click-away={
-                Phoenix.LiveView.JS.add_class("hidden")
-                |> Phoenix.LiveView.JS.remove_class("hidden",
-                  to: "#dismiss-#{@msg[:id] || @msg.question_id}-#{@q.id}"
-                )
-              }
               class={[
                 "hidden w-full sm:w-auto order-last sm:order-first",
+                "group-has-[:checked]/qform:!hidden",
+                "group-has-[[data-qother]:not(:placeholder-shown)]/qform:!hidden",
                 StreamCard.action_class(variant: :primary)
               ]}
             >

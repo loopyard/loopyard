@@ -203,8 +203,11 @@ defmodule LoopyardWeb.ReviewLive do
           |> Enum.filter(&match?({_, _}, &1[:re]))
           |> Enum.group_by(& &1[:re])
 
+        # The summary names the parked queue `pending_messages`; a live state
+        # says `pending_sends`. Read both — reading only the latter is why the
+        # queued band never showed.
         queued =
-          (st[:pending_sends] || [])
+          (st[:pending_messages] || st[:pending_sends] || [])
           |> Enum.map(&Thread.split/1)
           |> Enum.filter(&match?({_, {_, _}}, &1))
           |> Enum.group_by(&elem(&1, 1), &elem(&1, 0))
@@ -658,6 +661,18 @@ defmodule LoopyardWeb.ReviewLive do
       to it. --%>
       <div class="flex-none px-4 md:px-6 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-brand-paper dark:bg-brand-ink border-t border-zinc-200 dark:border-zinc-800">
         <div id={"composer-" <> @card.dom_id} phx-update="ignore" class="mx-auto w-full max-w-2xl">
+          <%!-- OPTIMISTIC ECHO: the instant you hit Send, the ChatForm hook shows
+          your words here as "Sending…" — the operator may be mid-turn and
+          park the message for a while, and a send with nothing on screen
+          read as "nothing is going through". The server's queued band or
+          the message itself replaces it on the ack. --%>
+          <div
+            data-send-echo
+            class="hidden mb-2 px-3 py-2 border-l-2 border-violet-400/60 bg-violet-500/5 text-lead text-zinc-700 dark:text-zinc-300"
+          >
+            <div data-echo-label class="text-meta text-violet-600 dark:text-violet-400">Sending…</div>
+            <div data-echo-text class="whitespace-pre-wrap line-clamp-3"></div>
+          </div>
           <form
             id={"chat-form-" <> @card.dom_id}
             phx-submit="send_message"

@@ -1088,7 +1088,9 @@ Hooks.ChatForm = {
         }
       })
 
-      const echo = document.getElementById("send-echo")
+      const echo =
+        (this.el.parentElement && this.el.parentElement.querySelector("[data-send-echo]")) ||
+        document.getElementById("send-echo")
       const echoText = echo && echo.querySelector("[data-echo-text]")
       const echoLabel = echo && echo.querySelector("[data-echo-label]")
       if (echoText) echoText.textContent = text || `📎 ${files} file${files === 1 ? "" : "s"}`
