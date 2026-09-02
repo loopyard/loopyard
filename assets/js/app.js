@@ -578,7 +578,11 @@ Hooks.QuestionOptions = {
     this.el.addEventListener("click", (e) => {
       const label = e.target.closest("label.q-option")
       const input = label && label.querySelector("input[type=radio]")
-      if (!input || !input.checked) return
+      // A label tap arrives TWICE: the label's click, then the synthetic click
+      // the browser sends the radio — by which point it already reads as
+      // checked. Act only on the label's own click, where the prior state is
+      // still visible; otherwise every selection cancelled itself.
+      if (!input || e.target === input || !input.checked) return
       e.preventDefault()
       input.checked = false
       this.checked = null
