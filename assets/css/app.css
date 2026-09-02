@@ -699,3 +699,12 @@ input[type="range"].volume-slider:focus-visible {
   content: "";
   @apply block h-2 w-2 rounded-full bg-orange-500;
 }
+
+/* Drag a file over the chat pane: LiveView stamps .phx-drop-target-active on
+   the phx-drop-target element while a drag hovers it. Iris = "you", dashed =
+   "drop here". */
+.phx-drop-target-active {
+  outline: 2px dashed #7c3aed;
+  outline-offset: -8px;
+  background-color: rgb(124 58 237 / 0.04);
+}

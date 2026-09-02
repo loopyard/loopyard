@@ -81,6 +81,51 @@ defmodule Loopyard.VolumeIO do
   end
 
   @doc """
+  Copy a HOST file into a volume at `dest` (an absolute `/workspace/...` path
+  or one relative to it) — the write path for binary/large content.
+
+  `write_file/3` shells the bytes through a base64 argument, which caps out at
+  the kernel's per-argument limit (~128KB) — a screenshot won't fit. `docker cp`
+  streams the file over the API from the docker CLI on the host, so it has no
+  size ceiling and works under Colima (no bind mount involved). Copies into
+  the running workspace container when there is one, else through a throwaway
+  container that mounts the volume.
+  """
+  @spec copy_in(String.t(), Path.t(), String.t()) :: :ok | {:error, term()}
+  def copy_in(volume_name, host_path, dest) do
+    with {:ok, abs} <- validate_path(dest),
+         true <- File.regular?(host_path) || {:error, :enoent} do
+      dir = Path.dirname(abs)
+
+      case find_container_for_volume(volume_name) do
+        {:ok, container} ->
+          with {:ok, _} <- Loopyard.Docker.exec_in(container, "mkdir -p #{shq(dir)}"),
+               {:ok, _} <- Docker.docker(["cp", host_path, "#{container}:#{abs}"]) do
+            :ok
+          end
+
+        :none ->
+          # No running container: `docker cp` needs one, so make a throwaway
+          # on the volume, copy into it, and remove it.
+          name = "#{Docker.prefix()}cp-#{System.unique_integer([:positive])}"
+
+          with {:ok, _} <-
+                 Docker.docker(~w(run --rm -v #{volume_name}:/workspace alpine mkdir -p) ++ [dir]),
+               {:ok, _} <-
+                 Docker.docker(~w(create --name #{name} -v #{volume_name}:/workspace alpine)) do
+            result = Docker.docker(["cp", host_path, "#{name}:#{abs}"])
+            Docker.docker(["rm", "-f", name])
+
+            case result do
+              {:ok, _} -> :ok
+              {:error, reason} -> {:error, reason}
+            end
+          end
+      end
+    end
+  end
+
+  @doc """
   Seed a volume from a host directory. Uses rsync WITHOUT `--delete` so
   re-running on a partially-populated volume is safe (missing files are
   added, existing files are updated by mtime, no extra files are removed).
@@ -261,17 +306,23 @@ defmodule Loopyard.VolumeIO do
   # POSIX single-quote escape: wrap in '…' and replace embedded ' with '"'"'.
   defp shq(s) when is_binary(s), do: "'" <> String.replace(s, "'", "'\"'\"'") <> "'"
 
-  # Find a running workspace container that has this volume mounted
+  # Find a running container that has this volume mounted: the always-on
+  # work container first (`<prefix><ws>-work`, the agent's box), then a
+  # compose `workspace` service if the project defines one. Volume names are
+  # `<prefix><workspace_id>-code`.
   defp find_container_for_volume(volume_name) do
-    # Volume names are like loopyard-{workspace_id}-code
-    case Regex.run(~r/^loopyard-([a-f0-9]+)-code$/, volume_name) do
-      [_, workspace_id] ->
-        container = "#{Loopyard.Docker.prefix()}#{workspace_id}-workspace-1"
+    prefix = Regex.escape(Loopyard.Docker.prefix())
 
-        if Loopyard.Docker.container_running?(container) do
-          {:ok, container}
-        else
-          :none
+    case Regex.run(~r/^#{prefix}([a-f0-9]+)-code$/, volume_name) do
+      [_, workspace_id] ->
+        [
+          Loopyard.Workspace.WorkContainer.container_name(workspace_id),
+          "#{Loopyard.Docker.prefix()}#{workspace_id}-workspace-1"
+        ]
+        |> Enum.find(&Loopyard.Docker.container_running?/1)
+        |> case do
+          nil -> :none
+          container -> {:ok, container}
         end
 
       _ ->

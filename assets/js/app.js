@@ -831,6 +831,19 @@ Hooks.ShareSheet = {
   }
 }
 
+// ChatAttachments — the composer's upload tray (LV-rendered). Its only job is
+// to tell the ChatForm hook (which lives in a phx-update="ignore" island and
+// can't observe LV renders) that the file count changed.
+Hooks.ChatAttachments = {
+  mounted() { this.ping() },
+  updated() { this.ping() },
+  destroyed() { window.dispatchEvent(new CustomEvent("loopyard:attachments", { detail: { count: 0 } })) },
+  ping() {
+    const count = parseInt(this.el.dataset.count || "0", 10)
+    window.dispatchEvent(new CustomEvent("loopyard:attachments", { detail: { count } }))
+  }
+}
+
 // ChatForm — the composer. THE CONTRACT, in one place:
 //
 //   ENTER (decided per keydown by layout width, md=768px):
@@ -856,6 +869,31 @@ Hooks.ChatForm = {
     if (!ta || ta.dataset.wired) return
     ta.dataset.wired = "1"
     let sending = false
+
+    // ATTACHMENTS — three ways in, ONE LiveView upload ("attachments"):
+    //   paperclip → clicks the LV file input in the #chat-attachments tray
+    //   paste     → files on the clipboard go straight to the upload
+    //   drop      → phx-drop-target on the chat pane (LiveView handles it)
+    // The tray (LV-rendered, next to this ignored form) shows chips + progress
+    // and pings "loopyard:attachments" on every render so the send cue and
+    // the "is there anything to send" check track it. Send consumes the tray
+    // server-side; this hook never touches the files themselves.
+    const attachmentCount = () => {
+      const tray = document.getElementById("chat-attachments")
+      return tray ? parseInt(tray.dataset.count || "0", 10) : 0
+    }
+    const attachBtn = this.el.querySelector("#chat-attach")
+    if (attachBtn) attachBtn.addEventListener("click", () => {
+      const input = document.querySelector("#chat-attachments input[type=file]")
+      if (input) input.click()
+    })
+    ta.addEventListener("paste", (e) => {
+      const files = Array.from((e.clipboardData && e.clipboardData.files) || [])
+      if (files.length === 0) return
+      e.preventDefault()
+      this.upload("attachments", files)
+    })
+    window.addEventListener("loopyard:attachments", () => updateSend())
 
     // Draft persistence — the LAST line of defense for a half-typed message.
     // phx-update="ignore" already protects the box from LiveView patches, but a
@@ -952,14 +990,15 @@ Hooks.ChatForm = {
 
     // Subtle "ready to send" cue: the arrow fills violet when there's text.
     const updateSend = () => {
-      if (btn) btn.classList.toggle("send-ready", ta.value.trim() !== "")
+      if (btn) btn.classList.toggle("send-ready", ta.value.trim() !== "" || attachmentCount() > 0)
     }
     updateSend()
 
     const send = () => {
       if (sending) return
       const text = ta.value.trim()
-      if (!text) return
+      const files = attachmentCount()
+      if (!text && files === 0) return
       sending = true
       if (btn) btn.disabled = true
 
@@ -983,7 +1022,7 @@ Hooks.ChatForm = {
       const echo = document.getElementById("send-echo")
       const echoText = echo && echo.querySelector("[data-echo-text]")
       const echoLabel = echo && echo.querySelector("[data-echo-label]")
-      if (echoText) echoText.textContent = text
+      if (echoText) echoText.textContent = text || `📎 ${files} file${files === 1 ? "" : "s"}`
       if (echoLabel) echoLabel.textContent = "Sending…"
       if (echo) echo.classList.remove("hidden")
 

@@ -371,6 +371,19 @@ boots the cloned config once cloning is done — not just forks.
   `:init_opts`. Falls back to the frozen opts if the rebuild fails, so
   the button still un-wedges a harness. Other restart reasons
   (`:user`/`:credentials`/`:recovery`/`:memory_reclaim`) are unchanged.
+- **Attachments are files in the volume + marker lines in the text.** The
+  paperclip, a paste into the box, and a drop anywhere on the chat pane all
+  feed ONE LiveView upload (`allow_upload :attachments`, see
+  `WorkspaceLive.Attachments`); on Send the files are `docker cp`'d into
+  `/workspace/.loopyard/uploads/` (`VolumeIO.copy_in`, self-gitignored) and
+  the message gains one `📎 Attached: <path> (<mime>, <bytes>)` line per file
+  (`Loopyard.Attachments.annotate/2`). Nothing above the message STRING
+  changes — queue, edit, retry, ETF log, batch framing, `recall_conversation`
+  all carry attachments for free, and any harness that can read a file from
+  `/workspace` can look (Claude's `Read` renders images). The transcript
+  `parse/1`s the lines back out and renders thumbnails via
+  `AttachmentController`. Never put attachment state in a second field or a
+  structured prompt — the string IS the durable contract.
 - **Composer queue is ONE card.** Messages queued while the agent is
   busy render as a single sender-labeled band (the workstation name,
   e.g. "Brad" — not "You") with every pending line inside it, each

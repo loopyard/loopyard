@@ -10,6 +10,9 @@ defmodule LoopyardWeb.WorkspaceLive do
   use LoopyardWeb.Live.WorkspaceLive.Components
   import LoopyardWeb.Live.WorkspaceLive.MainContent
 
+  alias LoopyardWeb.Live.WorkspaceLive.Attachments, as: ComposerAttachments
+  alias LoopyardWeb.Live.WorkspaceLive.Composer
+
   alias LoopyardWeb.Live.WorkspaceLive.{
     AgentEvents,
     AgentLifecycle,
@@ -131,6 +134,9 @@ defmodule LoopyardWeb.WorkspaceLive do
         %URI{host: h} when is_binary(h) and h != "" -> h
         _ -> "localhost"
       end
+
+    # Chat attachments (screenshots, logs) — the composer's upload tray.
+    socket = ComposerAttachments.allow(socket)
 
     {:ok,
      socket
@@ -656,6 +662,8 @@ defmodule LoopyardWeb.WorkspaceLive do
   def handle_event("send_message", %{"message" => message}, socket) do
     message = String.trim(message)
     editing = socket.assigns[:editing_pending]
+    # A Send with an empty box but files in the tray is still a send.
+    attachments? = ComposerAttachments.pending?(socket)
 
     cond do
       # EDIT-IN-PLACE: saving an edited queued message updates it AT its
@@ -677,62 +685,30 @@ defmodule LoopyardWeb.WorkspaceLive do
 
         {:reply, %{ok: true}, assign(socket, :editing_pending, nil)}
 
-      message != "" && socket.assigns.selected_id ->
-        # Don't add optimistically — let PubSub broadcast handle it for ALL viewers.
-        # This ensures multiplayer: every viewer (including the sender) sees the
-        # message via the same path.
-        #
-        # DURABILITY-CONFIRMED: use enqueue_message (a call), not send_message (a
-        # cast). We only reply ok: true — the signal the ChatForm hook waits on
-        # before clearing the box — once the agent has actually RECEIVED and stored
-        # the message. If its GenServer is down, DON'T bounce an error at the user:
-        # the asleep contract is "wakes on your next message", so WAKE it and
-        # deliver (wake_and_enqueue). Only if that also fails does the hook keep
-        # the text and a short flash explain — the error is the last resort, never
-        # the first response.
-        id = socket.assigns.selected_id
+      (message != "" or attachments?) && socket.assigns.selected_id ->
+        # Attachments first: the files move into the workspace volume and the
+        # message gains one marker line per file (Loopyard.Attachments) — the
+        # agent sees a path it can Read. A failed copy is the ONE case where the
+        # box must keep its text: reply ok:false + note, nothing consumed.
+        case ComposerAttachments.consume(socket) do
+          {:ok, atts} ->
+            Composer.deliver(socket, Loopyard.Attachments.annotate(message, atts))
 
-        result =
-          case ChatAgent.enqueue_message(id, message) do
-            :ok -> :ok
-            {:error, :queue_full} = e -> e
-            {:error, :unavailable} -> AgentLifecycle.wake_and_enqueue(id, message)
-          end
-
-        # ONE message channel: the reply's `note` renders inline under the
-        # composer (the ChatForm hook). No flash — an error toast AND an inline
-        # note competing to explain the same thing was noise.
-        case result do
-          :ok ->
-            # Optimistic queue: enqueue_message already wrote the new pending list
-            # to ETS synchronously, so pull it into THIS reply's diff. Otherwise the
-            # queued card only appears when the StatusChanged broadcast is processed
-            # — and while the agent is thinking, that broadcast waits behind a
-            # backlog of streaming-token messages in the mailbox, so the box clears
-            # but the card visibly lags. Rendering it here lands the card in the same
-            # frame as the ack; the in-flight broadcast then overwrites with the
-            # identical list (no flicker). If the agent was idle, ETS pending is
-            # still [] (the message sent immediately) → nothing rendered here.
-            socket = AgentEvents.refresh_selected_from_agents(socket, id, socket.assigns.agents)
-            {:reply, %{ok: true}, socket}
-
-          {:error, :queue_full} ->
-            {:reply,
-             %{
-               ok: false,
-               note: "The agent's queue is full — wait for it to catch up, then resend."
-             }, socket}
-
-          {:error, :unavailable} ->
-            {:reply,
-             %{ok: false, note: "⚠ Couldn't wake the agent — your text is kept; try Send again."},
-             socket}
+          {:error, note} ->
+            {:reply, %{ok: false, note: note}, socket}
         end
 
       true ->
         {:reply, %{ok: false}, socket}
     end
   end
+
+  # The file-input form next to the composer: phx-change is what makes
+  # auto_upload start; there's nothing to validate.
+  def handle_event("validate_attachments", _params, socket), do: {:noreply, socket}
+
+  def handle_event("cancel_attachment", %{"ref" => ref}, socket),
+    do: {:noreply, ComposerAttachments.cancel(socket, ref)}
 
   @impl true
   def handle_event("load_more", _params, socket) do

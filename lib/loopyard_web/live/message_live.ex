@@ -275,9 +275,20 @@ defmodule LoopyardWeb.MessageLive do
   # --- read-only per-role rendering of a turn's messages ---
 
   def turn_msg(%{msg: %{role: :user, content: c}} = assigns) when is_binary(c) do
+    {body, attachments} = Loopyard.Attachments.parse(c)
+    assigns = assign(assigns, body: body, attachments: attachments)
+
     ~H"""
     <div class=" bg-violet-100 dark:bg-[#2b2348] px-4 py-3 text-[15px] leading-relaxed whitespace-pre-wrap text-zinc-900 dark:text-zinc-50">
-      {@msg.content}
+      {@body}
+      <div :if={@attachments != []} class={["flex flex-wrap gap-2", @body != "" && "mt-2"]}>
+        <span
+          :for={att <- @attachments}
+          class="inline-flex items-center gap-1 rounded-sm border border-violet-300/60 dark:border-violet-400/25 px-1.5 py-0.5 text-meta"
+        >
+          📎 {att.name}
+        </span>
+      </div>
     </div>
     """
   end

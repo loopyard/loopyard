@@ -29,6 +29,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     ]
 
   alias LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header
+  alias LoopyardWeb.Live.WorkspaceLive.Attachments, as: ComposerAttachments
   alias LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus
 
   # The live-status presentation (thinking feed, live tail, Reasoning Bar) lives
@@ -78,6 +79,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           window_tail?={@window_tail?}
           detail_level={@detail_level}
           expanded_results={@expanded_results}
+          uploads={assigns[:uploads]}
         />
         <.container_panel
           :if={@tab == :container}
@@ -99,6 +101,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     # to avoid double-listing. They render inline normally once the turn ends.
     assigns = assign(assigns, :live_tool_from, active_turn_cutoff(assigns))
     assigns = assign_new(assigns, :window_tail?, fn -> true end)
+    # The composer's upload tray (nil for static/showcase renders — no LV).
+    assigns = assign_new(assigns, :uploads, fn -> nil end)
 
     # The human's label is the WORKSTATION identity (e.g. "Brad"), not a generic
     # "You" — the messages are sent under that identity. Stable per agent, so it
@@ -145,7 +149,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     <%!-- PerfProbe: client-health beacon (frame gaps / DOM / heap → EventLog).
     Lives on the chat panel because that's the surface with the perf
     history — see the hook in app.js. --%>
-    <div class="relative flex-1 flex flex-col min-h-0" id="chat-perf-probe" phx-hook="PerfProbe">
+    <%!-- phx-drop-target on the WHOLE pane: drop a screenshot anywhere over the
+    chat (not just on the box) and it lands in the composer's tray. LiveView
+    stamps .phx-drop-target-active while a drag hovers (see app.css). --%>
+    <div
+      class="relative flex-1 flex flex-col min-h-0"
+      id="chat-perf-probe"
+      phx-hook="PerfProbe"
+      phx-drop-target={@uploads && @uploads.attachments.ref}
+    >
       <%!-- Windowed transcript: when you've scrolled up into history, the live
     tail isn't loaded. This snaps you back to the newest messages. --%>
       <button
@@ -513,6 +525,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             spans the full width of the screen/pane. --%>
         <div class="w-full border-t border-zinc-200 dark:border-zinc-700/80 mb-2"></div>
         <div class="w-full wide:max-w-3xl mx-auto px-3 md:px-6">
+          <.attachment_tray :if={@uploads} uploads={@uploads} />
           <div id="chat-form-wrapper" phx-update="ignore">
             <form
               id="chat-form"
@@ -520,6 +533,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               phx-hook="ChatForm"
               class="flex items-end gap-2"
             >
+              <%!-- The paperclip: opens the file picker (the ChatForm hook clicks
+    the LV file input in the tray). Paste and drop reach the same tray. --%>
+              <button
+                type="button"
+                id="chat-attach"
+                aria-label="Attach files"
+                title="Attach files — or paste / drop them here"
+                class="focus-ring flex-none flex items-center justify-center rounded-full w-11 h-11 md:w-10 md:h-10 mb-[5px] md:mb-1 text-zinc-400 dark:text-zinc-500
+    hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
+              >
+                <.icon name={:paper_clip} class="w-5 h-5" />
+              </button>
               <textarea
                 name="message"
                 id="chat-input"
@@ -549,6 +574,80 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     </div>
     """
   end
+
+  # --- Attachment tray ---
+
+  # The LV-rendered half of the composer's uploads: the (hidden) live file
+  # input every entry point feeds, plus one chip per file — thumbnail for
+  # images, name, progress, ✕. phx-change is what starts auto_upload; the form
+  # never submits (Send is the composer's job — it consumes the tray).
+  attr :uploads, :map, required: true
+
+  def attachment_tray(assigns) do
+    ~H"""
+    <form
+      id="chat-attachments"
+      phx-change="validate_attachments"
+      phx-submit="validate_attachments"
+      phx-hook="ChatAttachments"
+      data-count={length(@uploads.attachments.entries)}
+      class="contents"
+    >
+      <.live_file_input upload={@uploads.attachments} class="sr-only" tabindex="-1" />
+      <ul :if={@uploads.attachments.entries != []} class="flex flex-wrap gap-2 pb-2">
+        <li
+          :for={entry <- @uploads.attachments.entries}
+          data-attachment
+          class="flex items-center gap-2 rounded-sm border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 p-1 max-w-[240px]"
+        >
+          <.live_img_preview
+            :if={image_upload?(entry)}
+            entry={entry}
+            class="h-10 w-10 flex-none object-cover rounded-sm"
+          />
+          <span
+            :if={!image_upload?(entry)}
+            class="h-10 w-10 flex-none flex items-center justify-center text-zinc-400"
+          >
+            <.icon name={:document} class="w-5 h-5" />
+          </span>
+          <span class="min-w-0 flex flex-col">
+            <span class="text-body text-zinc-700 dark:text-zinc-200 truncate">
+              {entry.client_name}
+            </span>
+            <span :if={entry.progress < 100} class="text-meta text-zinc-400">
+              {entry.progress}%
+            </span>
+            <span
+              :for={err <- upload_errors(@uploads.attachments, entry)}
+              class="text-meta text-red-500 dark:text-red-400"
+            >
+              {ComposerAttachments.error_text(err)}
+            </span>
+          </span>
+          <button
+            type="button"
+            phx-click="cancel_attachment"
+            phx-value-ref={entry.ref}
+            aria-label={"Remove #{entry.client_name}"}
+            class="focus-ring tap-target flex-none w-8 h-8 rounded-sm flex items-center justify-center text-zinc-400 hover:text-red-500 hover:bg-red-500/10 transition-colors"
+          >
+            <.icon name={:x_mark} class="w-4 h-4" />
+          </button>
+        </li>
+      </ul>
+      <p
+        :for={err <- upload_errors(@uploads.attachments)}
+        class="pb-2 text-body text-red-500 dark:text-red-400"
+      >
+        {ComposerAttachments.error_text(err)}
+      </p>
+    </form>
+    """
+  end
+
+  defp image_upload?(%{client_type: "image/" <> _}), do: true
+  defp image_upload?(_), do: false
 
   # --- Container Panel ---
 

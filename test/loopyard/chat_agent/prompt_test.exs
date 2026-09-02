@@ -5,10 +5,11 @@ defmodule Loopyard.ChatAgent.PromptTest do
 
   # Growth tripwire, not a hard CLI limit (ARG_MAX is orders of magnitude
   # higher). Re-baselined 6000 → 7000 in Jul 2026 after deliberate feature
-  # copy landed (git-as-a-tool guidance, questions round-trip). If a change
-  # trips this, decide: is the growth bought intentionally? Then re-baseline
-  # with a note. Otherwise trim the prompt.
-  @prompt_budget 7000
+  # copy landed (git-as-a-tool guidance, questions round-trip); 7000 → 7200 in
+  # Sep 2026 for chat attachments (one line telling the agent to open the
+  # `📎 Attached:` path). If a change trips this, decide: is the growth bought
+  # intentionally? Then re-baseline with a note. Otherwise trim the prompt.
+  @prompt_budget 7200
 
   describe "build_system_prompt/2" do
     test "default agent includes agent ID, container info, and the unified body" do

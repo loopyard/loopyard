@@ -97,3 +97,7 @@ config :loopyard, forbid_real_docker_resources: true
 # can't flip this: app env is global, so per-test put_env would leak into
 # concurrently running untagged tests.)
 config :loopyard, docker_enabled: System.get_env("LOOPYARD_DOCKER_TESTS") in ["1", "true"]
+
+# Chat attachments write into a fake on-disk "volume" (see
+# Loopyard.Test.FakeAttachmentWriter) — the real writer is `docker cp`.
+config :loopyard, attachment_writer: Loopyard.Test.FakeAttachmentWriter

@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- Chat attachments — attach screenshots/files to a message via the paperclip, paste, or drag-and-drop onto the chat (up to 10 per message, 25 MB each). Files land in the workspace volume at `.loopyard/uploads/` (self-gitignored) and reach the agent as `📎 Attached: <path>` lines it can Read; the transcript shows thumbnails, served by `/projects/:p/workspaces/:w/attachments/:name`.
 - EvalRunner HTTP probing — declares success on 2xx, feeds error response bodies back to agent
 - Post-rebuild status report — agent gets service status, crash logs, and HTTP probe results after every rebuild
 - SSH server for terminal access to containers (`ssh -p 2222 container@localhost`)
