@@ -1074,6 +1074,14 @@ Hooks.ChatForm = {
           // already on screen; drop the echo in the same frame.
           hideEcho()
           if (status) status.classList.add("hidden")
+          // A send should take you to where the answer will appear. On a
+          // decision slide the thread sits below the card, so a message sent
+          // from the top of the slide landed out of sight — "I hit send and
+          // nothing happened". `data-scroll-to` names the thread; native
+          // scrollIntoView (with the thread's scroll-margin clearing the
+          // pinned bar + collapsed card) brings it up.
+          const target = this.el.dataset.scrollTo && document.getElementById(this.el.dataset.scrollTo)
+          if (target) target.scrollIntoView({ block: "start", behavior: "smooth" })
         } else {
           // Put the text back (unless the user already started the next
           // message) and say why — a failed send is never silent, never lost.
