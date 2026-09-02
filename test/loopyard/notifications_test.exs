@@ -174,6 +174,45 @@ defmodule Loopyard.NotificationsTest do
     assert String.ends_with?(s, "…") and byte_size(s) <= TurnSummary.max() + 3
   end
 
+  test "retract withdraws the card mid-ask: the blocked ask returns, the card says why",
+       %{aid: aid} do
+    # A real blocked ask, the way the harness does it.
+    task =
+      Task.async(fn ->
+        Loopyard.Harness.Questions.ask(aid, [
+          %{id: "q1", prompt: "Public or private?", options: []}
+        ])
+      end)
+
+    qid =
+      wait_for(fn ->
+        Enum.find_value(Notifications.open(:decisions), &(&1.agent_id == aid and &1.id))
+      end)
+
+    Notifications.retract(qid, "the repo was made public in the meantime")
+    assert {:ok, %{}} = Task.await(task, 2_000)
+    Notifications.sync()
+
+    assert %Item{status: :retracted, outcome: "the repo was made public in the meantime"} =
+             Notifications.get(qid)
+
+    [{^aid, row}] = :ets.lookup(:chat_agents, aid)
+    card = Enum.find(row.messages, &(&1[:question_id] == qid))
+    assert card.status == :retracted
+    assert card.retract_reason =~ "made public"
+  end
+
+  defp wait_for(fun, tries \\ 50) do
+    case fun.() do
+      nil when tries > 0 ->
+        Process.sleep(20)
+        wait_for(fun, tries - 1)
+
+      val ->
+        val
+    end
+  end
+
   test "inbox order: approvals before questions before secrets, newest first within a tier" do
     now = DateTime.utc_now()
     at = fn secs -> DateTime.add(now, -secs, :second) end
@@ -194,6 +233,7 @@ defmodule Loopyard.NotificationsTest do
     File.mkdir_p!(tmp)
     prev = System.get_env("LOOPYARD_HOME")
     System.put_env("LOOPYARD_HOME", tmp)
+    Application.put_env(:loopyard, :notifications_log?, true)
 
     try do
       a = %Item{id: "a", kind: :question, raised_at: DateTime.utc_now()}
@@ -207,6 +247,7 @@ defmodule Loopyard.NotificationsTest do
       assert {%{"b" => _} = items, 1} = Log.replay()
       refute Map.has_key?(items, "a")
     after
+      Application.put_env(:loopyard, :notifications_log?, false)
       if prev, do: System.put_env("LOOPYARD_HOME", prev), else: System.delete_env("LOOPYARD_HOME")
       File.rm_rf!(tmp)
     end

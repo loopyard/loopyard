@@ -29,6 +29,9 @@ defmodule Loopyard.Notifications.Log do
   @doc "Records before a compaction is due."
   def compact_after, do: @compact_after
 
+  @doc "Is the on-disk log on? Off in tests (`:notifications_log?`)."
+  def enabled?, do: Application.get_env(:loopyard, :notifications_log?, true)
+
   @doc """
   Append an item upsert. Disk failures (full, unwritable) are swallowed into
   telemetry, never raised — losing durability of one item must not take the
@@ -36,7 +39,7 @@ defmodule Loopyard.Notifications.Log do
   """
   @spec append(Item.t()) :: :ok
   def append(%Item{} = item) do
-    AgentLog.append({:item, item}, log_path: path(), version: @version)
+    if enabled?(), do: AgentLog.append({:item, item}, log_path: path(), version: @version)
     :ok
   rescue
     e ->
@@ -56,6 +59,10 @@ defmodule Loopyard.Notifications.Log do
   """
   @spec replay() :: {%{optional(String.t()) => Item.t()}, non_neg_integer()}
   def replay do
+    if enabled?(), do: do_replay(), else: {%{}, 0}
+  end
+
+  defp do_replay do
     case AgentLog.read_events(log_path: path()) do
       {:ok, events} ->
         Enum.reduce(events, {%{}, 0}, fn
@@ -80,6 +87,10 @@ defmodule Loopyard.Notifications.Log do
   """
   @spec compact([Item.t()]) :: :ok
   def compact(items) do
+    if enabled?(), do: do_compact(items), else: :ok
+  end
+
+  defp do_compact(items) do
     p = path()
     tmp = p <> ".compacting"
     File.mkdir_p!(Path.dirname(p))

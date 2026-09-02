@@ -22,8 +22,9 @@ defmodule LoopyardWeb.NotificationsLive do
   same deck opened AT that decision (the slide takes focus on mount, which
   scrolls the carousel to it — no custom JS).
 
-  Sourced from `Loopyard.Attention.line/0` (durable, card-sourced), so nothing
-  waiting can be missing. `/projects/:p/workspaces/:w/decisions` scopes to one
+  Sourced from `Loopyard.Notifications` (durable, card-sourced), so nothing
+  waiting can be missing, and live on its events. A finished turn is a slide
+  too: what the agent said last, and Keep going / Open / Dismiss. `/projects/:p/workspaces/:w/decisions` scopes to one
   workspace. `/review*` routes are the old name and render the same thing.
   """
   use LoopyardWeb, :live_view
@@ -38,6 +39,7 @@ defmodule LoopyardWeb.NotificationsLive do
   @impl true
   def mount(params, _session, socket) do
     if connected?(socket) do
+      Events.Notifications.subscribe()
       Events.Activity.subscribe_global()
       Process.send_after(self(), :tick, @tick_ms)
     end
@@ -122,6 +124,11 @@ defmodule LoopyardWeb.NotificationsLive do
   # The answer's card update just landed — settle NOW, not on the next tick.
   def handle_info(%Events.ChatAgentMessage.MessageUpdated{}, socket),
     do: {:noreply, refresh(socket)}
+
+  # The inbox changed (raised / settled / dismissed / retracted, anywhere):
+  # the deck is a view of it.
+  def handle_info(%Events.Notifications.Added{}, socket), do: {:noreply, refresh(socket)}
+  def handle_info(%Events.Notifications.Changed{}, socket), do: {:noreply, refresh(socket)}
 
   # A new message: the operator's reply to a thread (or a new decision card).
   # Threads reload from the operator's durable messages; a landed reply
@@ -256,11 +263,25 @@ defmodule LoopyardWeb.NotificationsLive do
   # contract as every composer: the box clears only on the agent's ack. The
   # operator is booted here if it isn't up — the one place that cost is worth
   # paying synchronously, since the person just asked it something.
+  # Finished-turn slides: the primary move, and the discard. Keep going hands
+  # the agent its next prompt (the composer's text, or the plain word).
+  def handle_event("keep_going", %{"id" => id} = params, socket) do
+    text = String.trim(params["message"] || "")
+    Loopyard.Notifications.keep_going(id, (text != "" && text) || "Keep going.")
+    {:noreply, socket}
+  end
+
+  def handle_event("dismiss_item", %{"id" => id}, socket) do
+    Loopyard.Notifications.dismiss(id, socket.assigns.user_label)
+    {:noreply, socket}
+  end
+
   def handle_event("send_message", %{"message" => text} = params, socket) do
     text = String.trim(text)
 
     with true <- text != "",
          {:ok, ref} <- parse_ref(params["re"]),
+         false <- finished_ref?(ref),
          op when is_binary(op) <- ensure_operator(socket.assigns.operator_id) do
       socket = socket |> assign(:operator_id, op) |> subscribe_agent(op)
 
@@ -279,10 +300,24 @@ defmodule LoopyardWeb.NotificationsLive do
          %{ok: false, note: "The operator couldn't start — your text is kept; try again."},
          socket}
 
+      # A finished-turn slide's composer is "what's next" for THAT agent.
+      true ->
+        {:ok, {aid, _}} = parse_ref(params["re"])
+
+        case Loopyard.Notifications.keep_going("fin:" <> aid, text) do
+          :ok ->
+            {:reply, %{ok: true}, socket}
+
+          _ ->
+            {:reply, %{ok: false, note: "That agent didn't take it — your text is kept."}, socket}
+        end
+
       _ ->
         {:reply, %{ok: true}, socket}
     end
   end
+
+  defp finished_ref?({_aid, mid}), do: mid == Deck.finished_msg_id()
 
   defp parse_ref(re) when is_binary(re) do
     case String.split(re, ":", parts: 2) do
@@ -312,11 +347,18 @@ defmodule LoopyardWeb.NotificationsLive do
   # is done, a whole-card slide until the card settles.
   defp pending_keys(slides) do
     slides
-    |> Enum.filter(fn slide ->
-      case live_msg(slide) do
-        %{status: :pending} = msg -> is_nil(slide.q_id) or slide.q_id not in (msg[:done] || [])
-        _ -> false
-      end
+    |> Enum.filter(fn
+      %{kind: :finished, item_id: id} ->
+        match?(%{status: :open}, Loopyard.Notifications.get(id))
+
+      slide ->
+        case live_msg(slide) do
+          %{status: :pending} = msg ->
+            is_nil(slide.q_id) or slide.q_id not in (msg[:done] || [])
+
+          _ ->
+            false
+        end
     end)
     |> MapSet.new(& &1.key)
   end
@@ -448,6 +490,13 @@ defmodule LoopyardWeb.NotificationsLive do
   # A slide plus its LIVE message and (for a multi-question ask) the one
   # question this card is. Nil when the message has gone — a deleted agent
   # shouldn't leave a hole that crashes the deck.
+  defp resolve_card(%{kind: :finished, item_id: id} = slide) do
+    case Loopyard.Notifications.get(id) do
+      %{} = item -> %{slide: slide, msg: nil, q: nil, item: item, dom_id: Deck.dom_id(slide)}
+      _ -> nil
+    end
+  end
+
   defp resolve_card(slide) do
     case live_msg(slide) do
       %{} = msg ->
@@ -455,6 +504,7 @@ defmodule LoopyardWeb.NotificationsLive do
           slide: slide,
           msg: msg,
           q: slide.q_id && Enum.find(msg[:questions] || [], &(&1.id == slide.q_id)),
+          item: slide[:item_id] && Loopyard.Notifications.get(slide.item_id),
           dom_id: Deck.dom_id(slide)
         }
 

@@ -1,8 +1,9 @@
 defmodule LoopyardWeb.NotificationsLive.Slide do
   @moduledoc """
-  One decision's slide on the deck (`LoopyardWeb.NotificationsLive`): the byline,
-  the card, the collapsing band, the discussion thread and the composer —
-  plus the end slide past the last decision. Function components only; the
+  One item's slide on the deck (`LoopyardWeb.NotificationsLive`): the byline,
+  the card (a decision's, or a finished turn's — Keep going / Open /
+  Dismiss), the collapsing band, the discussion thread and the composer —
+  plus the end slide past the last item. Function components only; the
   LiveView owns the state and hands each slide its card, thread and queue.
   """
   use Phoenix.Component
@@ -36,11 +37,21 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
   # once the card has scrolled away — the slide's `StickyShadow` hook sets
   # `data-stuck`, CSS switches the look. The composer is pinned to the foot.
   def decision_slide(assigns) do
+    finished? = assigns.card.slide.kind == :finished
+    item = assigns.card[:item]
+
     assigns =
       assign(assigns,
         ref: "#{assigns.card.slide.agent_id}:#{assigns.card.slide.msg_id}",
-        prompt: card_prompt(assigns.card),
-        pending?: assigns.card.msg.status == :pending,
+        finished?: finished?,
+        item: item,
+        prompt: (finished? && item && item.label) || card_prompt(assigns.card),
+        pending?:
+          if(finished?,
+            do: item != nil and item.status == :open,
+            else: assigns.card.msg.status == :pending
+          ),
+        verb: (finished? && "finished") || "asked",
         awaiting?: awaiting_reply?(assigns.thread),
         blocked?: operator_blocked?(assigns.operator_id, assigns.card),
         who: Deck.who_asked(assigns.card.slide),
@@ -95,19 +106,19 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
             </span>
             <span :if={@operator_source?} class="min-w-0 truncate">
               <span class="font-semibold text-zinc-800 dark:text-zinc-100">Operator</span>
-              <span :if={@card.slide.asked_at}> asked {Deck.ago_words(@card.slide.asked_at)}</span>
+              <span :if={@card.slide.asked_at}>{@verb} {Deck.ago_words(@card.slide.asked_at)}</span>
             </span>
             <span :if={!@operator_source?} class="min-w-0 flex items-center gap-1.5 truncate">
               <Common.workspace_identity
                 project={@card.slide.project_name}
                 workspace={@card.slide.workspace_name}
-                state={(@pending? && :needs_you) || :asleep}
+                state={(@pending? && ((@finished? && :done) || :needs_you)) || :asleep}
                 class="min-w-0"
               />
               <span class="truncate">
                 ·
                 <span class="font-semibold text-zinc-800 dark:text-zinc-100">{@card.slide.agent_name}</span>
-                <span :if={@card.slide.asked_at}> asked {Deck.ago_words(@card.slide.asked_at)}</span>
+                <span :if={@card.slide.asked_at}>{@verb} {Deck.ago_words(@card.slide.asked_at)}</span>
               </span>
             </span>
             <span class="ml-auto flex-none inline-flex items-center gap-1 text-meta tabular-nums whitespace-nowrap">
@@ -166,11 +177,15 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
           </LoopyardWeb.Components.StreamCard.band>
 
           <Cards.question_card
-            :if={is_nil(@card.q) && @card.msg.role == :question}
+            :if={!@finished? && is_nil(@card.q) && @card.msg.role == :question}
             msg={@card.msg}
           />
-          <Cards.approval_card :if={@card.msg.role == :approval} msg={@card.msg} />
-          <Cards.secret_card :if={@card.msg.role == :secret_request} msg={@card.msg} />
+          <Cards.approval_card :if={!@finished? && @card.msg.role == :approval} msg={@card.msg} />
+          <Cards.secret_card
+            :if={!@finished? && @card.msg.role == :secret_request}
+            msg={@card.msg}
+          />
+          <.finished_card :if={@finished? && @item} item={@item} pending?={@pending?} />
 
           <%!-- THE COLLAPSED DECISION. Nothing at rest. Placed AFTER the card and
         sticky under the bar, it pins exactly when the card has scrolled
@@ -292,8 +307,11 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
               name="message"
               id={"chat-input-" <> @card.dom_id}
               rows="1"
-              placeholder="Chat about this decision…"
-              aria-label="Chat about this decision"
+              placeholder={
+                (@finished? && "Tell #{@card.slide.agent_name} what's next…") ||
+                  "Chat about this decision…"
+              }
+              aria-label={(@finished? && "What's next") || "Chat about this decision"}
               autocomplete="off"
               class="focus-ring text-lead flex-1 bg-transparent border-0 rounded-sm px-1 py-2.5 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none focus:outline-none focus:ring-0"
             ></textarea>
@@ -311,6 +329,77 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
     </section>
     """
   end
+
+  attr :item, :map, required: true
+  attr :pending?, :boolean, required: true
+
+  # A FINISHED turn: what the agent said last, the ±N of changes, and the
+  # three moves — Keep going (the move the item exists for: filled, moss,
+  # since nothing is blocked), Open (the agent's chat), Dismiss (furthest
+  # away). Settled, it reads as a receipt so the deck can stay sticky.
+  defp finished_card(assigns) do
+    assigns = assign(assigns, :changes, assigns.item.meta[:changes])
+
+    ~H"""
+    <LoopyardWeb.Components.StreamCard.band tone={:neutral} chrome={:desktop}>
+      <div class="flex items-center gap-2 text-meta font-semibold uppercase tracking-wide">
+        <span class={
+          (@pending? && "text-emerald-600 dark:text-emerald-400") ||
+            "text-zinc-500 dark:text-zinc-400"
+        }>
+          {finished_word(@item)}
+        </span>
+        <span
+          :if={is_integer(@changes) and @changes > 0}
+          class="normal-case tracking-normal tabular-nums text-zinc-500 dark:text-zinc-400"
+        >
+          · {@changes} {(@changes == 1 && "file") || "files"} changed
+        </span>
+      </div>
+      <p class="mt-2 text-lead text-zinc-900 dark:text-zinc-50">{@item.label}</p>
+
+      <div :if={@pending?} class="mt-4 flex flex-col sm:flex-row sm:items-center gap-2">
+        <button
+          type="button"
+          phx-click="keep_going"
+          phx-value-id={@item.id}
+          class={LoopyardWeb.Components.StreamCard.action_class(variant: :primary, tone: :confirm)}
+        >
+          Keep going
+        </button>
+        <.link navigate={@item.path} class={LoopyardWeb.Components.StreamCard.action_class()}>
+          Open
+        </.link>
+        <button
+          type="button"
+          phx-click="dismiss_item"
+          phx-value-id={@item.id}
+          class={[LoopyardWeb.Components.StreamCard.action_class(), "sm:ml-auto"]}
+        >
+          Dismiss
+        </button>
+      </div>
+      <p :if={!@pending?} class="mt-3 text-lead text-zinc-500 dark:text-zinc-400">
+        {finished_receipt(@item)}
+      </p>
+    </LoopyardWeb.Components.StreamCard.band>
+    """
+  end
+
+  defp finished_word(%{status: :open}), do: "Finished"
+  defp finished_word(%{status: :settled, outcome: :kept_going}), do: "Kept going"
+  defp finished_word(%{status: :settled, outcome: :resumed}), do: "Back at it"
+  defp finished_word(%{status: :dismissed}), do: "Dismissed"
+  defp finished_word(_), do: "Settled"
+
+  defp finished_receipt(%{status: :settled, outcome: :kept_going, agent_name: a}),
+    do: "Kept going — #{a} is on it."
+
+  defp finished_receipt(%{status: :settled, outcome: :resumed, agent_name: a}),
+    do: "#{a} picked the work back up on its own."
+
+  defp finished_receipt(%{status: :dismissed}), do: "Dismissed — nothing more to do here."
+  defp finished_receipt(_), do: "Settled."
 
   attr :history?, :boolean, default: false
   attr :last, :map, default: nil

@@ -70,6 +70,33 @@ defmodule LoopyardWeb.NotificationsDeckTest do
     id
   end
 
+  test "a finished turn is a slide with Keep going / Open / Dismiss; dismissing settles it",
+       %{conn: conn} do
+    aid = seed_agent("Gamma", [])
+
+    Loopyard.Events.Activity.publish(%Loopyard.Events.Activity.Event{
+      agent_id: aid,
+      agent_name: "Gamma",
+      workspace_id: "ws-" <> aid,
+      kind: :turn_end,
+      summary: "Wired the images in.",
+      at: DateTime.utc_now()
+    })
+
+    Loopyard.Notifications.sync()
+    on_exit(fn -> :ets.delete(:notifications, "fin:" <> aid) end)
+
+    {:ok, view, html} = live(conn, "/notifications")
+    assert html =~ "Wired the images in."
+    assert html =~ "Keep going"
+    assert has_element?(view, "button[phx-click=dismiss_item][phx-value-id='fin:#{aid}']")
+
+    render_click(view, "dismiss_item", %{"id" => "fin:" <> aid})
+    Loopyard.Notifications.sync()
+    assert %{status: :dismissed} = Loopyard.Notifications.get("fin:" <> aid)
+    assert render(view) =~ "Dismissed", "the slide stays, as a receipt"
+  end
+
   test "every pending decision is on ONE page", %{conn: conn} do
     seed_agent("Alpha", [pending_question("m-alpha", "First decision?")])
     seed_agent("Beta", [pending_question("m-beta", "Second decision?")])

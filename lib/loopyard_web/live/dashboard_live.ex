@@ -21,6 +21,7 @@ defmodule LoopyardWeb.DashboardLive do
   def mount(_params, _session, socket) do
     socket =
       if connected?(socket) do
+        Loopyard.Events.Notifications.subscribe()
         Loopyard.Events.Activity.subscribe_global()
         Process.send_after(self(), :refresh, @refresh_ms)
         subscribe_iex(socket)
@@ -44,6 +45,13 @@ defmodule LoopyardWeb.DashboardLive do
 
   def handle_info(%Loopyard.Events.Activity.Event{}, socket), do: {:noreply, socket}
 
+  # The inbox changed → the Operator card's list and count.
+  def handle_info(%Loopyard.Events.Notifications.Added{}, socket),
+    do: {:noreply, socket |> refresh() |> load_attention_async()}
+
+  def handle_info(%Loopyard.Events.Notifications.Changed{}, socket),
+    do: {:noreply, socket |> refresh() |> load_attention_async()}
+
   # The heartbeat: refresh remote / system / operated (no PubSub) and reschedule.
   def handle_info(:refresh, socket) do
     Process.send_after(self(), :refresh, @refresh_ms)
@@ -64,7 +72,7 @@ defmodule LoopyardWeb.DashboardLive do
     |> assign(:operator_count, safe(fn -> length(Loopyard.Workstation.list()) end, 1))
     |> load_attention_async()
     |> assign(:inference_ready?, safe(&inference_ready?/0, true))
-    |> assign(:digest, safe(fn -> Loopyard.Operator.Digest.recent(6) end, []))
+    |> assign(:digest, safe(&finished_items/0, []))
     |> assign(:health_map, safe(&Loopyard.Health.overall/0, %{}))
     |> assign(:connections, safe(fn -> connections(socket.assigns.host) end, []))
     |> then(&assign(&1, :first_run_step, first_run_step(&1.assigns)))
@@ -378,7 +386,7 @@ defmodule LoopyardWeb.DashboardLive do
                 :if={@digest != []}
                 class="hidden md:block pt-3 mt-2 border-t border-zinc-200/70 dark:border-zinc-800"
               >
-                <p class="text-body text-zinc-400 dark:text-zinc-500 mb-1">Recently finished</p>
+                <p class="text-body text-zinc-400 dark:text-zinc-500 mb-1">Finished — keep going?</p>
                 <.link
                   :for={e <- Enum.take(@digest, if(@attention == [], do: 5, else: 3))}
                   navigate={digest_path(e)}
@@ -660,13 +668,18 @@ defmodule LoopyardWeb.DashboardLive do
     "#{length(items)} #{plural(length(items), "decision")} waiting on you"
   end
 
-  # A digest row goes where the work happened, so "what finished" is one tap
-  # from the thing itself.
-  defp digest_path(%{project_id: pid, workspace_id: ws, agent_id: aid})
-       when is_binary(pid) and is_binary(ws) and is_binary(aid),
-       do: "/projects/#{pid}/workspaces/#{ws}/agents/#{aid}"
+  # Open FINISHED items from the inbox — the agent's own closing line — each
+  # linking to its slide, where Keep going / Open / Dismiss live.
+  defp finished_items do
+    Loopyard.Notifications.open([:finished])
+    |> Enum.take(6)
+    |> Enum.map(&%{summary: &1.label, agent_id: &1.agent_id})
+  end
 
-  defp digest_path(_), do: "/operator"
+  defp digest_path(%{agent_id: aid}) when is_binary(aid),
+    do: "/notifications/#{aid}/#{LoopyardWeb.NotificationsLive.Deck.finished_msg_id()}"
+
+  defp digest_path(_), do: "/notifications"
 
   defp plural(1, word), do: word
   defp plural(_, word), do: word <> "s"

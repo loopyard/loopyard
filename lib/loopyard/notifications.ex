@@ -187,7 +187,10 @@ defmodule Loopyard.Notifications do
   @impl true
   def handle_cast({:raise, %Item{} = item}, state) do
     case get(item.id) do
-      %Item{status: :open} -> {:noreply, state}
+      # Same id, same agent, still open: nothing new. Same id from a DIFFERENT
+      # agent is a stale item (ids are the brokers' random ids in production;
+      # a collision means a replayed relic) — replace it.
+      %Item{status: :open, agent_id: aid} when aid == item.agent_id -> {:noreply, state}
       _ -> {:noreply, put(state, %{item | status: :open, settled_at: nil, outcome: nil}, :added)}
     end
   end
@@ -201,8 +204,16 @@ defmodule Loopyard.Notifications do
 
   def handle_cast({:settle, id, status, outcome}, state) do
     case get(id) do
-      %Item{status: :open} = item -> {:noreply, settle_item(state, item, status, outcome)}
-      _ -> {:noreply, state}
+      %Item{status: :open} = item ->
+        # A retracted DECISION is withdrawn at the card too — the agent moves
+        # on, every viewer sees why (Notifications.Retract). The card's own
+        # status flip then reaches settle_card as :retracted and is a no-op
+        # here, since the item is already settled.
+        if status == :retracted, do: Reconcile.retract_card(item, outcome)
+        {:noreply, settle_item(state, item, status, outcome)}
+
+      _ ->
+        {:noreply, state}
     end
   end
 

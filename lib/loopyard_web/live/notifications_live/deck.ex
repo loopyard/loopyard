@@ -1,22 +1,26 @@
 defmodule LoopyardWeb.NotificationsLive.Deck do
   @moduledoc """
-  Building the decisions deck — the pure half of `LoopyardWeb.NotificationsLive`.
+  Building the deck — the pure half of `LoopyardWeb.NotificationsLive`.
 
-  One slide per DECISION: each pending question of a multi-question ask is its
-  own slide; an approval or secret is one slide. Slides carry everything the
-  render needs except the live message (fetched fresh per render). Newest
-  first. No sockets, no PubSub — reads registries and the attention line.
+  One slide per ITEM of the inbox (`Loopyard.Notifications`), in inbox order:
+  each pending question of a multi-question ask is its own slide; an
+  approval, a secret, or a finished turn is one slide. Slides carry
+  everything the render needs except the live message (fetched fresh per
+  render). No sockets, no PubSub.
   """
 
   alias Loopyard.ChatAgent
+  alias Loopyard.Notifications
+  alias Loopyard.Notifications.Item
 
-  @typedoc "A slide: one decision's identity + provenance. Key is `{agent_id, msg_id, q_id}`."
+  @typedoc "A slide: one item's identity + provenance. Key is `{agent_id, msg_id, q_id}`."
   @type slide :: %{
           key: {String.t(), String.t(), term()},
+          item_id: String.t() | nil,
+          kind: atom() | nil,
           agent_id: String.t(),
           msg_id: String.t(),
           q_id: term(),
-          kind: atom() | nil,
           workspace_id: String.t() | nil,
           project_name: String.t() | nil,
           workspace_name: String.t() | nil,
@@ -25,18 +29,22 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
           asked_at: DateTime.t() | nil
         }
 
+  # A finished item has no card; its slide's msg_id is this marker so the
+  # permalink shape (`/notifications/:agent/:msg`) still names it.
+  @finished_msg_id "fin"
+
+  @doc "The msg_id a finished-turn slide carries."
+  def finished_msg_id, do: @finished_msg_id
+
   @doc """
-  Every pending decision, newest first — recency is the right bias for a
-  decision queue: the one asked a minute ago is almost always the one to answer
-  next, and a three-week-old ask is almost never it. `scope` limits to one
-  workspace.
+  Every open item, in inbox order (`Notifications.Priority`): the store's
+  order IS the deck order. `scope` limits to one workspace.
   """
   @spec pending(String.t() | nil) :: [slide()]
   def pending(scope) do
-    Loopyard.Attention.line()
+    Notifications.open()
     |> Enum.filter(&(is_nil(scope) or &1.workspace_id == scope))
     |> Enum.flat_map(&item_slides/1)
-    |> Enum.sort_by(&(&1.asked_at || DateTime.from_unix!(0)), {:desc, DateTime})
   rescue
     _ -> []
   catch
@@ -62,10 +70,13 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
         msg[:role] in [:question, :approval, :secret_request] do
       ws = Map.get(ws_names, st[:workspace_id], %{})
 
-      item = %{
-        kind: history_kind(msg.role),
+      %{
+        key: {aid, msg.id, nil},
+        item_id: Item.card_id(msg),
+        kind: Item.kind_for_role(msg.role),
         agent_id: aid,
-        msg: msg,
+        msg_id: msg.id,
+        q_id: nil,
         workspace_id: st[:workspace_id],
         project_name: ws[:project_name],
         workspace_name: ws[:workspace_name],
@@ -73,8 +84,6 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
         path: history_path(ws, st),
         asked_at: msg[:timestamp] || DateTime.from_unix!(0)
       }
-
-      slide(item, nil)
     end
     |> Enum.sort_by(& &1.asked_at, {:desc, DateTime})
   rescue
@@ -85,10 +94,10 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
 
   @doc """
   Everything already on screen, in the order it was already in, plus whatever
-  is new — new ones go FIRST (newest first), which is the start of the deck,
-  never the middle of it. The deck is STICKY: a decision that settles STAYS,
-  rendered as its own receipt; dropping a slide the instant it resolved would
-  shift every slide after it under the reader's thumb.
+  is new — new ones go FIRST, which is the start of the deck, never the
+  middle of it. The deck is STICKY: an item that settles STAYS, rendered as
+  its own receipt; dropping a slide the instant it resolved would shift every
+  slide after it under the reader's thumb.
   """
   @spec merge([slide()], [slide()]) :: [slide()]
   def merge(shown, fresh) do
@@ -114,7 +123,7 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
   def who_asked(%{agent_name: name}) when is_binary(name) and name != "", do: name
   def who_asked(_), do: "Operator"
 
-  @doc "Is this decision the operator's own (no workspace behind it)?"
+  @doc "Is this item the operator's own (no workspace behind it)?"
   @spec operator?(slide()) :: boolean()
   def operator?(%{project_name: project}) when is_binary(project) and project != "", do: false
   def operator?(_), do: true
@@ -152,37 +161,49 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
 
   def ago(_), do: nil
 
-  defp history_kind(:question), do: :question
-  defp history_kind(:secret_request), do: :secret
-  defp history_kind(:approval), do: :approval
-
   defp history_path(%{project_id: pid}, st) when is_binary(pid),
     do: "/projects/#{pid}/workspaces/#{st[:workspace_id]}/agents/#{st[:id]}"
 
   defp history_path(_ws, _st), do: "/operator"
 
-  defp item_slides(%{kind: :question, msg: %{} = msg} = item) do
-    for q <- msg[:questions] || [], q.id not in (msg[:done] || []) do
-      slide(item, q.id)
+  # A multi-question ask fans out one slide per still-open question.
+  defp item_slides(%Item{kind: :question, agent_id: aid, msg_id: mid} = item)
+       when is_binary(mid) do
+    case live_msg(aid, mid) do
+      %{questions: qs} = msg when is_list(qs) and qs != [] ->
+        for q <- qs, q.id not in (msg[:done] || []), do: slide(item, q.id)
+
+      _ ->
+        [slide(item, nil)]
     end
   end
 
-  defp item_slides(%{msg: %{}} = item), do: [slide(item, nil)]
-  defp item_slides(_), do: []
+  defp item_slides(%Item{} = item), do: [slide(item, nil)]
 
-  defp slide(item, q_id) do
+  defp slide(%Item{} = item, q_id) do
+    msg_id = item.msg_id || @finished_msg_id
+
     %{
-      key: {item.agent_id, item.msg.id, q_id},
-      agent_id: item.agent_id,
-      msg_id: item.msg.id,
-      q_id: q_id,
+      key: {item.agent_id, msg_id, q_id},
+      item_id: item.id,
       kind: item.kind,
+      agent_id: item.agent_id,
+      msg_id: msg_id,
+      q_id: q_id,
       workspace_id: item.workspace_id,
       project_name: item.project_name,
       workspace_name: item.workspace_name,
       agent_name: item.agent_name,
       path: item.path,
-      asked_at: item.asked_at
+      asked_at: item.raised_at
     }
+  end
+
+  defp live_msg(aid, mid) do
+    ChatAgent.get_message(aid, mid)
+  rescue
+    _ -> nil
+  catch
+    _, _ -> nil
   end
 end

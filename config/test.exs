@@ -75,6 +75,9 @@ config :loopyard, send_wakes_agent?: false
 # The GenServer starts but stays inert (no subscription, no sweep, no tasks).
 config :loopyard, change_counts_enabled?: false
 config :loopyard, operator_digest_enabled?: false
+# The inbox store keeps no log in tests: items would replay across runs
+# (stale agents, colliding ids) and pollute every deck test.
+config :loopyard, notifications_log?: false
 
 # Harness memory monitor runs `docker stats` sweeps + restarts bloated agents —
 # meaningless (and Docker-dependent) in tests. :ignore so no child even starts.
