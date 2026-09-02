@@ -382,7 +382,7 @@ defmodule LoopyardWeb.OperatorLive do
         Loopyard.WebPush.notify_one(
           sub,
           "Notifications on",
-          "You'll get questions here — tapping one opens it in the Reviewer.",
+          "You'll get decisions here — tapping one opens it.",
           "/decisions"
         )
 

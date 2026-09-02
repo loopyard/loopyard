@@ -648,20 +648,13 @@ defmodule LoopyardWeb.DashboardLive do
   defp gauge_tone(:working), do: "text-violet-600 dark:text-violet-400"
   defp gauge_tone(_), do: "text-zinc-600 dark:text-zinc-300"
 
-  # "6 waiting on you" begs the question it should answer. Name the nouns:
-  # "4 questions · 2 approvals".
+  # "6 waiting on you" begs the question it should answer — six WHAT? The
+  # noun is DECISION, always: a "question" here may be an agent telling you
+  # something and needing a call on it, and an approval or a secret is a
+  # decision too. Splitting them ("10 questions · 1 approval") named the
+  # card mechanics, not the thing you have to do.
   defp attention_headline(items) do
-    counts = Enum.frequencies_by(items, & &1.kind)
-
-    [question: "question", approval: "approval", secret: "secret"]
-    |> Enum.filter(fn {kind, _} -> counts[kind] end)
-    |> Enum.map_join(" · ", fn {kind, noun} ->
-      "#{counts[kind]} #{plural(counts[kind], noun)}"
-    end)
-    |> case do
-      "" -> "#{length(items)} #{plural(length(items), "decision")} waiting on you"
-      line -> line <> " waiting on you"
-    end
+    "#{length(items)} #{plural(length(items), "decision")} waiting on you"
   end
 
   # A digest row goes where the work happened, so "what finished" is one tap
