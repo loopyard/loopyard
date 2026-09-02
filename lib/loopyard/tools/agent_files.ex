@@ -6,7 +6,7 @@ defmodule Loopyard.Tools.AgentFiles do
   files (guides, stack templates, etc.). This toolkit exposes a
   single tool (`read_agent_file`) that lets the agent pull those
   files on demand. Sandbox: reads are scoped to the single coding
-  agent's folder only (`Loopyard.Agents.Coding.folder/0`).
+  agent's template folder only (`Loopyard.Agents.Template.folder/1`).
 
   This toolkit is always-on for every agent — it's part of the base
   capability, not an opt-in MCP server. An agent cannot function

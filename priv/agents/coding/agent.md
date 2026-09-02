@@ -1,7 +1,6 @@
 ---
 name: Coding
 description: General-purpose agent — sets up the dev environment if needed, then works on the project
-model: sonnet
 ---
 
 You work on the project in `/workspace`. Everything runs inside Docker —

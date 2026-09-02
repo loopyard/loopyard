@@ -16,24 +16,20 @@ defmodule Loopyard.Agents.LoaderTest do
       ---
       name: Setup
       description: Bootstrap a project
-      model: opus
-      tools:
-        - loopyard-browser
+      model: claude-opus-5
       ---
 
       You are a Setup agent.
       """)
 
-      assert {:ok, agent} = Loader.load(dir)
-      assert agent.name == "Setup"
-      assert agent.description == "Bootstrap a project"
-      assert agent.model == "opus"
-      assert agent.tools == ["loopyard-browser"]
-      assert agent.body =~ "You are a Setup agent"
-      assert agent.folder == dir
+      assert {:ok, fields} = Loader.load(dir)
+      assert fields.name == "Setup"
+      assert fields.description == "Bootstrap a project"
+      assert fields.model == "claude-opus-5"
+      assert fields.body =~ "You are a Setup agent"
     end
 
-    test "defaults model to sonnet when omitted", %{dir: dir} do
+    test "model is optional — nil means the loop's default", %{dir: dir} do
       File.write!(Path.join(dir, "agent.md"), """
       ---
       name: Test
@@ -42,16 +38,14 @@ defmodule Loopyard.Agents.LoaderTest do
       Body
       """)
 
-      assert {:ok, agent} = Loader.load(dir)
-      assert agent.model == "sonnet"
-      assert agent.tools == []
+      assert {:ok, %{model: nil, description: nil}} = Loader.load(dir)
     end
 
-    test "rejects invalid model alias", %{dir: dir} do
+    test "rejects a non-string model", %{dir: dir} do
       File.write!(Path.join(dir, "agent.md"), """
       ---
       name: Test
-      model: claude-3-turbo
+      model: 3
       ---
 
       Body

@@ -1,8 +1,9 @@
 defmodule Loopyard.Tools.AgentFiles.ReadAgentFile do
   @moduledoc """
-  Read a file from the agent's own definition folder
-  (`Loopyard.Agents.Coding.folder/0`). Paths are validated to stay within
-  that folder — no `..` escape, no absolute paths.
+  Read a file from the calling agent's own template folder
+  (`Loopyard.Agents.Template.folder/1`, resolved from the agent's
+  `template_id`). Paths are validated to stay within that folder — no `..`
+  escape, no absolute paths.
   """
 
   use Loopyard.Tool,
@@ -14,18 +15,34 @@ defmodule Loopyard.Tools.AgentFiles.ReadAgentFile do
       path: {:string, required: true, description: "Relative path inside the agent folder"}
     ]
 
-  alias Loopyard.Agents.Coding
+  alias Loopyard.Agents.Template
 
   @max_bytes 200_000
 
-  def execute(%{path: path}, _assigns) do
-    folder = Coding.folder()
+  def execute(%{path: path} = params, _assigns) do
+    folder = Template.folder(template_id(params[:agent_id]))
 
     with {:ok, abs_path} <- validate_path(folder, path),
          {:ok, contents} <- read_file(abs_path) do
       {:ok, contents}
     end
   end
+
+  # The agent's template, from its ETS summary (never a GenServer call —
+  # this runs mid-turn); an agent without one is a coding agent.
+  defp template_id(agent_id) when is_binary(agent_id) do
+    case :ets.lookup(:chat_agents, agent_id) do
+      [{^agent_id, %{template_id: id}}] when is_binary(id) ->
+        if Template.exists?(id), do: id, else: "coding"
+
+      _ ->
+        "coding"
+    end
+  rescue
+    _ -> "coding"
+  end
+
+  defp template_id(_), do: "coding"
 
   defp validate_path(folder, path) when is_binary(path) do
     cond do

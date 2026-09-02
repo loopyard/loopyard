@@ -1,27 +1,35 @@
 defmodule Loopyard.Agents.Loader do
   @moduledoc """
-  Parse an `agent.md` file into a `Loopyard.Agents.Agent` struct.
+  Parse an `agent.md` file — YAML frontmatter delimited by `---` lines, then a
+  markdown body — into the fields a `Loopyard.Agents.Template` stamps its
+  composition onto: `name` (required), `description`, `model` (optional; the
+  loop supplies a default when absent), and the `body`.
 
-  The file format is YAML frontmatter delimited by `---` lines, followed
-  by a markdown body. Frontmatter fields are all optional except `name`;
-  missing fields use sensible defaults.
+  The composition itself (compute, tools, loop, context blocks) is NOT
+  frontmatter today: templates are code presets (`Template.coding/0`,
+  `Template.system/0`). When they become user-configurable, this is where
+  those fields get parsed.
   """
 
-  alias Loopyard.Agents.Agent
-
-  @valid_models ~w(opus sonnet haiku)
+  @type fields :: %{
+          name: String.t(),
+          description: String.t() | nil,
+          model: String.t() | nil,
+          body: String.t()
+        }
 
   @doc """
-  Load an agent from a folder. The folder must contain `agent.md`.
-  Returns `{:ok, %Agent{}}` or `{:error, reason}`.
+  Load `<folder>/agent.md`. Returns `{:ok, fields}` or `{:error, reason}`.
   """
+  @spec load(String.t()) :: {:ok, fields()} | {:error, term()}
   def load(folder) when is_binary(folder) do
     path = Path.join(folder, "agent.md")
 
     with {:ok, contents} <- File.read(path),
          {:ok, frontmatter, body} <- split(contents),
-         {:ok, agent} <- build(frontmatter, body, folder) do
-      {:ok, agent}
+         {:ok, name} <- fetch_name(frontmatter),
+         {:ok, model} <- fetch_model(frontmatter) do
+      {:ok, %{name: name, description: frontmatter["description"], model: model, body: body}}
     end
   end
 
@@ -41,43 +49,16 @@ defmodule Loopyard.Agents.Loader do
     end
   end
 
-  defp build(frontmatter, body, folder) do
-    with {:ok, name} <- fetch_name(frontmatter),
-         {:ok, model} <- fetch_model(frontmatter) do
-      agent = %Agent{
-        name: name,
-        description: frontmatter["description"],
-        model: model,
-        tools: list_field(frontmatter, "tools"),
-        disallowed_tools: list_field(frontmatter, "disallowed_tools"),
-        gates: Map.get(frontmatter, "gates", %{}) || %{},
-        body: body,
-        folder: folder
-      }
-
-      {:ok, agent}
-    end
-  end
-
   defp fetch_name(%{"name" => name}) when is_binary(name) and byte_size(name) > 0, do: {:ok, name}
   defp fetch_name(_), do: {:error, "missing required frontmatter field: name"}
 
+  # A model is a plain string the loop interprets (an id, or an alias the
+  # loop knows); nil means "the loop's default".
   defp fetch_model(frontmatter) do
-    case Map.get(frontmatter, "model", "sonnet") do
-      model when model in @valid_models ->
-        {:ok, model}
-
-      other ->
-        {:error,
-         "invalid model alias: #{inspect(other)} — expected one of #{inspect(@valid_models)}"}
-    end
-  end
-
-  defp list_field(frontmatter, key) do
-    case Map.get(frontmatter, key, []) do
-      list when is_list(list) -> Enum.map(list, &to_string/1)
-      nil -> []
-      _other -> []
+    case Map.get(frontmatter, "model") do
+      nil -> {:ok, nil}
+      model when is_binary(model) and model != "" -> {:ok, model}
+      other -> {:error, "invalid model: #{inspect(other)} — expected a string"}
     end
   end
 end
