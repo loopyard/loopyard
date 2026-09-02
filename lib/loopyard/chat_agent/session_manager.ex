@@ -537,6 +537,23 @@ defmodule Loopyard.ChatAgent.SessionManager do
     :exit, _ -> false
   end
 
+  @doc """
+  The error for a context-compaction restart whose fresh spawn failed
+  (`ChatAgent`'s `:auto_restart_context` path), WHY / CONSEQUENCE / ACTION.
+  An auth failure takes the shared sign-in copy — retrying can't help without
+  a credential.
+  """
+  def compaction_restart_failed_copy(state, {:auth_failed, error}),
+    do: Loopyard.ChatAgent.HarnessControl.auth_failed_copy(state, error)
+
+  def compaction_restart_failed_copy(_state, reason) do
+    "Context compaction couldn't restart the harness (#{inspect(reason)}). " <>
+      "WHY: the old session was stopped to compact context, but spawning the fresh one failed. " <>
+      "CONSEQUENCE: this turn didn't run; your conversation is preserved. " <>
+      "ACTION: send another message — the agent will spawn a new harness and resume. " <>
+      "If it keeps failing, click Restart or check /system/events."
+  end
+
   # The retry-exhausted error, WHY / CONSEQUENCE / ACTION. Named by harness —
   # an agent running Codex must never be told to check `claude`. An auth
   # failure takes the shared sign-in copy (`HarnessControl.auth_failed_copy/2`).
