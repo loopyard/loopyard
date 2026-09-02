@@ -69,7 +69,7 @@ defmodule Loopyard.Harness.Questions do
       Loopyard.WebPush.notify_question(
         "Decision#{(msg[:source] && " — #{msg.source}") || ""}",
         first_prompt,
-        "/decisions/#{agent_id}/#{msg_id}"
+        "/operator/decisions/#{agent_id}/#{msg_id}"
       )
     end
 

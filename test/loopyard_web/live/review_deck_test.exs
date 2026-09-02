@@ -62,7 +62,7 @@ defmodule LoopyardWeb.ReviewDeckTest do
     seed_agent("Alpha", [pending_question("m-alpha", "First decision?")])
     seed_agent("Beta", [pending_question("m-beta", "Second decision?")])
 
-    {:ok, _view, html} = live(conn, "/decisions")
+    {:ok, _view, html} = live(conn, "/operator/decisions")
 
     assert html =~ "First decision?"
 
@@ -74,7 +74,7 @@ defmodule LoopyardWeb.ReviewDeckTest do
     seed_agent("Alpha", [pending_question("m-alpha", "First decision?")])
     seed_agent("Beta", [pending_question("m-beta", "Second decision?")])
 
-    {:ok, view, _html} = live(conn, "/decisions")
+    {:ok, view, _html} = live(conn, "/operator/decisions")
     html = render(view)
 
     slides = Regex.scan(~r/<section[^>]*id="slide-[^"]+"/, html)
@@ -89,7 +89,7 @@ defmodule LoopyardWeb.ReviewDeckTest do
   test "the deck is a horizontal scroll-snap carousel, no JS gestures", %{conn: conn} do
     seed_agent("Alpha", [pending_question("m-alpha", "First decision?")])
 
-    {:ok, _view, html} = live(conn, "/decisions")
+    {:ok, _view, html} = live(conn, "/operator/decisions")
 
     # Swipe left/right is the browser's own horizontal scrolling with CSS snap —
     # nothing that competes with the iOS back gesture. The carousel is the
@@ -102,7 +102,7 @@ defmodule LoopyardWeb.ReviewDeckTest do
     aid = seed_agent("Alpha", [pending_question("m-alpha", "First decision?")])
     seed_agent("Beta", [pending_question("m-beta", "Second decision?")])
 
-    {:ok, _view, html} = live(conn, "/decisions/#{aid}/m-alpha")
+    {:ok, _view, html} = live(conn, "/operator/decisions/#{aid}/m-alpha")
 
     # The whole deck is there (swipe onward from the one you were sent to)…
     assert html =~ "First decision?"
@@ -118,7 +118,7 @@ defmodule LoopyardWeb.ReviewDeckTest do
     aid = seed_agent("Alpha", [pending_question("m-alpha", "First decision?")])
     seed_agent("Beta", [pending_question("m-beta", "Second decision?")])
 
-    {:ok, view, html} = live(conn, "/decisions")
+    {:ok, view, html} = live(conn, "/operator/decisions")
     assert html =~ "First decision?"
 
     # Settle it the way the real answer path does: the card flips in ETS and a

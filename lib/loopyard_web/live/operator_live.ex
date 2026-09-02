@@ -26,7 +26,7 @@ defmodule LoopyardWeb.OperatorLive do
   alias Loopyard.Events
   alias LoopyardWeb.Components.Nav
   alias LoopyardWeb.Live.WorkspaceLive.AgentEvents
-  import LoopyardWeb.Components.Breadcrumbs, only: [breadcrumbs: 1]
+  alias LoopyardWeb.OperatorLive.Shell
   import LoopyardWeb.Live.WorkspaceLive.Components.Chat, only: [chat_panel: 1]
 
   alias LoopyardWeb.Live.WorkspaceLive.Attachments, as: ComposerAttachments
@@ -402,7 +402,7 @@ defmodule LoopyardWeb.OperatorLive do
           sub,
           "Notifications on",
           "You'll get decisions here — tapping one opens it.",
-          "/decisions"
+          "/operator/decisions"
         )
 
         {:reply, %{ok: true}, socket}
@@ -687,85 +687,41 @@ defmodule LoopyardWeb.OperatorLive do
 
     ~H"""
     <div id="app-badge" phx-hook="AppBadge" data-count={@needs_count} class="hidden"></div>
-    <div
-      id="operator-page"
-      phx-hook="ScrollBottom"
-      class="h-screen flex flex-col bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x safe-area-top"
-    >
-      <Nav.bar height="h-14" gap="gap-3">
-        <.breadcrumbs crumbs={[{"Loopyard", "/"}, {"Operator", nil}]} />
-        <:actions>
-          <LoopyardWeb.Components.Common.mode_nav id="mode-operator" active={:operator} />
-          <%!-- No "Needs you" pill — the rail shows blocking items right there.
-    Sound is a player docked at the bottom of the rail. --%>
-        </:actions>
-      </Nav.bar>
-
-      <%!-- Mobile only: Chat is this page; Decisions is a PLACE (/decisions —
-    the deck), not a pane. It used to toggle the desktop rail in here, a
-    list of text rows that didn't look like the decisions it pointed at,
-    and whose state was lost the moment you tapped one and came back —
-    "back" landed on Chat. A URL can't lose its place. Hidden on lg+
-    (the rail shows). --%>
-      <%!-- Finger-sized: this bar is mobile-only, so padding is sized for
-    touch (py-4, text-body ≈ 48px target), not for a pointer. --%>
-      <div class="app-bar-secondary lg:hidden flex-none flex border-b border-zinc-200 dark:border-zinc-800 text-body">
-        <span
-          aria-current="page"
-          class="flex-1 py-4 font-medium text-center border-b-2 -mb-px border-violet-500 text-violet-600 dark:text-violet-400"
-        >
-          Chat
-        </span>
-        <.link
-          navigate="/decisions"
-          class="focus-ring flex-1 py-4 font-medium text-center border-b-2 -mb-px border-transparent text-zinc-500 dark:text-zinc-400 inline-flex items-center justify-center gap-1.5"
-        >
-          Decisions
-          <span
-            :if={@needs_count > 0}
-            class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-violet-600 text-white text-meta font-semibold tabular-nums"
-          >
-            {@needs_count}
-          </span>
-        </.link>
+    <Shell.shell active={:chat} needs_count={@needs_count} id="operator-page" phx-hook="ScrollBottom">
+      <%!-- Chat is PRIMARY — mostly you just talk to the operator. --%>
+      <div class="flex-1 min-w-0 flex flex-col min-h-0">
+        <.chat_panel
+          messages={@messages}
+          streaming_text={@streaming_text}
+          streaming_thinking={@streaming_thinking}
+          agent={@selected_agent}
+          uploads={assigns[:uploads]}
+          workspace_id={nil}
+          host={@host}
+          thinking_word={@thinking_word || "Thinking"}
+          has_more_messages={@has_more_messages}
+          window_tail?={@window_tail?}
+          detail_level={:chat}
+        />
       </div>
-
-      <div class="flex-1 min-h-0 flex">
-        <%!-- Chat is PRIMARY — mostly you just talk to the operator. --%>
-        <div class="flex-1 min-w-0 flex flex-col min-h-0">
-          <.chat_panel
-            messages={@messages}
-            streaming_text={@streaming_text}
-            streaming_thinking={@streaming_thinking}
-            agent={@selected_agent}
-            uploads={assigns[:uploads]}
-            workspace_id={nil}
-            host={@host}
-            thinking_word={@thinking_word || "Thinking"}
-            has_more_messages={@has_more_messages}
-            window_tail?={@window_tail?}
-            detail_level={:chat}
-          />
-        </div>
-        <%!-- Desktop (lg+): the "for you" rail — co-equal with the chat. Leads
+      <%!-- Desktop (lg+): the "for you" rail — co-equal with the chat. Leads
     with NEEDS YOU (blocking questions/approvals, grouped by workspace,
     answered inline) then WORKING (dispatched jobs + progress). The
     operator curates this; the chat is where you talk about it. --%>
-        <aside class="hidden lg:flex flex-none flex-col border-l border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/40 lg:w-72 xl:w-80">
-          <div class="flex-1 min-h-0 overflow-y-auto">
-            <.for_you_rail
-              operator_attention={@operator_attention}
-              attention_by_ws={@attention_by_ws}
-              groups={@attention_groups}
-              active={@active_jobs}
-              done_buckets={@done_buckets}
-              vapid_key={@vapid_key}
-            />
-          </div>
-          <.sound_player id="rail-sound" tracks={@tracks} current_track={@current_track} />
-        </aside>
-      </div>
-    </div>
+      <aside class="hidden lg:flex flex-none flex-col border-l border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/40 lg:w-72 xl:w-80">
+        <div class="flex-1 min-h-0 overflow-y-auto">
+          <.for_you_rail
+            operator_attention={@operator_attention}
+            attention_by_ws={@attention_by_ws}
+            groups={@attention_groups}
+            active={@active_jobs}
+            done_buckets={@done_buckets}
+            vapid_key={@vapid_key}
+          />
+        </div>
+        <.sound_player id="rail-sound" tracks={@tracks} current_track={@current_track} />
+      </aside>
+    </Shell.shell>
     """
   end
 end

@@ -27,10 +27,11 @@ defmodule LoopyardWeb.ReviewLive do
 
   alias Loopyard.{ChatAgent, Events}
   alias Loopyard.ChatAgent.Thread
-  alias LoopyardWeb.Components.{Common, Nav}
+  alias LoopyardWeb.Components.Common
   alias LoopyardWeb.Live.WorkspaceLive.Messages
   alias LoopyardWeb.Live.WorkspaceLive.Messages.Cards
   alias LoopyardWeb.ReviewLive.Deck
+  alias LoopyardWeb.OperatorLive.Shell
   alias Phoenix.LiveView.JS
 
   @tick_ms 3_000
@@ -316,67 +317,74 @@ defmodule LoopyardWeb.ReviewLive do
   attr :user_label, :string, default: "You"
 
   def review_deck(assigns) do
-    assigns = assign(assigns, :total, length(assigns.cards))
+    assigns =
+      assign(assigns,
+        total: length(assigns.cards),
+        needs_count: Enum.count(assigns.cards, &(&1.msg.status == :pending))
+      )
 
     ~H"""
-    <div class="h-screen flex flex-col bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x safe-area-top">
-      <%!-- THE one bar, and it stays put while the slides flick under it: what
-      you're flipping through is Decisions. Who's asking lives IN each slide
-      as content, so nothing that looks like navigation moves. --%>
-      <Nav.bar height="h-14" pad="px-2 md:px-4" gap="gap-2">
-        <Nav.back_button navigate="/operator" label="Back to the operator" />
-        <h1 class="min-w-0 truncate text-lead font-semibold">
-          {(@history? && "Past decisions") || "Decisions"}
-        </h1>
-        <:actions>
-          <Common.mode_nav id="mode-decisions" active={:operator} />
-        </:actions>
-      </Nav.bar>
-
-      <%!-- THE DECK: a horizontal scroll-snap carousel, one decision per slide,
+    <Shell.shell active={:decisions} needs_count={@needs_count}>
+      <div class="flex-1 min-w-0 min-h-0 flex flex-col">
+        <%!-- PAST decisions is the same deck with a different source; one quiet
+      line says so, and the way back to the pending ones. --%>
+        <div
+          :if={@history?}
+          class="flex-none flex items-center gap-3 px-4 md:px-6 min-h-11 text-meta text-zinc-500 dark:text-zinc-400 border-b border-zinc-200 dark:border-zinc-800"
+        >
+          <span class="font-medium text-zinc-700 dark:text-zinc-200">Past decisions</span>
+          <.link
+            navigate="/operator/decisions"
+            class="ml-auto text-violet-600 dark:text-violet-400 hover:underline"
+          >
+            ← Back to pending
+          </.link>
+        </div>
+        <%!-- THE DECK: a horizontal scroll-snap carousel, one decision per slide,
       swiped with the browser's own scrolling (no JS gestures — nothing that
       competes with iOS back). `overscroll-x-contain` stops the rubber band
       at the ends. Each slide is its OWN vertical scroller with its own top
       bar, so the title (who's asking) travels with the swipe. There is
       deliberately no page-level bar above the slides: two bars was one too
       many, and the arrows in the lower one were too short to tap. --%>
-      <div
-        :if={@cards != []}
-        id="decisions-deck"
-        class="flex-1 min-h-0 flex overflow-x-auto overflow-y-hidden snap-x snap-mandatory overscroll-x-contain"
-      >
-        <.decision_slide
-          :for={{card, idx} <- Enum.with_index(@cards, 1)}
-          card={card}
-          index={idx}
-          total={@total}
-          prev={Enum.at(@cards, idx - 2)}
-          next={Enum.at(@cards, idx)}
-          target?={card.slide.key == @target}
-          thread={Map.get(@threads, {card.slide.agent_id, card.slide.msg_id}, [])}
-          streaming={(@awaiting == {card.slide.agent_id, card.slide.msg_id} && @streaming) || ""}
-          operator_id={@operator_id}
-          user_label={@user_label}
-        />
-        <.end_slide history?={@history?} last={List.last(@cards)} />
-      </div>
+        <div
+          :if={@cards != []}
+          id="decisions-deck"
+          class="flex-1 min-h-0 flex overflow-x-auto overflow-y-hidden snap-x snap-mandatory overscroll-x-contain"
+        >
+          <.decision_slide
+            :for={{card, idx} <- Enum.with_index(@cards, 1)}
+            card={card}
+            index={idx}
+            total={@total}
+            prev={Enum.at(@cards, idx - 2)}
+            next={Enum.at(@cards, idx)}
+            target?={card.slide.key == @target}
+            thread={Map.get(@threads, {card.slide.agent_id, card.slide.msg_id}, [])}
+            streaming={(@awaiting == {card.slide.agent_id, card.slide.msg_id} && @streaming) || ""}
+            operator_id={@operator_id}
+            user_label={@user_label}
+          />
+          <.end_slide history?={@history?} last={List.last(@cards)} />
+        </div>
 
-      <%!-- Nothing on the deck: the "you're done" beat, with the one bar it needs. --%>
-      <div :if={@cards == []} class="flex-1 flex flex-col min-h-0">
-        <div class="flex-1 flex flex-col items-center justify-center gap-4 py-24">
-          <p class="text-body text-zinc-400 dark:text-zinc-500">
-            {(@history? && "No decisions asked yet.") || "Nothing waiting on you."}
-          </p>
-          <.link
-            :if={!@history?}
-            navigate="/decisions/history"
-            class="text-body font-medium inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
-          >
-            Past decisions →
-          </.link>
+        <%!-- Nothing on the deck: the "you're done" beat, with the one bar it needs. --%>
+        <div :if={@cards == []} class="flex-1 flex flex-col min-h-0">
+          <div class="flex-1 flex flex-col items-center justify-center gap-4 py-24">
+            <p class="text-body text-zinc-400 dark:text-zinc-500">
+              {(@history? && "No decisions asked yet.") || "Nothing waiting on you."}
+            </p>
+            <.link
+              :if={!@history?}
+              navigate="/operator/decisions/history"
+              class="text-body font-medium inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
+            >
+              Past decisions →
+            </.link>
+          </div>
         </div>
       </div>
-    </div>
+    </Shell.shell>
     """
   end
 
@@ -609,7 +617,7 @@ defmodule LoopyardWeb.ReviewLive do
           {(@history? && "That's every past decision.") || "That's everything waiting on you."}
         </p>
         <.link
-          navigate={(@history? && "/decisions") || "/decisions/history"}
+          navigate={(@history? && "/operator/decisions") || "/operator/decisions/history"}
           class="text-body font-medium inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
         >
           {(@history? && "← Back to pending") || "Past decisions →"}

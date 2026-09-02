@@ -4,14 +4,14 @@ defmodule LoopyardWeb.OperatorLiveTest do
 
   import Phoenix.LiveViewTest
 
-  test "mounts, and the mobile Decisions tab is a PLACE (/decisions), not a pane toggle",
+  test "mounts, and the mobile Decisions tab is a PLACE (/operator/decisions), not a pane toggle",
        %{conn: conn} do
     {:ok, view, html} = live(conn, "/operator")
 
     # The tab used to flip an in-page pane whose state was lost on back —
     # tapping a decision and coming back landed on Chat. A URL can't lose its
     # place, so the tab navigates to the deck.
-    assert has_element?(view, "a[href='/decisions']", "Decisions")
+    assert has_element?(view, "a[href='/operator/decisions']", "Decisions")
     refute html =~ "phx-value-v=\"rail\""
     assert Process.alive?(view.pid)
   end

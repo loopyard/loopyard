@@ -48,6 +48,9 @@ defmodule LoopyardWeb.Router do
       # one deck (Loopyard.Attention). `/decisions/:agent/:msg` is one decision
       # with its discussion thread. `/review*` is the old name, kept so pasted
       # links keep working.
+      live "/operator/decisions", ReviewLive, :index
+      live "/operator/decisions/history", ReviewLive, :history
+      live "/operator/decisions/:agent_id/:msg_id", ReviewLive, :item
       live "/decisions", ReviewLive, :index
       live "/decisions/history", ReviewLive, :history
       live "/decisions/:agent_id/:msg_id", ReviewLive, :item

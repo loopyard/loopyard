@@ -34,13 +34,13 @@ defmodule LoopyardWeb.ReviewHistoryTest do
 
     on_exit(fn -> :ets.delete(:chat_agents, id) end)
 
-    {:ok, _view, html} = live(conn, "/decisions/history")
+    {:ok, _view, html} = live(conn, "/operator/decisions/history")
 
     assert html =~ "Past decisions"
     assert html =~ "History question?"
 
     # The pending deck does NOT include settled history ("not part of recent").
-    {:ok, _view, pending_html} = live(conn, "/decisions")
+    {:ok, _view, pending_html} = live(conn, "/operator/decisions")
     refute pending_html =~ "History question?"
   end
 end
