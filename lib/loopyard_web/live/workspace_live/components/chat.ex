@@ -177,7 +177,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       <%!-- scroll-smooth: the auto-tail (ScrollBottom hook nudges scrollTop as the
     agent streams) animates instead of jumping, so following the thinking
     glides. Pure CSS — honors prefers-reduced-motion automatically. --%>
-      <div id="messages" class="isolate overscroll-y-none flex-1 overflow-y-auto flex flex-col pb-4 scroll-pt-32">
+      <div
+        id="messages"
+        class="isolate overscroll-y-none flex-1 overflow-y-auto flex flex-col pb-4 scroll-pt-32"
+      >
         <%!-- Normal flow, TOP-aligned. This used to be `mt-auto`, which
     bottom-anchors the column so the newest message sits just above the
     input on first paint. That's right for a long transcript and wrong

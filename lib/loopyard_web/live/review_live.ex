@@ -63,6 +63,8 @@ defmodule LoopyardWeb.ReviewLive do
     {:ok,
      socket
      |> assign(:target, target)
+     |> assign(:pending_keys, pending_keys(slides))
+     |> assign(:advance_from, nil)
      |> assign(:slides, slides)
      |> assign(:subscribed, MapSet.new())
      |> assign(:operator_id, operator_id)
@@ -145,6 +147,18 @@ defmodule LoopyardWeb.ReviewLive do
     end
   end
 
+  # SETTLED BEAT → ADVANCE. When a decision on the deck settles (answered or
+  # dismissed, here or anywhere), hold for a beat so the receipt registers,
+  # then move the deck to the next slide — the slide takes focus, which
+  # scrolls the carousel natively. The settled slide stays in the deck
+  # behind you (swipe back to see it). One-shot: the marker clears itself.
+  def handle_info({:advance_after, key}, socket) do
+    Process.send_after(self(), :advance_done, 2_000)
+    {:noreply, assign(socket, :advance_from, key)}
+  end
+
+  def handle_info(:advance_done, socket), do: {:noreply, assign(socket, :advance_from, nil)}
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # The deck is STICKY: a decision that settles STAYS, rendered as its own
@@ -156,8 +170,17 @@ defmodule LoopyardWeb.ReviewLive do
         do: Deck.history(),
         else: Deck.pending(socket.assigns.scope)
 
+    slides = Deck.merge(socket.assigns.slides, fresh)
+    now_pending = pending_keys(slides)
+
+    # Anything pending a moment ago that isn't now just settled.
+    socket.assigns.pending_keys
+    |> MapSet.difference(now_pending)
+    |> Enum.each(&Process.send_after(self(), {:advance_after, &1}, 700))
+
     socket
-    |> assign(:slides, Deck.merge(socket.assigns.slides, fresh))
+    |> assign(:slides, slides)
+    |> assign(:pending_keys, now_pending)
     |> sync_secret_scope()
     |> subscribe_slides()
     |> load_threads()
@@ -283,6 +306,19 @@ defmodule LoopyardWeb.ReviewLive do
   defp sync_secret_scope(socket),
     do: assign(socket, :consent_secret_scope, socket.assigns[:scope])
 
+  # The slides still waiting on a human: a question slide until ITS question
+  # is done, a whole-card slide until the card settles.
+  defp pending_keys(slides) do
+    slides
+    |> Enum.filter(fn slide ->
+      case live_msg(slide) do
+        %{status: :pending} = msg -> is_nil(slide.q_id) or slide.q_id not in (msg[:done] || [])
+        _ -> false
+      end
+    end)
+    |> MapSet.new(& &1.key)
+  end
+
   defp live_msg(%{agent_id: aid, msg_id: mid}) do
     ChatAgent.get_message(aid, mid)
   rescue
@@ -306,6 +342,7 @@ defmodule LoopyardWeb.ReviewLive do
     <.review_deck
       cards={@cards}
       target={@target}
+      advance_from={@advance_from}
       history?={@history?}
       threads={@threads}
       queued={@queued}
@@ -325,6 +362,7 @@ defmodule LoopyardWeb.ReviewLive do
   """
   attr :cards, :list, required: true
   attr :target, :any, default: nil, doc: "slide key to open at"
+  attr :advance_from, :any, default: nil, doc: "slide key that just settled — move on from it"
   attr :history?, :boolean, default: false
   attr :threads, :map, default: %{}
   attr :queued, :map, default: %{}
@@ -378,6 +416,7 @@ defmodule LoopyardWeb.ReviewLive do
             prev={Enum.at(@cards, idx - 2)}
             next={Enum.at(@cards, idx)}
             target?={card.slide.key == @target}
+            advance?={card.slide.key == @advance_from}
             thread={Map.get(@threads, {card.slide.agent_id, card.slide.msg_id}, [])}
             queued={Map.get(@queued, {card.slide.agent_id, card.slide.msg_id}, [])}
             operator_status={@operator_status}
@@ -414,6 +453,7 @@ defmodule LoopyardWeb.ReviewLive do
   attr :prev, :map, default: nil
   attr :next, :map, default: nil
   attr :target?, :boolean, default: false
+  attr :advance?, :boolean, default: false
   attr :thread, :list, default: []
   attr :queued, :list, default: []
   attr :operator_status, :atom, default: nil
@@ -454,13 +494,21 @@ defmodule LoopyardWeb.ReviewLive do
         phx-hook="StickyShadow"
         class="isolate overscroll-y-none flex-1 min-h-0 overflow-y-auto"
       >
-        <div class="mx-auto w-full max-w-2xl px-4 md:px-6 pt-3">
+        <div class="mx-auto w-full max-w-2xl px-4 md:px-6 pt-5">
           <div id={"top-" <> @card.dom_id}></div>
+          <%!-- One-shot: mounts only while this slide is the one that just
+        settled; focusing the next slide scrolls the deck to it. --%>
+          <span
+            :if={@advance?}
+            id={"advance-" <> @card.dom_id}
+            phx-mounted={JS.focus(to: (@next && "#slide-" <> @next.dom_id) || "#slide-end")}
+            class="hidden"
+          ></span>
           <%!-- WHO'S ASKING, as content — not chrome. "From the Operator · 21d
         ago" with "8 of 11" opposite, in the same calm meta voice as the rest
         of the card, so it flicks with the decision instead of looking like a
         second bar that flicks. The one bar that stays put says Decisions. --%>
-          <div class="flex items-center gap-2 min-w-0 mb-3 text-lead text-zinc-500 dark:text-zinc-400">
+          <div class="flex items-center gap-2 min-w-0 mb-1 text-lead text-zinc-500 dark:text-zinc-400">
             <span
               aria-hidden="true"
               class={[

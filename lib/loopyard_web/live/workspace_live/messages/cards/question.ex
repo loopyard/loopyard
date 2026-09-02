@@ -160,11 +160,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
             aria-hidden="true"
             class="pointer-events-none absolute inset-0 rounded-sm transition-colors group-hover/opt:bg-orange-500/[0.07] dark:group-hover/opt:bg-orange-500/10 peer-checked:bg-orange-500/15 dark:peer-checked:bg-orange-500/20 peer-checked:ring-1 peer-checked:ring-orange-500/70"
           ></span>
-          <span
-            aria-hidden="true"
-            class="q-dot relative mt-px flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border-2 text-transparent transition-colors border-zinc-300 group-hover/opt:border-orange-400 dark:border-zinc-600 dark:group-hover/opt:border-orange-500 peer-checked:border-orange-500 peer-checked:bg-orange-500 peer-checked:text-white"
-          >
-            <.check />
+          <%!-- The dot sits in a box exactly ONE LINE of the label tall (`lh`), so
+          it centres on the label's first line whatever the line-height —
+          an 18px dot at the row's top edge floated above a 20px line. --%>
+          <span class="relative flex h-[1lh] flex-none items-center text-lead" aria-hidden="true">
+            <span class="q-dot flex h-[18px] w-[18px] items-center justify-center rounded-full border-2 text-transparent transition-colors border-zinc-300 group-hover/opt:border-orange-400 dark:border-zinc-600 dark:group-hover/opt:border-orange-500 group-has-[:checked]/opt:border-orange-500 group-has-[:checked]/opt:bg-orange-500 group-has-[:checked]/opt:text-white">
+              <.check />
+            </span>
           </span>
           <span class="relative min-w-0 flex-1">
             <span class="text-lead block font-medium text-zinc-900 dark:text-zinc-100">
@@ -361,31 +363,35 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
       <div :if={locked?(@msg, @q)} class="flex flex-col gap-0.5">
         <div
           :for={o <- @q.options}
-          class={[
-            "flex items-start gap-3 rounded-sm px-3 py-2 md:py-1.5",
-            if(chosen?(@msg, @q, o.label),
-              do: "bg-emerald-500/12 dark:bg-emerald-500/12",
-              else: "opacity-60"
-            )
-          ]}
+          class={
+            [
+              "flex items-start gap-3 rounded-sm px-3 py-2 md:py-1.5",
+              # The chosen row has to be unmistakable at a glance — a faint wash
+              # read as "some green thing". Same row, same height: the fill and a
+              # ring carry it, so nothing moves.
+              if(chosen?(@msg, @q, o.label),
+                do: "bg-emerald-500/20 dark:bg-emerald-500/20 ring-1 ring-emerald-500/60",
+                else: "opacity-60"
+              )
+            ]
+          }
         >
-          <span
-            aria-hidden="true"
-            class={[
-              "mt-px flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border-2",
+          <span class="flex h-[1lh] flex-none items-center text-lead" aria-hidden="true">
+            <span class={[
+              "flex h-[18px] w-[18px] items-center justify-center rounded-full border-2",
               if(chosen?(@msg, @q, o.label),
                 do: "border-emerald-500 bg-emerald-500 text-white",
                 else: "border-zinc-300 dark:border-zinc-600"
               )
-            ]}
-          >
-            <.check :if={chosen?(@msg, @q, o.label)} />
+            ]}>
+              <.check :if={chosen?(@msg, @q, o.label)} />
+            </span>
           </span>
           <span class="min-w-0 flex-1">
             <span class={[
-              "text-lead block font-medium",
+              "text-lead block",
               if(chosen?(@msg, @q, o.label),
-                do: "text-emerald-800 dark:text-emerald-200",
+                do: "font-semibold text-emerald-800 dark:text-emerald-200",
                 else: "text-zinc-600 dark:text-zinc-400"
               )
             ]}>
@@ -407,19 +413,22 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
         </div>
 
         <%!-- No option row matched: a free-text answer (show it) or a skip. --%>
-        <div :if={!any_option_chosen?(@msg, @q)} class="text-lead flex flex-wrap items-center gap-2">
-          <span
+        <%!-- The receipt is a full-width band — a small chip in the corner was
+        easy to miss after tapping. --%>
+        <div :if={!any_option_chosen?(@msg, @q)} class="text-lead">
+          <div
             :if={answer_for(@msg, @q)}
-            class="inline-flex items-center gap-1.5 rounded-sm bg-emerald-500/15 px-3 py-1.5 font-medium text-emerald-700 dark:text-emerald-300"
+            class="flex items-center gap-3 rounded-sm bg-emerald-500/20 ring-1 ring-emerald-500/60 px-3 py-2.5 font-semibold text-emerald-800 dark:text-emerald-200"
           >
-            {answer_for(@msg, @q)}
-          </span>
-          <span
+            <span class="flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full bg-emerald-500 text-white"><.check /></span>
+            <span class="min-w-0">{answer_for(@msg, @q)}</span>
+          </div>
+          <div
             :if={!answer_for(@msg, @q)}
-            class="inline-flex items-center gap-1.5 rounded-sm bg-zinc-500/10 px-3 py-1.5 font-medium text-zinc-500 dark:text-zinc-400"
+            class="flex items-center justify-center rounded-sm bg-zinc-500/10 ring-1 ring-zinc-500/30 px-3 py-2.5 font-semibold text-zinc-500 dark:text-zinc-400"
           >
-            Dismissed
-          </span>
+            Dismissed — the agent moves on without an answer
+          </div>
         </div>
       </div>
     </div>
