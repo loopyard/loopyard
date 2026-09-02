@@ -3,7 +3,7 @@ defmodule LoopyardWeb.Live.ConsentUI do
   The shared **consent surface** for any agent chat stream — the interactive
   cards where a human answers the agent: `ask_user`/AskUserQuestion **question
   cards** and `request_secret` **secret cards**. Both the workspace chat
-  (`WorkspaceLive`) and the operator chat (`OperatorLive`) render the SAME cards
+  (`WorkspaceLive`) and a system agent's chat (`AgentLive`) render the SAME cards
   (`workspace_live/messages/cards.ex`) and now answer them through the SAME
   handlers, attached here ONCE via `attach_hook/4` so the two streams can't
   drift. Add a new chat surface later → `attach/2` and it inherits every consent

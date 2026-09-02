@@ -270,7 +270,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentEvents do
 
   def handle_message(_event, socket), do: {:noreply, socket}
 
-  # The operator (OperatorLive) delegates its TextDelta here. Unified onto
+  # A system agent's page (AgentLive) delegates its TextDelta here. Unified onto
   # on_text_delta so BOTH chats stream through the one Markdown.Stream path — the
   # old divergent body ("replace streaming_text with the chunk, don't push to the
   # client") is gone; it's what made the operator stream differently.

@@ -42,8 +42,11 @@ defmodule LoopyardWeb.Router do
       # Operated cards). The project → workspace list lives at /workspaces.
       live "/", DashboardLive, :index
       live "/workspaces", ProjectListLive, :index
-      # Opens (creating on first visit) the operating identity's operator agent.
-      live "/operator", OperatorLive, :index
+      # AGENTS — one page per system agent (the operator and its peers);
+      # `/operator` redirects to the identity's default one, creating it on
+      # first visit (a controller: the first visit may boot a container).
+      live "/agents/:id", AgentLive, :show
+      get "/operator", AgentsController, :operator
       # NOTIFICATIONS — its own root, a peer of the operator, not a tab under
       # it: the TEAM's inbox of everything waiting on a human across all
       # agents (decisions today: question / secret / approval; finished-turn

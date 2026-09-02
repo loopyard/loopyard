@@ -1,11 +1,13 @@
-defmodule LoopyardWeb.OperatorLive do
+defmodule LoopyardWeb.AgentLive do
   @moduledoc """
-  `/operator` — the operator agent's own chat, standalone (no workspace chrome).
-  The operator is an in-container ACP agent (its own workstation container) with
-  no workspace/project, so it can't render through the workspace view — it gets
-  its own focused screen:
-  a header + the shared `chat_panel`. Created on first visit
-  (`Loopyard.Agents.ensure_default/0`).
+  `/agents/:id` — one agent's chat, standalone (no workspace chrome). The
+  page for any SYSTEM agent (the operator and its peers): an in-container
+  ACP agent bound to a workstation identity, with no workspace/project, so
+  it can't render through the workspace view. A WORKSPACE agent's id here
+  redirects to its workspace chat, which has the chrome that agent needs.
+
+  `/operator` redirects here, to the identity's default system agent
+  (`Loopyard.Agents.ensure_default/0` creates it on first visit).
 
   **Same rendering mechanisms as the workspace chat.** We deliberately reuse the
   extracted handlers (`AgentEvents.handle_message/handle_text_delta/
@@ -14,11 +16,11 @@ defmodule LoopyardWeb.OperatorLive do
   new messages, live token streaming, and streamed tool/exec output — the exact
   efficient path the workspace built. To use those handlers we adopt their assign
   contract (`selected_id`, `agents`, `selected_agent`, `messages`,
-  `streaming_text`, `streaming_thinking`, `stream_buffer`, …), flattening the
-  operator's single agent into the same shape as a one-agent workspace.
+  `streaming_text`, `streaming_thinking`, `stream_buffer`, …), flattening one
+  agent into the same shape as a one-agent workspace.
 
-  The rail's render components + pure data-shaping helpers live in
-  `LoopyardWeb.OperatorLive.Rail`; `refresh_rail/1` stays here (it assigns).
+  The "for you" rail that used to sit beside the operator's chat is gone: what
+  it listed lives on `/notifications`; the sound player is the bar's pill.
   """
   use LoopyardWeb, :live_view
 
@@ -30,47 +32,45 @@ defmodule LoopyardWeb.OperatorLive do
 
   alias LoopyardWeb.Live.WorkspaceLive.Attachments, as: ComposerAttachments
 
-  import LoopyardWeb.OperatorLive.Rail,
-    only: [for_you_rail: 1, sound_player: 1, fade_class: 2, bucket_done: 2]
-
-  @aural_channel "activity"
-  @rail_tick_ms 3_000
   # Recent-tail size for the chat transcript. Caps the initial LiveView payload
-  # so a long-lived operator's history can't blow the WebSocket join frame.
+  # so a long-lived agent's history can't blow the WebSocket join frame.
   @message_window 80
   # Hard cap on messages held in the DOM. Scrolling up pages older ones in; once
   # the window overflows this, the live tail is dropped (off-screen anyway) so the
   # DOM never holds the whole history. "Jump to latest" reloads the tail.
   @message_window_max 240
-  # The bed roster — mirrors SoundLive so the rail player and /sound agree.
-  @tracks [
-    {:serene, "Serene"},
-    {:nocturne, "Nocturne"},
-    {:cascade, "Cascade"},
-    {:hum, "Hum"},
-    {:pink, "Pink"}
-  ]
 
   @impl true
-  def mount(_params, _session, socket) do
-    # NEVER spawn the operator synchronously here: ensure_agent/0 can boot the
-    # workstation CONTAINER (docker pull + run — seconds to minutes cold), and
-    # mount must render instantly. Fast path: the operator is usually already
-    # alive → agent_id/0 is a registry check. Cold path: render the stub shell
-    # now, boot in start_async, wire up when it lands (harness-status shows
-    # "Starting" meanwhile).
-    agent_id = Agents.default_id()
+  def mount(%{"id" => id}, _session, socket) do
+    case Agents.get(id) do
+      nil ->
+        {:ok,
+         socket
+         |> put_flash(:error, "No agent with that id.")
+         |> push_navigate(to: "/")}
 
+      %{workspace_id: ws} = summary when is_binary(ws) ->
+        # A workspace agent lives in its workspace's chat (services, files,
+        # ports are its chrome); send the visitor there.
+        {:ok, push_navigate(socket, to: workspace_chat_path(summary))}
+
+      summary ->
+        {:ok, mount_agent(socket, id, summary)}
+    end
+  end
+
+  defp mount_agent(socket, id, summary) do
+    # NEVER wake an agent synchronously here: ensuring its workstation
+    # CONTAINER can take seconds to minutes cold, and mount must render
+    # instantly. Fast path: it's alive → nothing to do. Cold path: render now,
+    # wake in start_async, wire up when it lands (harness-status shows
+    # "Starting" meanwhile).
     if connected?(socket) do
-      if agent_id, do: Events.ChatAgentMessage.subscribe(agent_id)
+      Events.ChatAgentMessage.subscribe(id)
       Events.ChatAgent.subscribe()
-      # Operator `music` play/pause/volume commands → bridged to this client's
+      # `music` play/pause/volume commands → bridged to this client's
       # AmbientAudio engine (server-side track/status don't need this).
       Events.Aural.subscribe()
-      # Keep the rail fresh: status/message events refresh it instantly; this tick
-      # is the backstop that catches a cross-workspace answer or a timed-out
-      # question we didn't get a direct event for (same pattern as the town hall).
-      Process.send_after(self(), :refresh_rail, @rail_tick_ms)
     end
 
     host =
@@ -81,79 +81,67 @@ defmodule LoopyardWeb.OperatorLive do
 
     socket =
       socket
-      |> assign(:agent_id, agent_id)
-      # Chat attachments: the operator keeps them in its workstation container.
+      |> assign(:agent_id, id)
+      |> assign(:agent_name, summary[:name] || "Agent")
+      # Chat attachments live wherever this agent's compute is (its
+      # workstation container for a system agent).
       |> ComposerAttachments.allow()
       |> assign(
         :attachment_target,
-        Agents.attachment_target(agent_id) || Agents.default_attachment_target()
+        Agents.attachment_target(id) || Agents.default_attachment_target()
       )
-      # The shared chat handlers key everything off :selected_id — the operator's
-      # single agent IS the selection.
-      |> assign(:selected_id, agent_id)
+      # The shared chat handlers key everything off :selected_id — this one
+      # agent IS the selection.
+      |> assign(:selected_id, id)
       |> assign(:host, host)
       |> assign(:streaming_text, "")
       |> assign(:stream_md, Loopyard.Markdown.Stream.new())
-      # The rail's ambient-sound player (track roster + current track).
-      |> assign(:tracks, @tracks)
-      |> assign(:current_track, current_track())
       |> assign(:streaming_thinking, "")
       |> assign(:stream_buffer, StreamBuffer.new())
       |> assign(:building, false)
       |> assign(:thinking_word, nil)
-      # No windowing for the operator's short chats — the whole transcript is the
-      # tail. (chat_panel still reads these two.)
       |> assign(:has_more_messages, false)
       |> assign(:window_tail?, true)
-      |> assign(:vapid_key, Loopyard.WebPush.public_key())
-      # The rail (needs-you groups + working jobs + count) computed IN the
-      # LiveView and stored as real assigns, so it's part of the reactive graph —
-      # NOT recomputed inside the component (which LiveView memoizes when @tree/
-      # @host don't change, leaving the rail stale after an answer).
-      |> refresh_rail()
       |> load_agent()
       # The shared consent surface: question + secret cards answer through the
-      # SAME hook as the workspace chat, so the operator stream is never missing
-      # a consent feature. No workspace → secrets scope to nil.
-      |> LoopyardWeb.Live.ConsentUI.attach(secret_scope: nil)
-      # Subscribe to the sub-agents this operator is embedding, so their live
-      # windows update as they work — INCLUDING work driven directly, not just
-      # what the operator dispatched.
+      # SAME hook as the workspace chat. A system agent's secrets scope to its
+      # identity (no workspace).
+      |> LoopyardWeb.Live.ConsentUI.attach(secret_scope: summary[:workspace_id])
+      # Subscribe to the sub-agents this agent is embedding, so their live
+      # windows update as they work.
       |> assign(:embedded_ids, MapSet.new())
       |> subscribe_embeds()
 
-    socket =
-      if connected?(socket) and is_nil(agent_id) do
-        Phoenix.LiveView.start_async(socket, :ensure_operator, fn ->
-          Agents.ensure_default()
-        end)
-      else
-        socket
-      end
+    if connected?(socket) and not Agents.alive?(id) do
+      Phoenix.LiveView.start_async(socket, :ensure_agent, fn -> Agents.ensure_running(id) end)
+    else
+      socket
+    end
+  end
 
-    {:ok, socket}
+  defp workspace_chat_path(%{workspace_id: ws, id: id}) do
+    case Loopyard.WorkspaceRegistry.get_workspace(ws) do
+      %{project_id: pid} when is_binary(pid) -> "/projects/#{pid}/workspaces/#{ws}/agents/#{id}"
+      _ -> "/workspaces"
+    end
   end
 
   @impl true
-  def handle_async(:ensure_operator, {:ok, {:ok, %{agent_id: agent_id}}}, socket) do
-    Events.ChatAgentMessage.subscribe(agent_id)
-
-    {:noreply,
-     socket
-     |> assign(:agent_id, agent_id)
-     |> assign(:selected_id, agent_id)
-     |> load_agent()
-     |> refresh_rail()}
+  def handle_async(:ensure_agent, {:ok, :ok}, socket) do
+    {:noreply, load_agent(socket)}
   end
 
-  def handle_async(:ensure_operator, result, socket) do
-    Loopyard.EventLog.error("operator", "Operator boot failed: #{inspect(result, limit: 5)}")
+  def handle_async(:ensure_agent, result, socket) do
+    Loopyard.EventLog.error(
+      "agent:#{socket.assigns.agent_name}",
+      "wake failed: #{inspect(result, limit: 5)}"
+    )
 
     {:noreply,
      Phoenix.LiveView.put_flash(
        socket,
        :error,
-       "The operator couldn't start — check the workstation container on /system."
+       "#{socket.assigns.agent_name} couldn't start — check the workstation container on /system."
      )}
   end
 
@@ -175,7 +163,7 @@ defmodule LoopyardWeb.OperatorLive do
 
   # Force a specific embed card to re-render (re-read the sub-agent's state) by
   # touching its message — the ONLY reliable way past LiveView's component
-  # memoization. Never mixes the sub-agent's content into the operator's chat.
+  # memoization. Never mixes the sub-agent's content into this agent's chat.
   defp touch_embed(socket, agent_id) do
     messages =
       Enum.map(socket.assigns.messages, fn m ->
@@ -195,17 +183,13 @@ defmodule LoopyardWeb.OperatorLive do
     case ChatAgent.get_state(socket.assigns.agent_id) do
       %{} = st ->
         all = st.messages || []
-        # WINDOW the transcript. The operator was built for "short chats" with
-        # windowing off, but a long-lived operator accumulates hundreds of turns —
-        # rendering all of them made the initial LiveView payload ~1 MB, which
-        # blows the WebSocket frame on join (Bandit closes the socket at the
-        # protocol level — no Elixir error, just a perpetual "connection lost —
-        # reconnecting"). Render only the recent tail; the full history still
-        # lives in the durable log.
+        # WINDOW the transcript: a long-lived agent accumulates hundreds of
+        # turns, and rendering all of them blew the WebSocket join frame.
         windowed = Enum.take(all, -@message_window)
 
         socket
         |> assign(:selected_agent, st)
+        |> assign(:agent_name, st[:name] || socket.assigns.agent_name)
         |> assign(:agents, [st])
         |> assign(:messages, windowed)
         |> assign(:has_more_messages, length(all) > length(windowed))
@@ -222,17 +206,17 @@ defmodule LoopyardWeb.OperatorLive do
 
   @impl true
   def handle_event("send_message", %{"message" => message}, socket) do
-    # Drop empty / whitespace-only sends so the operator never gets a blank prompt
-    # (which makes it reply "your message came through empty"). Still ack so the
-    # ChatForm hook clears the box.
+    # Drop empty / whitespace-only sends so the agent never gets a blank prompt.
+    # Still ack so the ChatForm hook clears the box.
     message = String.trim(message)
     editing = socket.assigns[:editing_pending]
     attachments? = ComposerAttachments.pending?(socket)
+    name = socket.assigns.agent_name
 
     cond do
       # EDIT-IN-PLACE: save an edited queued message at its position instead of
       # re-appending (which reordered the queue). Empty box = cancel, untouched.
-      match?(%{index: _}, editing) and socket.assigns.agent_id ->
+      match?(%{index: _}, editing) ->
         %{index: idx, text: old} = editing
 
         if message != "",
@@ -249,23 +233,9 @@ defmodule LoopyardWeb.OperatorLive do
       message == "" and not attachments? ->
         {:reply, %{ok: true}, socket}
 
-      is_nil(socket.assigns.agent_id) ->
-        # Boot window (cold start): don't cast into the void. ok:false makes the
-        # ChatForm hook keep the typed text and show the note inline.
-        {:reply,
-         %{
-           ok: false,
-           note: "The operator is still starting — your text is kept; try again in a moment."
-         }, socket}
-
       true ->
-        # DURABILITY-CONFIRMED, same contract as the workspace composer. This
-        # used to be send_message/2 — a fire-and-forget CAST — so we replied
-        # ok: true and cleared the box before the agent had received anything.
-        # When the agent then crashed handling it, the message was gone with no
-        # ack, no error and no transitional state: from the outside, typing did
-        # NOTHING. A cast is fine for internal/eval callers; a UI send must be
-        # a call, because only a call can tell the person their text landed.
+        # DURABILITY-CONFIRMED, same contract as the workspace composer: a call,
+        # because only a call can tell the person their text landed.
         with {:ok, socket, atts} <- ComposerAttachments.consume(socket),
              :ok <-
                ChatAgent.enqueue_message(
@@ -281,14 +251,14 @@ defmodule LoopyardWeb.OperatorLive do
             {:reply,
              %{
                ok: false,
-               note: "The operator's queue is full — your text is kept. Try again shortly."
+               note: "#{name}'s queue is full — your text is kept. Try again shortly."
              }, socket}
 
           {:error, _} ->
             {:reply,
              %{
                ok: false,
-               note: "The operator didn't take that — your text is kept. Try again in a moment."
+               note: "#{name} didn't take that — your text is kept. Try again in a moment."
              }, socket}
         end
     end
@@ -330,8 +300,7 @@ defmodule LoopyardWeb.OperatorLive do
 
   # Approve/Deny on the approval "chat mini app" — the interactive half of the
   # create-project flow. Delivers the decision to the blocked ControlPlane tool
-  # (which then fires Onboarding + spawns the workspace agent). Operator cards are
-  # only create_project (no delete/navigation), so this stays simple.
+  # (which then fires Onboarding + spawns the workspace agent).
   def handle_event("decide_approval", %{"approval_id" => id, "decision" => decision}, socket) do
     decision = if decision == "approve", do: :approve, else: :deny
     agent_id = socket.assigns.agent_id
@@ -370,17 +339,8 @@ defmodule LoopyardWeb.OperatorLive do
     {:noreply, load_agent(socket)}
   end
 
-  # Dive into a job's agent chat — re-anchor your read-position (delta → 0, so a
-  # read done job retires), then navigate into that workspace's own stream.
-  def handle_event("open_job", %{"ws" => ws, "project" => pid, "agent" => aid}, socket) do
-    Loopyard.Operator.Jobs.mark_read(ws)
-    {:noreply, push_navigate(socket, to: ~p"/projects/#{pid}/workspaces/#{ws}/agents/#{aid}")}
-  end
-
-  # Rail sound player: crossfade the bed to another track (no reconnect).
-  # Mobile: flip between the chat and the "for you" rail.
-  # PerfProbe (chat_panel's client-health beacon) reports here too — without
-  # this clause every jank sample CRASHED the LiveView it was reporting on
+  # PerfProbe (chat_panel's client-health beacon) reports here — without this
+  # clause every jank sample CRASHED the LiveView it was reporting on
   # (FunctionClauseError → remount), which read as "the app feels unreliable".
   def handle_event("perf_sample", sample, socket) when is_map(sample) do
     max_gap = sample["max_gap_ms"]
@@ -394,35 +354,6 @@ defmodule LoopyardWeb.OperatorLive do
     end
 
     {:noreply, socket}
-  end
-
-  # Question push notifications: the PushBell hook owns permission/subscription
-  # client-side; the server just stores/deletes. Value is a standard
-  # PushSubscription JSON (endpoint + keys) — no secrets of ours.
-  def handle_event("push_subscribe", %{"subscription" => sub}, socket) do
-    case Loopyard.WebPush.subscribe(sub) do
-      :ok ->
-        Loopyard.EventLog.info("operator", "push notifications enabled for a device")
-
-        # Instant proof-of-life: the device gets a push right now (and the
-        # badge stamps with the current waiting count).
-        Loopyard.WebPush.notify_one(
-          sub,
-          "Notifications on",
-          "You'll get decisions here — tapping one opens it.",
-          "/notifications"
-        )
-
-        {:reply, %{ok: true}, socket}
-
-      _ ->
-        {:reply, %{ok: false}, socket}
-    end
-  end
-
-  def handle_event("push_unsubscribe", %{"endpoint" => endpoint}, socket) do
-    Loopyard.WebPush.unsubscribe(endpoint)
-    {:reply, %{ok: true}, socket}
   end
 
   # Scroll-up paging: the ScrollBottom hook fires this near the top. Prepend the
@@ -465,8 +396,7 @@ defmodule LoopyardWeb.OperatorLive do
   end
 
   # Jump back to the live tail after scrolling up past the DOM cap: reload the
-  # last window from the agent and snap to the bottom (catches up any messages we
-  # didn't append while window_tail? was false).
+  # last window from the agent and snap to the bottom.
   def handle_event("load_latest", _params, socket) do
     case socket.assigns.selected_id do
       nil ->
@@ -497,98 +427,21 @@ defmodule LoopyardWeb.OperatorLive do
     push_event(socket, "fill_input", %{text: body})
   end
 
-  defp current_track do
-    Aural.Channel.state(@aural_channel).track
-  rescue
-    _ -> :serene
-  catch
-    _, _ -> :serene
-  end
-
-  # Compute the rail's data IN the LiveView so it's bound to the reactive assign
-  # graph. The operator's OWN blocking questions live in the chat (your direct
-  # conversation) — excluded here so they don't double up in the rail.
-  defp refresh_rail(socket) do
-    host = socket.assigns.host
-    op = socket.assigns.agent_id
-    tree = Loopyard.WorkspaceTree.global(host)
-    line = Loopyard.Attention.line(host)
-
-    groups =
-      line
-      |> Enum.reject(&(&1.agent_id == op))
-      |> Enum.group_by(& &1.workspace_id)
-      |> Enum.map(fn {_ws, items} ->
-        first = hd(items)
-
-        %{
-          name: first.workspace_name || "Operator",
-          project: first.project_name,
-          path: first.path,
-          items: items
-        }
-      end)
-      |> Enum.sort_by(&length(&1.items), :desc)
-
-    watched = Loopyard.Operator.Digest.watches() |> MapSet.new(& &1.ws_id)
-
-    now = DateTime.utc_now()
-
-    jobs =
-      tree
-      |> Loopyard.Operator.Queue.items()
-      |> Enum.map(fn j ->
-        j
-        |> Map.put(:watching?, MapSet.member?(watched, j.id))
-        # Fade by staleness — makes recency visual, used on the "wrapped" tier.
-        |> Map.put(:fade, fade_class(j[:last_activity_at], now))
-      end)
-
-    # A chief of staff shows what NEEDS you, not a roster. "In motion" = anything
-    # worth your eyes: actively running, awaiting you, OR done-but-unseen (it has
-    # new changes since you last looked). Everything else drops to a quiet
-    # "recently wrapped" tier, deduped by project so two done workspaces of one
-    # project don't read as "gbrain gbrain".
-    {active, done} =
-      Enum.split_with(jobs, &(&1.state in [:chugging, :needs_you] or &1.delta > 0))
-
-    done = Enum.uniq_by(done, & &1.project_name)
-
-    socket
-    |> assign(:tree, tree)
-    |> assign(:attention_groups, groups)
-    |> assign(
-      :attention_by_ws,
-      Enum.group_by(Enum.reject(line, &(&1.agent_id == op)), & &1.workspace_id)
-    )
-    # The OPERATOR's own pending asks — no workspace row to nest under, so the
-    # rail gives them their own block up top (they also render inline in the
-    # chat, but "For you" must show EVERYTHING waiting).
-    |> assign(:operator_attention, Enum.filter(line, &(&1.agent_id == op)))
-    |> assign(:active_jobs, active)
-    # Grouped by how long ago they wrapped — Recently / Past hour / Today /
-    # Earlier — instead of one list dimmed by age. Calmer, and readable (no fade).
-    |> assign(:done_buckets, bucket_done(done, now))
-    # Header count = ALL blocking items (same line the /review queue works);
-    # the rail groups exclude the operator's own (those show in the chat).
-    |> assign(:needs_you_count, length(line))
-  end
-
   # --- Message + streaming events: delegate to the SAME handlers the workspace
-  # chat uses, so the operator gets incremental append + live streaming. ---
+  # chat uses, so this agent gets incremental append + live streaming. ---
 
   @impl true
   def handle_info(%Events.ChatAgentMessage.Message{agent_id: id} = e, socket) do
     cond do
       id == socket.assigns.agent_id ->
-        # The operator's own message → normal chat handling. A new :embed card may
+        # This agent's own message → normal chat handling. A new :embed card may
         # reference a new sub-agent, so re-check subscriptions.
         {:noreply, socket} = AgentEvents.handle_message(e, socket)
         {:noreply, subscribe_embeds(socket)}
 
       MapSet.member?(socket.assigns.embedded_ids, id) ->
         # A sub-agent we embed produced a message → refresh its live window ONLY;
-        # never fold a sub-agent's content into the operator's own transcript.
+        # never fold a sub-agent's content into this transcript.
         {:noreply, touch_embed(socket, id)}
 
       true ->
@@ -597,20 +450,16 @@ defmodule LoopyardWeb.OperatorLive do
   end
 
   # Card status resolutions (approval → :renamed / :deleted / :approved / progress)
-  # ride MessageUpdated. Without this the operator's cards freeze at their
-  # optimistic status and never show the outcome (the "stuck Creating…" bug).
-  def handle_info(%Events.ChatAgentMessage.MessageUpdated{} = e, socket) do
-    {:noreply, socket} = AgentEvents.on_message_updated(e, socket)
-    # A message update can resolve a question → refresh the rail so the answered
-    # card doesn't sit there stale (the "not bound to LV" bug).
-    {:noreply, refresh_rail(socket)}
-  end
+  # ride MessageUpdated. Without this the cards freeze at their optimistic
+  # status and never show the outcome (the "stuck Creating…" bug).
+  def handle_info(%Events.ChatAgentMessage.MessageUpdated{} = e, socket),
+    do: AgentEvents.on_message_updated(e, socket)
 
   def handle_info(%Events.ChatAgentMessage.TextDelta{} = e, socket),
     do: AgentEvents.handle_text_delta(e, socket)
 
-  # Ambient play/pause/volume command from the operator's `music` tool → push to
-  # this client's AmbientAudio engine (which applies it; the sound pill reflects).
+  # Ambient play/pause/volume command from the `music` tool → push to this
+  # client's AmbientAudio engine (which applies it; the sound pill reflects).
   def handle_info(%Events.Aural.Command{action: action, value: value}, socket),
     do:
       {:noreply, push_event(socket, "aural_command", %{action: to_string(action), value: value})}
@@ -649,9 +498,6 @@ defmodule LoopyardWeb.OperatorLive do
   def handle_info(%Events.ChatAgent.StatusChanged{} = e, socket) do
     {:noreply, socket} = AgentEvents.handle_status_changed(e, socket)
 
-    # Any agent's status change can move the board AND change what's blocking.
-    socket = refresh_rail(socket)
-
     # If it's an agent we embed, refresh its live window too (working → ready).
     socket =
       if MapSet.member?(socket.assigns.embedded_ids, e.id),
@@ -661,36 +507,18 @@ defmodule LoopyardWeb.OperatorLive do
     {:noreply, socket}
   end
 
-  # Backstop tick: catches a cross-workspace answer / timed-out question we got no
-  # direct event for. Cheap (ETS reads); keeps the rail honest.
-  def handle_info(:refresh_rail, socket) do
-    Process.send_after(self(), :refresh_rail, @rail_tick_ms)
-    {:noreply, refresh_rail(socket)}
-  end
-
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
-    # The app badge (installed PWA icon): how many decisions are waiting.
-    assigns =
-      assign(
-        assigns,
-        :needs_count,
-        length(assigns.operator_attention) +
-          Enum.sum(Enum.map(assigns.attention_groups, &length(&1.items)))
-      )
-
     ~H"""
-    <div id="app-badge" phx-hook="AppBadge" data-count={@needs_count} class="hidden"></div>
     <AppShell.shell
-      title="Operator"
+      title={@agent_name}
       mode={:operator}
-      mode_id="mode-operator"
-      id="operator-page"
+      mode_id="mode-agent"
+      id="agent-page"
       phx-hook="ScrollBottom"
     >
-      <%!-- Chat is PRIMARY — mostly you just talk to the operator. --%>
       <div class="flex-1 min-w-0 flex flex-col min-h-0">
         <.chat_panel
           messages={@messages}
@@ -706,23 +534,6 @@ defmodule LoopyardWeb.OperatorLive do
           detail_level={:chat}
         />
       </div>
-      <%!-- Desktop (lg+): the "for you" rail — co-equal with the chat. Leads
-    with NEEDS YOU (blocking questions/approvals, grouped by workspace,
-    answered inline) then WORKING (dispatched jobs + progress). The
-    operator curates this; the chat is where you talk about it. --%>
-      <aside class="hidden lg:flex flex-none flex-col border-l border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/40 lg:w-72 xl:w-80">
-        <div class="flex-1 min-h-0 overflow-y-auto">
-          <.for_you_rail
-            operator_attention={@operator_attention}
-            attention_by_ws={@attention_by_ws}
-            groups={@attention_groups}
-            active={@active_jobs}
-            done_buckets={@done_buckets}
-            vapid_key={@vapid_key}
-          />
-        </div>
-        <.sound_player id="rail-sound" tracks={@tracks} current_track={@current_track} />
-      </aside>
     </AppShell.shell>
     """
   end

@@ -1,16 +1,15 @@
-defmodule LoopyardWeb.Showcase.Scenes.Operator do
+defmodule LoopyardWeb.Showcase.Scenes.Agent do
   @moduledoc false
   use LoopyardWeb.Showcase.Scene,
-    name: "operator",
+    name: "agent",
     description:
-      "The operator cockpit: chief-of-staff chat on the left (overview, " <>
-        "dispatch), the For-You rail on the right with running work, a " <>
-        "question waiting, and recently wrapped jobs"
+      "A system agent's chat: the chief-of-staff conversation — overview, " <>
+        "dispatch, a returning result — one bar, no rail"
 
   alias LoopyardWeb.Showcase.Mock
 
   @impl true
-  def component, do: &LoopyardWeb.OperatorLive.render/1
+  def component, do: &LoopyardWeb.AgentLive.render/1
 
   @impl true
   def assigns do
@@ -66,63 +65,8 @@ defmodule LoopyardWeb.Showcase.Scenes.Operator do
       has_more_messages: false,
       window_tail?: true,
       selected_agent: operator,
-      operator_attention: [],
-      attention_groups: [],
-      attention_by_ws: %{
-        "checkout-fix" => [
-          %{
-            agent_id: "demo-agent",
-            msg: %{id: 12},
-            label: "Where should staging deploys go?"
-          }
-        ]
-      },
-      active_jobs: [
-        %{
-          id: "checkout-fix",
-          project_id: "storefront",
-          agent_id: "demo-agent",
-          project_name: "storefront",
-          workspace_name: "checkout-fix",
-          state: :chugging,
-          delta: 3
-        }
-      ],
-      done_buckets: [
-        {"Recently",
-         [
-           %{
-             id: "gp-main",
-             project_id: "gardenparty",
-             agent_id: "gp-agent",
-             project_name: "gardenparty",
-             workspace_name: "main",
-             state: :done,
-             delta: 0
-           }
-         ]},
-        {"Today",
-         [
-           %{
-             id: "ma-main",
-             project_id: "mobile-api",
-             agent_id: "ma-agent",
-             project_name: "mobile-api",
-             workspace_name: "main",
-             state: :done,
-             delta: 0
-           }
-         ]}
-      ],
-      vapid_key: nil,
-      tracks: [
-        {:serene, "Serene"},
-        {:nocturne, "Nocturne"},
-        {:cascade, "Cascade"},
-        {:hum, "Hum"},
-        {:pink, "Pink"}
-      ],
-      current_track: :serene
+      agent_id: "operator",
+      agent_name: "Operator"
     }
   end
 end

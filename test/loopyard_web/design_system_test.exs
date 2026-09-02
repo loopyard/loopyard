@@ -218,7 +218,7 @@ defmodule LoopyardWeb.DesignSystemTest do
         "lib/loopyard_web/components/focused_view.ex",
         "lib/loopyard_web/live/dashboard_live.ex",
         "lib/loopyard_web/live/message_live.ex",
-        "lib/loopyard_web/live/operator_live.ex",
+        "lib/loopyard_web/live/agent_live.ex",
         "lib/loopyard_web/live/notifications_live.ex",
         "lib/loopyard_web/live/sound_live.ex",
         "lib/loopyard_web/live/workspace_live.ex"

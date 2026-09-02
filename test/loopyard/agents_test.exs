@@ -85,7 +85,9 @@ defmodule Loopyard.AgentsTest do
     assert row.workstation_identity == identity
     assert length(row.messages) == 2
     assert Agents.scope_key(row) == {:system, identity}
-    assert Agents.attachment_target("op-legacy") == {:container, "loopyard-ws-#{identity}", "/home/#{identity}"}
+
+    assert Agents.attachment_target("op-legacy") ==
+             {:container, "loopyard-ws-#{identity}", "/home/#{identity}"}
 
     # Idempotent: a second restore neither duplicates nor re-migrates.
     assert Agents.restore(identity) == 1

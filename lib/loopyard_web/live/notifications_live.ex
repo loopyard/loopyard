@@ -439,6 +439,7 @@ defmodule LoopyardWeb.NotificationsLive do
       operator_id={@operator_id}
       user_label={@user_label}
       vapid_key={@vapid_key}
+      badge_count={Loopyard.Notifications.count()}
     />
     """
   end
@@ -460,11 +461,14 @@ defmodule LoopyardWeb.NotificationsLive do
   attr :operator_id, :string, default: nil
   attr :user_label, :string, default: "You"
   attr :vapid_key, :string, default: nil
+  attr :badge_count, :integer, default: 0
 
   def notifications_deck(assigns) do
     assigns = assign(assigns, :total, length(assigns.cards))
 
     ~H"""
+    <%!-- The installed app's icon badge: everything open on the inbox. --%>
+    <div id="app-badge" phx-hook="AppBadge" data-count={@badge_count} class="hidden"></div>
     <AppShell.shell title="Notifications" mode={:notifications} mode_id="mode-notifications">
       <div class="flex-1 min-w-0 min-h-0 flex flex-col">
         <%!-- PAST decisions is the same deck with a different source; one quiet

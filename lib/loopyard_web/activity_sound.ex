@@ -10,7 +10,7 @@ defmodule LoopyardWeb.ActivitySound do
   ## The level — how busy the machine is
   The bed swells with the FLEET: the level follows how many agents are
   thinking right now (`level_for/1`), page-independent — it used to be the
-  operator's own status, computed in `OperatorLive`, so it only moved while
+  operator's own status, computed in the operator page, so it only moved while
   someone had `/operator` open.
 
   ## The chimes — three moments, three voices

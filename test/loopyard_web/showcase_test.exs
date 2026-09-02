@@ -77,12 +77,11 @@ defmodule LoopyardWeb.ShowcaseTest do
       "SSH",
       "console"
     ],
-    # The operator: overview + dispatch chat, For-You rail with running work.
-    "operator" => [
+    # A system agent's chat: overview + dispatch, one bar, no rail.
+    "agent" => [
       "Where do we stand?",
       "Dispatched to",
-      "In motion",
-      "Workstations"
+      "Operator"
     ],
     # The Reviewer deck: pending decisions one per slide, waiting count,
     # per-decision permalink, and a settled receipt staying traversable.
