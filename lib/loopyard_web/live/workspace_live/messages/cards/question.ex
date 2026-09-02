@@ -96,11 +96,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
     instead of two buttons plus a sentence with a link floating below the card.
     """
 
+  attr :show_header, :boolean,
+    default: true,
+    doc: """
+    The agent's short label for the question ("FOUNDATION", "NEXT"). Useful
+    inside a multi-question card to tell the questions apart; on the decisions
+    deck each question is alone on its slide and the label read as noise.
+    """
+
   def question_block(assigns) do
     ~H"""
     <div class="mb-8 last:mb-0">
       <div
-        :if={@q.header != ""}
+        :if={@show_header and @q.header != ""}
         class="text-lead font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1"
       >
         {@q.header}
@@ -226,7 +234,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
               phx-value-q={@q.id}
               class={["w-full sm:w-auto order-last sm:order-first", StreamCard.action_class()]}
             >
-              Skip
+              <%!-- "Skip" promised "later"; it actually means "I'm doing nothing
+              about this" — the agent proceeds unanswered. Say that. --%>
+              Dismiss
             </button>
             <.link
               :if={!@q[:multi] && @chat_path}
@@ -350,7 +360,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
             :if={!answer_for(@msg, @q)}
             class="inline-flex items-center gap-1.5 rounded-sm bg-zinc-500/10 px-3 py-1.5 font-medium text-zinc-500 dark:text-zinc-400"
           >
-            Skipped
+            Dismissed
           </span>
         </div>
       </div>

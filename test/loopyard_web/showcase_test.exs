@@ -34,7 +34,7 @@ defmodule LoopyardWeb.ShowcaseTest do
       "Where should staging deploys go?",
       "Fly.io (Recommended)",
       "Answer",
-      "Skip"
+      "Dismiss"
     ],
     # First run: the on-ramp shown before any project exists — brand mark,
     # headline, and the three creation paths as one-tap rows (not a dead end).

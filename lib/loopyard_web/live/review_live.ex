@@ -7,11 +7,11 @@ defmodule LoopyardWeb.ReviewLive do
 
   **Two axes, both native scrolling, no JS gestures.** The deck is a
   horizontal CSS scroll-snap carousel: swipe left/right to move between
-  decisions. Each slide is its own vertical scroller: the decision at the
-  top, its discussion below. Scroll into the discussion and the card
-  COLLAPSES into a sticky orange header (who asked + the question, tap to
-  pop back up) — the `StickyShadow` hook flips `data-stuck`; CSS does the
-  rest.
+  decisions. Each slide is its own vertical scroller with its OWN top bar —
+  who's asking is the title, so the title travels with the swipe — the
+  decision under it, and the discussion below. Scroll into the discussion
+  and the card COLLAPSES into a sticky orange band (the question, tap to pop
+  back up) — the `StickyShadow` hook flips `data-stuck`; CSS does the rest.
 
   A message sent from a slide is tagged to that decision
   (`Loopyard.ChatAgent.Thread`), so the operator's reply lands back on the
@@ -30,6 +30,7 @@ defmodule LoopyardWeb.ReviewLive do
   alias LoopyardWeb.Components.{Common, Nav}
   alias LoopyardWeb.Live.WorkspaceLive.Messages
   alias LoopyardWeb.Live.WorkspaceLive.Messages.Cards
+  alias LoopyardWeb.ReviewLive.Deck
   alias Phoenix.LiveView.JS
 
   @tick_ms 3_000
@@ -44,7 +45,7 @@ defmodule LoopyardWeb.ReviewLive do
     scope = params["workspace_id"]
     history? = socket.assigns.live_action == :history
     socket = socket |> assign(:scope, scope) |> assign(:history?, history?)
-    slides = if history?, do: history_slides(), else: slides(scope)
+    slides = if history?, do: Deck.history(), else: Deck.pending(scope)
 
     # A permalink names ONE decision: the deck opens there.
     target =
@@ -91,97 +92,6 @@ defmodule LoopyardWeb.ReviewLive do
   end
 
   defp subscribe_agent(socket, _), do: socket
-
-  # ── the slide deck ────────────────────────────────────────────────────────
-  #
-  # One slide per DECISION: each pending question of a multi-question ask is
-  # its own slide; an approval or secret is one slide. Slides carry everything
-  # the render needs except the live message (fetched fresh per render).
-
-  # Newest first — recency is the right bias for a decision queue: the one
-  # asked a minute ago is almost always the one to answer next, and a
-  # three-week-old ask is almost never it.
-  defp slides(scope) do
-    Loopyard.Attention.line()
-    |> Enum.filter(&(is_nil(scope) or &1.workspace_id == scope))
-    |> Enum.flat_map(&item_slides/1)
-    |> Enum.sort_by(&(&1.asked_at || DateTime.from_unix!(0)), {:desc, DateTime})
-  rescue
-    _ -> []
-  catch
-    _, _ -> []
-  end
-
-  # PAST decisions: every question/approval/secret ever asked (recent tail per
-  # agent), any status, newest first — one slide per CARD.
-  defp history_slides do
-    ws_names =
-      for p <- Loopyard.ProjectRegistry.list_projects(),
-          ws <- Loopyard.WorkspaceRegistry.list_workspaces(p.id),
-          into: %{} do
-        {ws.id, %{project_name: p.name, workspace_name: ws.name, project_id: p.id}}
-      end
-
-    for %{id: aid} = st <- ChatAgent.list_agent_summaries(),
-        not String.contains?(to_string(st[:name] || ""), "test"),
-        msg <- st |> Map.get(:messages, []) |> Enum.take(-200),
-        msg[:role] in [:question, :approval, :secret_request] do
-      ws = Map.get(ws_names, st[:workspace_id], %{})
-
-      item = %{
-        kind: history_kind(msg.role),
-        agent_id: aid,
-        msg: msg,
-        workspace_id: st[:workspace_id],
-        project_name: ws[:project_name],
-        workspace_name: ws[:workspace_name],
-        agent_name: st[:name] || "Agent",
-        path: history_path(ws, st),
-        asked_at: msg[:timestamp] || DateTime.from_unix!(0)
-      }
-
-      slide(item, nil)
-    end
-    |> Enum.sort_by(& &1.asked_at, {:desc, DateTime})
-  rescue
-    _ -> []
-  catch
-    _, _ -> []
-  end
-
-  defp history_kind(:question), do: :question
-  defp history_kind(:secret_request), do: :secret
-  defp history_kind(:approval), do: :approval
-
-  defp history_path(%{project_id: pid}, st) when is_binary(pid),
-    do: "/projects/#{pid}/workspaces/#{st[:workspace_id]}/agents/#{st[:id]}"
-
-  defp history_path(_ws, _st), do: "/operator"
-
-  defp item_slides(%{kind: :question, msg: %{} = msg} = item) do
-    for q <- msg[:questions] || [], q.id not in (msg[:done] || []) do
-      slide(item, q.id)
-    end
-  end
-
-  defp item_slides(%{msg: %{}} = item), do: [slide(item, nil)]
-  defp item_slides(_), do: []
-
-  defp slide(item, q_id) do
-    %{
-      key: {item.agent_id, item.msg.id, q_id},
-      agent_id: item.agent_id,
-      msg_id: item.msg.id,
-      q_id: q_id,
-      kind: item.kind,
-      workspace_id: item.workspace_id,
-      project_name: item.project_name,
-      workspace_name: item.workspace_name,
-      agent_name: item.agent_name,
-      path: item.path,
-      asked_at: item.asked_at
-    }
-  end
 
   # ── queue upkeep ─────────────────────────────────────────────────────────
 
@@ -240,21 +150,13 @@ defmodule LoopyardWeb.ReviewLive do
   defp refresh(socket) do
     fresh =
       if socket.assigns.history?,
-        do: history_slides(),
-        else: slides(socket.assigns.scope)
+        do: Deck.history(),
+        else: Deck.pending(socket.assigns.scope)
 
     socket
-    |> assign(:slides, merge_deck(socket.assigns.slides, fresh))
+    |> assign(:slides, Deck.merge(socket.assigns.slides, fresh))
     |> sync_secret_scope()
     |> subscribe_slides()
-  end
-
-  # Everything already on screen, in the order it was already in, plus whatever
-  # is new — new ones go FIRST (newest first), which is the start of the deck,
-  # never the middle of it.
-  defp merge_deck(shown, fresh) do
-    seen = MapSet.new(shown, & &1.key)
-    Enum.reject(fresh, &MapSet.member?(seen, &1.key)) ++ shown
   end
 
   # ── the threads (talk about THIS decision) ───────────────────────────────
@@ -414,51 +316,17 @@ defmodule LoopyardWeb.ReviewLive do
   attr :user_label, :string, default: "You"
 
   def review_deck(assigns) do
-    assigns =
-      assign(assigns,
-        pending_count: Enum.count(assigns.cards, &(&1.msg.status == :pending)),
-        total: length(assigns.cards)
-      )
+    assigns = assign(assigns, :total, length(assigns.cards))
 
     ~H"""
     <div class="h-screen flex flex-col bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x safe-area-top">
-      <Nav.bar height="h-14" pad="px-2 md:px-4" gap="gap-2">
-        <Nav.back_button navigate="/operator" label="Back to the operator" />
-        <h1 class="min-w-0 truncate text-lead font-semibold">
-          {(@history? && "Past decisions") || "Decisions"}
-          <span
-            :if={!@history? && @pending_count > 0}
-            class="font-normal text-zinc-500 dark:text-zinc-400"
-          >
-            · {@pending_count} waiting
-          </span>
-        </h1>
-        <:actions>
-          <%!-- Flip between the pending deck and PAST decisions (they're durable
-        anyway, so they're traversable). --%>
-          <.link
-            navigate={(@history? && "/decisions") || "/decisions/history"}
-            class="focus-ring tap-target inline-flex items-center justify-center w-9 h-9 rounded-sm text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            aria-label={(@history? && "Back to pending") || "Past decisions"}
-            title={(@history? && "Back to pending") || "Past decisions"}
-          >
-            <svg viewBox="0 0 20 20" fill="currentColor" class="w-4.5 h-4.5" aria-hidden="true">
-              <path
-                fill-rule="evenodd"
-                d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-13a.75.75 0 0 0-1.5 0v5c0 .27.144.518.378.651l3.5 2a.75.75 0 1 0 .744-1.302L10.75 9.565V5Z"
-                clip-rule="evenodd"
-              />
-            </svg>
-          </.link>
-          <Common.mode_nav id="mode-decisions" active={:operator} />
-        </:actions>
-      </Nav.bar>
-
       <%!-- THE DECK: a horizontal scroll-snap carousel, one decision per slide,
       swiped with the browser's own scrolling (no JS gestures — nothing that
       competes with iOS back). `overscroll-x-contain` stops the rubber band
-      at the ends. Each slide is its OWN vertical scroller: the decision on
-      top, its discussion below. --%>
+      at the ends. Each slide is its OWN vertical scroller with its own top
+      bar, so the title (who's asking) travels with the swipe. There is
+      deliberately no page-level bar above the slides: two bars was one too
+      many, and the arrows in the lower one were too short to tap. --%>
       <div
         :if={@cards != []}
         id="decisions-deck"
@@ -477,20 +345,29 @@ defmodule LoopyardWeb.ReviewLive do
           operator_id={@operator_id}
           user_label={@user_label}
         />
+        <.end_slide history?={@history?} last={List.last(@cards)} />
       </div>
 
-      <%!-- Nothing on the deck: the "you're done" beat. --%>
-      <div :if={@cards == []} class="flex-1 flex flex-col items-center justify-center gap-4 py-24">
-        <p class="text-body text-zinc-400 dark:text-zinc-500">
-          {(@history? && "No decisions asked yet.") || "Nothing waiting on you."}
-        </p>
-        <.link
-          :if={!@history?}
-          navigate="/decisions/history"
-          class="text-body font-medium inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
-        >
-          Flip through past decisions →
-        </.link>
+      <%!-- Nothing on the deck: the "you're done" beat, with the one bar it needs. --%>
+      <div :if={@cards == []} class="flex-1 flex flex-col min-h-0">
+        <Nav.bar height="h-14" pad="px-2 md:px-4" gap="gap-2">
+          <Nav.back_button navigate="/operator" label="Back to the operator" />
+          <h1 class="min-w-0 truncate text-lead font-semibold">
+            {(@history? && "Past decisions") || "Decisions"}
+          </h1>
+        </Nav.bar>
+        <div class="flex-1 flex flex-col items-center justify-center gap-4 py-24">
+          <p class="text-body text-zinc-400 dark:text-zinc-500">
+            {(@history? && "No decisions asked yet.") || "Nothing waiting on you."}
+          </p>
+          <.link
+            :if={!@history?}
+            navigate="/decisions/history"
+            class="text-body font-medium inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
+          >
+            Past decisions →
+          </.link>
+        </div>
       </div>
     </div>
     """
@@ -507,11 +384,12 @@ defmodule LoopyardWeb.ReviewLive do
   attr :operator_id, :string, default: nil
   attr :user_label, :string, required: true
 
-  # One decision: a full-width, full-height slide. The header is sticky INSIDE
-  # the slide's scroller; the `StickyShadow` hook on the slide sets
-  # `data-stuck` on it the moment the card has scrolled under it, and the
-  # header grows the question (orange, tap → back to the top). That's the
-  # "collapse the decision into a turn card" — one attribute, CSS states.
+  # One decision: a full-width, full-height slide with its own top bar. The
+  # bar names who's asking (the title), where you are in the deck, and the
+  # neighbours — every control a full 44px. Below it the card; below that the
+  # discussion, whose sticky header becomes the collapsed card (orange band)
+  # once the card has scrolled away — the slide's `StickyShadow` hook sets
+  # `data-stuck`, CSS switches the look. The composer is pinned to the foot.
   defp decision_slide(assigns) do
     assigns =
       assign(assigns,
@@ -519,7 +397,8 @@ defmodule LoopyardWeb.ReviewLive do
         prompt: card_prompt(assigns.card),
         pending?: assigns.card.msg.status == :pending,
         awaiting?: awaiting_reply?(assigns.thread),
-        blocked?: operator_blocked?(assigns.operator_id, assigns.card)
+        blocked?: operator_blocked?(assigns.operator_id, assigns.card),
+        who: Deck.who_asked(assigns.card.slide)
       )
 
     ~H"""
@@ -530,198 +409,228 @@ defmodule LoopyardWeb.ReviewLive do
       tabindex="-1"
       class="w-full h-full flex-none snap-start snap-always overflow-y-auto overscroll-y-contain focus:outline-none"
     >
-      <div class="mx-auto w-full max-w-2xl">
-        <div id={"top-" <> @card.dom_id}></div>
-        <%!-- WHO'S ASKING + where you are in the deck. Pinned to the slide's
-        top always, so the position and the prev/next links stay in reach
-        while you're deep in a discussion. --%>
-        <header class="sticky top-0 z-10 bg-brand-paper dark:bg-brand-ink border-b border-zinc-200 dark:border-zinc-800">
-          <div class="flex items-center gap-2 min-w-0 px-4 md:px-6 min-h-11 text-meta text-zinc-500 dark:text-zinc-400">
-            <span
-              aria-hidden="true"
-              class={[
-                "flex-none w-2 h-2 rounded-full",
-                Common.state_light((@pending? && :needs_you) || :asleep)
-              ]}
-            ></span>
-            <span class="min-w-0 truncate">
-              Asked by
-              <span class="font-medium text-zinc-700 dark:text-zinc-200">
-                {@card.slide.agent_name || "Operator"}
-              </span>
-              <span :if={
-                @card.slide.project_name && @card.slide.project_name != @card.slide.agent_name
-              }>
-                in {@card.slide.project_name}<span :if={@card.slide.workspace_name}> · {@card.slide.workspace_name}</span>
-              </span>
-              <span :if={@card.slide.asked_at}> · {ago(@card.slide.asked_at)}</span>
-            </span>
-            <span class="ml-auto flex-none inline-flex items-center gap-1 tabular-nums">
-              <a
-                :if={@prev}
-                href={"#slide-" <> @prev.dom_id}
-                aria-label="Previous decision"
-                class="focus-ring tap-target inline-flex items-center justify-center w-7 h-7 rounded-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              >
-                ‹
-              </a>
-              {@index} of {@total}
-              <a
-                :if={@next}
-                href={"#slide-" <> @next.dom_id}
-                aria-label="Next decision"
-                class="focus-ring tap-target inline-flex items-center justify-center w-7 h-7 rounded-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              >
-                ›
-              </a>
-            </span>
-          </div>
-        </header>
-
-        <div class="px-4 md:px-6 pt-2 pb-4">
-          <%!-- ONE question of a multi-question ask is a bare block, so it
-          needs the band around it. A whole card (approval, secret, a
-          settled question receipt) already IS a band. No eyebrow on a
-          pending one — the page is called Decisions and the header says
-          who's asking; a settled one earns its "Answered" so a receipt
-          can't be mistaken for a live ask. --%>
-          <LoopyardWeb.Components.StreamCard.band
-            :if={@card.q}
-            tone={(@pending? && :needs_you) || :neutral}
-            chrome={:desktop}
+      <div id={"top-" <> @card.dom_id}></div>
+      <%!-- The slide's bar. CHROME: z-30 like every .app-bar, so nothing in the
+      content (the collapsed band at z-10, a prompt band) can ride over it. --%>
+      <div class="sticky top-0 z-30 flex items-center gap-1 h-14 px-2 md:px-4 bg-brand-paper dark:bg-brand-ink border-b border-zinc-200 dark:border-zinc-800">
+        <Nav.back_button navigate="/operator" label="Back to the operator" />
+        <span
+          aria-hidden="true"
+          class={[
+            "flex-none w-2 h-2 rounded-full ml-1",
+            Common.state_light((@pending? && :needs_you) || :asleep)
+          ]}
+        ></span>
+        <h1 class="min-w-0 flex-1 truncate text-lead font-semibold">
+          {@who}
+          <span
+            :if={@card.slide.asked_at}
+            class="font-normal text-zinc-500 dark:text-zinc-400"
           >
-            <LoopyardWeb.Components.StreamCard.header
-              :if={!@pending?}
-              state={:needs_you}
-              label_class="text-zinc-500 dark:text-zinc-400"
-            >
-              <:label>Answered</:label>
-            </LoopyardWeb.Components.StreamCard.header>
-
-            <%!-- No chat_path: the card's "Chat" button navigated AWAY from the
-            decision to the source agent's chat. Discussion happens here. --%>
-            <Cards.question_block msg={@card.msg} q={@card.q} />
-          </LoopyardWeb.Components.StreamCard.band>
-
-          <Cards.question_card
-            :if={is_nil(@card.q) && @card.msg.role == :question}
-            msg={@card.msg}
-          />
-          <Cards.approval_card :if={@card.msg.role == :approval} msg={@card.msg} />
-          <Cards.secret_card :if={@card.msg.role == :secret_request} msg={@card.msg} />
-
-          <div class="mt-2 flex flex-wrap items-center gap-x-4">
-            <.link
-              :if={@card.slide.path}
-              navigate={@card.slide.path}
-              class="text-meta inline-flex items-center min-h-11 md:min-h-0 text-zinc-400 dark:text-zinc-500 hover:text-violet-600 dark:hover:text-violet-400"
-            >
-              Source chat →
-            </.link>
-          </div>
-
-          <%!-- THE DISCUSSION. Its header is the collapsing decision: at rest a
-          plain section label between the card and the thread; placed AFTER
-          the card and sticky under the "asked by" row, it pins exactly when
-          the card has scrolled away — and then (data-stuck, from the slide's
-          StickyShadow hook) it becomes the card, collapsed: the question in
-          an orange band, a real link back to the top so "tap to expand" is
-          just a scroll. Pure sticky placement decides WHEN; one attribute
-          decides the LOOK. --%>
-          <div
-            data-sticky-header
-            class="group sticky top-11 z-10 -mx-4 md:-mx-6 mt-6 bg-brand-paper dark:bg-brand-ink"
+            · {Deck.ago(@card.slide.asked_at)}
+          </span>
+        </h1>
+        <%!-- Position + neighbours. Anchors to the neighbour slides — the
+        carousel scrolls them into view natively. Full 44px targets. --%>
+        <span class="flex-none inline-flex items-center text-meta text-zinc-500 dark:text-zinc-400 tabular-nums">
+          <a
+            :if={@prev}
+            href={"#slide-" <> @prev.dom_id}
+            aria-label="Previous decision"
+            class="focus-ring inline-flex items-center justify-center w-11 h-11 rounded-sm text-lead hover:bg-zinc-100 dark:hover:bg-zinc-800"
           >
-            <div class="group-data-[stuck]:hidden section-label px-5 md:px-7 pb-1">
-              About this decision
-            </div>
-            <a
-              href={"#top-" <> @card.dom_id}
-              class="hidden group-data-[stuck]:flex items-center gap-3 px-4 md:px-6 py-2 border-l-4 border-orange-500 bg-orange-50 dark:bg-orange-500/10 text-body text-zinc-800 dark:text-zinc-100 shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
-            >
-              <span class="min-w-0 flex-1 line-clamp-2">{@prompt}</span>
-              <span class="flex-none text-meta font-semibold text-orange-700 dark:text-orange-400">
-                {(@pending? && "Answer ↑") || "↑"}
-              </span>
-            </a>
-          </div>
+            ‹
+          </a>
+          <span :if={!@prev} class="inline-block w-11" aria-hidden="true"></span>
+          <span class="whitespace-nowrap">{@index} of {@total}</span>
+          <a
+            :if={@next}
+            href={"#slide-" <> @next.dom_id}
+            aria-label="Next decision"
+            class="focus-ring inline-flex items-center justify-center w-11 h-11 rounded-sm text-lead hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          >
+            ›
+          </a>
+          <a
+            :if={!@next}
+            href="#slide-end"
+            aria-label="End of the deck"
+            class="focus-ring inline-flex items-center justify-center w-11 h-11 rounded-sm text-lead hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          >
+            ›
+          </a>
+        </span>
+      </div>
 
-          <%!-- At least a screen tall, so the card can ALWAYS be scrolled away and
-          the band above collapse — a two-message thread used to stop the
-          scroll with the card still half on screen. An empty chat area with
-          the composer at its foot is what a fresh thread should look like. --%>
-          <div id={"thread-" <> @card.dom_id} class="min-h-screen">
-            <p
-              :if={@thread == [] and !@blocked?}
-              class="px-1 py-2 text-body text-zinc-500 dark:text-zinc-400"
-            >
-              Ask the operator anything about this — what an option changes, what
-              led here, what it would mean in the code. The decision stays put.
-            </p>
+      <div class="mx-auto w-full max-w-2xl px-4 md:px-6 pt-3">
+        <%!-- ONE question of a multi-question ask is a bare block, so it needs
+        the band around it. A whole card (approval, secret, a settled
+        question receipt) already IS a band. No eyebrow on a pending one and
+        no per-question header label — the bar says who's asking and the
+        question is alone on its slide; a settled one keeps "Answered" so a
+        receipt can't be mistaken for a live ask. --%>
+        <LoopyardWeb.Components.StreamCard.band
+          :if={@card.q}
+          tone={(@pending? && :needs_you) || :neutral}
+          chrome={:desktop}
+        >
+          <LoopyardWeb.Components.StreamCard.header
+            :if={!@pending?}
+            state={:needs_you}
+            label_class="text-zinc-500 dark:text-zinc-400"
+          >
+            <:label>Answered</:label>
+          </LoopyardWeb.Components.StreamCard.header>
 
-            <p :if={@blocked?} class="px-1 py-2 text-body text-zinc-500 dark:text-zinc-400">
-              This is the operator's own question, and it's waiting on your answer
-              before it can do anything else — including discuss it. Answer it
-              above, or ask in a moment: anything you send now is queued until
-              it's free.
-            </p>
+          <Cards.question_block msg={@card.msg} q={@card.q} show_header={false} />
+        </LoopyardWeb.Components.StreamCard.band>
 
-            <div :for={{msg, idx} <- Enum.with_index(@thread)} :key={msg[:id] || idx}>
-              <Messages.chat_msg
-                msg={msg}
-                idx={idx}
-                messages={@thread}
-                agent_id={@operator_id || "operator"}
-                host="localhost"
-                detail_level={:chat}
-                user_label={@user_label}
-              />
-            </div>
+        <Cards.question_card
+          :if={is_nil(@card.q) && @card.msg.role == :question}
+          msg={@card.msg}
+        />
+        <Cards.approval_card :if={@card.msg.role == :approval} msg={@card.msg} />
+        <Cards.secret_card :if={@card.msg.role == :secret_request} msg={@card.msg} />
 
-            <div :if={@streaming != ""} class="px-1 py-2 text-lead whitespace-pre-wrap">
-              {@streaming}
-            </div>
-            <p
-              :if={@awaiting? and @streaming == "" and !@blocked?}
-              class="px-1 py-2 text-body text-zinc-400 dark:text-zinc-500"
-            >
-              Thinking…
-            </p>
-          </div>
+        <%!-- THE COLLAPSED DECISION. Nothing at rest. Placed AFTER the card and
+        sticky under the bar, it pins exactly when the card has scrolled
+        away, and only then (data-stuck) shows the question in an orange
+        band — a real link back to the top, so "tap to expand" is just a
+        scroll. Pure sticky placement decides WHEN; one attribute decides
+        the LOOK. --%>
+        <div
+          data-sticky-header
+          class="group sticky top-14 z-10 -mx-4 md:-mx-6 mt-4 bg-brand-paper dark:bg-brand-ink"
+        >
+          <%!-- Big enough to read AND to hit: two lines of the question at
+          chat size, a full-height row, and a filled Answer chip — this is
+          the way back to the decision while the thread flies under it. --%>
+          <a
+            href={"#top-" <> @card.dom_id}
+            class="hidden group-data-[stuck]:flex items-center gap-3 px-4 md:px-6 py-3 min-h-16 border-l-4 border-orange-500 bg-orange-50 dark:bg-orange-500/10 text-lead text-zinc-900 dark:text-zinc-50 shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
+          >
+            <span class="min-w-0 flex-1 line-clamp-2">{@prompt}</span>
+            <span class="flex-none inline-flex items-center min-h-11 px-3 rounded-sm bg-orange-600 text-white text-body font-semibold">
+              {(@pending? && "Answer ↑") || "Back ↑"}
+            </span>
+          </a>
         </div>
 
-        <%!-- The slide's own composer, pinned to the slide's bottom. Same
-        ChatForm hook as every chat (ack-gated clear, kept-on-failure);
-        `data-re` names the decision so the send is tagged to it. --%>
-        <div class="sticky bottom-0 px-4 md:px-6 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-brand-paper dark:bg-brand-ink border-t border-zinc-200 dark:border-zinc-800">
-          <div id={"composer-" <> @card.dom_id} phx-update="ignore">
-            <form
-              id={"chat-form-" <> @card.dom_id}
-              phx-submit="send_message"
-              phx-hook="ChatForm"
-              data-re={@ref}
-              class="flex items-end gap-2"
-            >
-              <textarea
-                name="message"
-                id={"chat-input-" <> @card.dom_id}
-                rows="1"
-                placeholder="Ask about this decision…"
-                aria-label="Ask about this decision"
-                autocomplete="off"
-                class="focus-ring text-lead flex-1 bg-transparent border-0 rounded-sm px-1 py-2.5 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none focus:outline-none focus:ring-0"
-              ></textarea>
-              <button
-                type="submit"
-                aria-label="Send"
-                class="focus-ring flex-none flex items-center justify-center rounded-full w-11 h-11 md:w-10 md:h-10 mb-[5px] md:mb-1 text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
-              >
-                <LoopyardWeb.Components.Icon.icon name={:arrow_up} class="w-6 h-6" />
-              </button>
-            </form>
-            <p data-send-status class="hidden mt-1.5 text-lead text-red-500 dark:text-red-400"></p>
+        <%!-- THE DISCUSSION. At least a screen tall, so the card can ALWAYS be
+        scrolled away and the band above collapse; an empty chat area with
+        the composer at its foot is what a fresh thread should look like.
+        Prompt bands are NOT sticky here — the slide has its own chrome. --%>
+        <div id={"thread-" <> @card.dom_id} class="min-h-screen">
+          <p :if={@blocked?} class="px-1 py-3 text-body text-zinc-500 dark:text-zinc-400">
+            This is the operator's own question, and it's waiting on your answer
+            before it can do anything else — including discuss it. Answer it
+            above, or ask in a moment: anything you send now is queued until
+            it's free.
+          </p>
+
+          <div :for={{msg, idx} <- Enum.with_index(@thread)} :key={msg[:id] || idx}>
+            <Messages.chat_msg
+              msg={msg}
+              idx={idx}
+              messages={@thread}
+              agent_id={@operator_id || "operator"}
+              host="localhost"
+              detail_level={:chat}
+              user_label={@user_label}
+              sticky?={false}
+            />
           </div>
+
+          <div :if={@streaming != ""} class="px-1 py-2 text-lead whitespace-pre-wrap">
+            {@streaming}
+          </div>
+          <p
+            :if={@awaiting? and @streaming == "" and !@blocked?}
+            class="px-1 py-2 text-body text-zinc-400 dark:text-zinc-500"
+          >
+            Thinking…
+          </p>
         </div>
+      </div>
+
+      <%!-- The slide's own composer, pinned to the slide's foot — the ONE
+      thing at the bottom of the screen. Same ChatForm hook as every chat
+      (ack-gated clear, kept-on-failure); `data-re` names the decision so
+      the send is tagged to it. z-20: above content, below the bar. --%>
+      <div class="sticky bottom-0 z-20 px-4 md:px-6 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-brand-paper dark:bg-brand-ink border-t border-zinc-200 dark:border-zinc-800">
+        <div id={"composer-" <> @card.dom_id} phx-update="ignore" class="mx-auto w-full max-w-2xl">
+          <form
+            id={"chat-form-" <> @card.dom_id}
+            phx-submit="send_message"
+            phx-hook="ChatForm"
+            data-re={@ref}
+            class="flex items-end gap-2"
+          >
+            <textarea
+              name="message"
+              id={"chat-input-" <> @card.dom_id}
+              rows="1"
+              placeholder="Chat about this decision…"
+              aria-label="Chat about this decision"
+              autocomplete="off"
+              class="focus-ring text-lead flex-1 bg-transparent border-0 rounded-sm px-1 py-2.5 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none focus:outline-none focus:ring-0"
+            ></textarea>
+            <button
+              type="submit"
+              aria-label="Send"
+              class="focus-ring flex-none flex items-center justify-center rounded-full w-11 h-11 md:w-10 md:h-10 mb-[5px] md:mb-1 text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
+            >
+              <LoopyardWeb.Components.Icon.icon name={:arrow_up} class="w-6 h-6" />
+            </button>
+          </form>
+          <p data-send-status class="hidden mt-1.5 text-lead text-red-500 dark:text-red-400"></p>
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+  attr :history?, :boolean, default: false
+  attr :last, :map, default: nil
+
+  # The slide past the last decision: where the deck ends, and the way to the
+  # past ones. Swipe on from the last decision and you land here.
+  defp end_slide(assigns) do
+    ~H"""
+    <section
+      id="slide-end"
+      class="w-full h-full flex-none snap-start snap-always overflow-y-auto flex flex-col"
+    >
+      <div class="sticky top-0 z-30 flex items-center gap-1 h-14 px-2 md:px-4 bg-brand-paper dark:bg-brand-ink border-b border-zinc-200 dark:border-zinc-800">
+        <Nav.back_button navigate="/operator" label="Back to the operator" />
+        <h1 class="min-w-0 flex-1 truncate text-lead font-semibold">
+          {(@history? && "Past decisions") || "Decisions"}
+        </h1>
+        <a
+          :if={@last}
+          href={"#slide-" <> @last.dom_id}
+          aria-label="Previous decision"
+          class="focus-ring inline-flex items-center justify-center w-11 h-11 rounded-sm text-lead text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+        >
+          ‹
+        </a>
+      </div>
+      <div class="flex-1 flex flex-col items-center justify-center gap-4 py-24 px-6">
+        <p class="text-body text-zinc-400 dark:text-zinc-500">
+          {(@history? && "That's every past decision.") || "That's everything waiting on you."}
+        </p>
+        <.link
+          navigate={(@history? && "/decisions") || "/decisions/history"}
+          class="text-body font-medium inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
+        >
+          {(@history? && "← Back to pending") || "Past decisions →"}
+        </.link>
+        <.link
+          navigate="/operator"
+          class="text-body font-medium inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
+        >
+          ← Back to the operator
+        </.link>
       </div>
     </section>
     """
@@ -734,7 +643,7 @@ defmodule LoopyardWeb.ReviewLive do
     end
   end
 
-  # The question's own words, for the collapsed header.
+  # The question's own words, for the collapsed band.
   defp card_prompt(%{q: %{prompt: p}}) when is_binary(p), do: p
   defp card_prompt(%{msg: %{questions: [%{prompt: p} | _]}}) when is_binary(p), do: p
   defp card_prompt(%{msg: msg}), do: Loopyard.CardText.render(msg) |> String.slice(0, 200)
@@ -764,27 +673,11 @@ defmodule LoopyardWeb.ReviewLive do
           slide: slide,
           msg: msg,
           q: slide.q_id && Enum.find(msg[:questions] || [], &(&1.id == slide.q_id)),
-          dom_id: dom_id(slide)
+          dom_id: Deck.dom_id(slide)
         }
 
       _ ->
         nil
     end
   end
-
-  defp dom_id(%{agent_id: aid, msg_id: mid, q_id: q_id}),
-    do: Enum.join([aid, mid, q_id || "all"], "-")
-
-  defp ago(%DateTime{} = at) do
-    secs = DateTime.diff(DateTime.utc_now(), at)
-
-    cond do
-      secs < 60 -> "moments ago"
-      secs < 3600 -> "#{div(secs, 60)}m ago"
-      secs < 86_400 -> "#{div(secs, 3600)}h ago"
-      true -> "#{div(secs, 86_400)}d ago"
-    end
-  end
-
-  defp ago(_), do: nil
 end

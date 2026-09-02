@@ -83,6 +83,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   # generic "You"), and whether it's the prompt the agent is answering now.
   attr :user_label, :string, default: "You"
   attr :active?, :boolean, default: false
+  # The prompt band pins to the top of its scroller in a transcript. Inside
+  # another surface's own sticky chrome (a decision slide's pinned header) a
+  # second sticky layer fights it — pass false there.
+  attr :sticky?, :boolean, default: true
 
   # The two interactive mini-app cards live in Messages.Cards (extracted to keep
   # this file under its line cap). chat_msg delegates the matching roles.
@@ -121,7 +125,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         # At z-20 it TIED with .app-bar-secondary, and a tie resolves by DOM
         # order — so a scrolling turn could ride over the Chat/Decisions tabs.
         # Content sticks below chrome, always: bar 30 > secondary 20 > this 10.
-        sticky_class: if(first?, do: "sticky top-0 z-10", else: ""),
+        sticky_class: if(first? and assigns.sticky?, do: "sticky top-0 z-10", else: ""),
         # Keep the chapter-break air TIGHT: a large top margin on the next prompt
         # meant the previous (sticky) prompt hung over a big empty gap before the
         # next one pushed it up. Small, even spacing → prompts hand off flush.
