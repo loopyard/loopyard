@@ -53,10 +53,9 @@ defmodule Loopyard.Agents.Spawn do
 
         name =
           Keyword.get(opts, :name) ||
-            cond do
-              service_name -> "#{service_name}-agent"
-              true -> Loopyard.Agents.Name.for_workspace(ws_id, Keyword.get(opts, :backend))
-            end
+            if service_name,
+              do: "#{service_name}-agent",
+              else: Loopyard.Agents.Name.for_workspace(ws_id, Keyword.get(opts, :backend))
 
         id = Keyword.get(opts, :id) || new_id()
 
