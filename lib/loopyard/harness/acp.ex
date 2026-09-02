@@ -135,8 +135,8 @@ defmodule Loopyard.Harness.ACP do
   # adapter mid-handshake.
   @reap_min_age_s 150
 
-  def docker_exec_cmd(container, harness \\ nil) do
-    %{adapter: adapter, proc_match: proc_match, env: extra_env} = Catalog.fetch(harness)
+  def docker_exec_cmd(container, harness \\ nil, launch_opts \\ []) do
+    %{adapter: adapter, proc_match: proc_match, env: extra_env} = spec = Catalog.fetch(harness)
 
     # Launch the adapter through an in-container shell that sources ~/.profile, so
     # the identity env (CLAUDE_CODE_OAUTH_TOKEN, written to ~/.loopyard/env and
@@ -185,12 +185,33 @@ defmodule Loopyard.Harness.ACP do
     # login no one can complete in a headless container). Exported inside the
     # container, after ~/.profile so it wins over anything sourced there.
     exports =
-      Enum.map_join(extra_env, "", fn {key, value} -> ~s|export #{key}="#{value}"; | end)
+      Enum.map_join(extra_env, "", fn {key, value} -> ~s|export #{key}="#{value}"; | end) <>
+        brief_export(spec, Keyword.get(launch_opts, :brief))
 
     inner = reap <> ~S|. "$HOME/.profile" 2>/dev/null; | <> exports <> launch
 
     "docker exec -i #{container} sh -c '#{inner}'"
   end
+
+  # The brief for a harness that doesn't read CLAUDE.local.md (see
+  # `Catalog.brief/0`): the harness's static config plus the brief under its
+  # instruction key, JSON-encoded, exported as ONE env var at launch. Base64 is
+  # what keeps it safe — the brief is prose full of quotes, apostrophes and `$`,
+  # and the whole launch script sits inside a single-quoted `sh -c`; the
+  # base64 alphabet has nothing the shell cares about, and the container
+  # decodes it into the variable itself.
+  defp brief_export(%{brief: {:config_env, var, key}, config: config}, brief) do
+    config = if is_binary(brief) and brief != "", do: Map.put(config, key, brief), else: config
+
+    if config == %{} do
+      ""
+    else
+      encoded = config |> Jason.encode!() |> Base.encode64()
+      ~s|export #{var}="$(printf %s #{encoded} \| base64 -d)"; |
+    end
+  end
+
+  defp brief_export(_spec, _brief), do: ""
 
   # Host mode vs in-container mode (#5). In-container: the adapter runs via
   # `docker exec -i` where the code lives, cwd defaults to /workspace, and we
@@ -222,10 +243,15 @@ defmodule Loopyard.Harness.ACP do
         case Keyword.get(opts, :transport) do
           # Tests can inject a fake transport even in container mode.
           nil ->
+            # The brief rides the launch for harnesses that take it via env
+            # (Codex); `maybe_install_system_prompt` covers the cwd-file ones.
+            brief =
+              Keyword.get(opts, :append_system_prompt) || Keyword.get(opts, :system_prompt)
+
             Keyword.put(
               base,
               :transport_opts,
-              cmd: docker_exec_cmd(container, Keyword.get(opts, :harness))
+              cmd: docker_exec_cmd(container, Keyword.get(opts, :harness), brief: brief)
             )
 
           transport ->

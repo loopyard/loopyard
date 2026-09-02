@@ -77,5 +77,42 @@ defmodule Loopyard.Harness.CatalogTest do
         assert ACP.docker_exec_cmd("work-1", harness.id) =~ "docker exec -i work-1"
       end
     end
+
+    # Codex reads AGENTS.md, not CLAUDE.local.md — the brief has to ride the
+    # launch. It's prose (quotes, apostrophes, `$`) inside a single-quoted
+    # `sh -c`, so it travels base64-encoded and is decoded in the container.
+    test "the agent brief reaches Codex as developer_instructions via CODEX_CONFIG" do
+      brief = ~s|YOUR AGENT ID: abc — don't "guess"; $HOME is the volume|
+      cmd = ACP.docker_exec_cmd("work-1", :codex, brief: brief)
+
+      assert [_, encoded] =
+               Regex.run(
+                 ~r/export CODEX_CONFIG="\$\(printf %s ([A-Za-z0-9+\/=]+) \| base64 -d\)"/,
+                 cmd
+               )
+
+      config = encoded |> Base.decode64!() |> Jason.decode!()
+      assert config["developer_instructions"] == brief
+      # Static harness config rides along: a CLAUDE.md-only repo guides Codex too.
+      assert config["project_doc_fallback_filenames"] == ["CLAUDE.md"]
+
+      # Nothing from the brief leaks into the shell script itself.
+      refute cmd =~ "YOUR AGENT ID"
+    end
+
+    test "the brief stays a cwd file for Claude — no config env" do
+      refute ACP.docker_exec_cmd("work-1", :claude, brief: "hello") =~ "CODEX_CONFIG"
+    end
+
+    test "Codex with no brief still gets its static config" do
+      cmd = ACP.docker_exec_cmd("work-1", :codex)
+      assert cmd =~ "export CODEX_CONFIG="
+      [_, encoded] = Regex.run(~r/printf %s ([A-Za-z0-9+\/=]+) \| base64 -d/, cmd)
+
+      refute Map.has_key?(
+               encoded |> Base.decode64!() |> Jason.decode!(),
+               "developer_instructions"
+             )
+    end
   end
 end

@@ -22,6 +22,18 @@ defmodule Loopyard.Harness.Catalog do
 
   @type id :: :claude | :codex
 
+  @typedoc """
+  How Loopyard's agent brief (the system prompt) reaches the harness.
+
+    * `:cwd_file` — the harness reads `CLAUDE.local.md` in its cwd, which the
+      Initializer installs into the volume (`install_brief`).
+    * `{:config_env, var, key}` — the harness never reads that file; the brief
+      goes out as `key` inside a JSON config object exported as env `var` at
+      launch (`Harness.ACP.docker_exec_cmd/3`), merged with the harness's
+      static `config`.
+  """
+  @type brief :: :cwd_file | {:config_env, String.t(), String.t()}
+
   @type t :: %{
           id: id(),
           label: String.t(),
@@ -29,6 +41,8 @@ defmodule Loopyard.Harness.Catalog do
           proc_match: String.t(),
           credential_keys: [String.t()],
           env: %{String.t() => String.t()},
+          brief: brief(),
+          config: map(),
           models: [{String.t(), String.t()}]
         }
 
@@ -45,6 +59,10 @@ defmodule Loopyard.Harness.Catalog do
       # `Workstation.Env` provisions; an API key is the BYO-key path.
       credential_keys: ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"],
       env: %{},
+      # Claude Code reads CLAUDE.local.md in its cwd; the Initializer installs
+      # the brief there.
+      brief: :cwd_file,
+      config: %{},
       # Offered in the picker. The in-container CLI's set_model passes FULL
       # model ids through (verified), so these are ids rather than the adapter's
       # stale default/opus/haiku aliases.
@@ -67,6 +85,19 @@ defmodule Loopyard.Harness.Catalog do
       # browser-based ChatGPT login as an auth method and a session can hang
       # waiting on a login nobody can complete.
       env: %{"NO_BROWSER" => "1"},
+      # Codex reads AGENTS.md, never CLAUDE.local.md — so the brief installed
+      # for Claude would never reach it, and a Codex agent would boot without
+      # its agent id, tool conventions, or workflow rules. codex-acp merges the
+      # JSON in CODEX_CONFIG into the app-server session config, and
+      # `developer_instructions` is Codex's own per-thread instruction slot:
+      # the brief travels there at launch, per agent, with no file in the code
+      # volume for git to see.
+      brief: {:config_env, "CODEX_CONFIG", "developer_instructions"},
+      # Static config merged alongside the brief. A repo that guides Claude
+      # with CLAUDE.md but has no AGENTS.md should guide Codex the same way —
+      # this is Codex's own fallback list for exactly that (AGENTS.md still
+      # wins where it exists).
+      config: %{"project_doc_fallback_filenames" => ["CLAUDE.md"]},
       # Deliberately empty: Codex model ids move faster than this file, and a
       # stale id here is not a cosmetic bug — set_model REJECTS an unknown id, so
       # the agent would fail to start on a model the picker offered. Selecting
