@@ -382,8 +382,13 @@ boots the cloned config once cloning is done — not just forks.
   all carry attachments for free, and any harness that can read a file from
   `/workspace` can look (Claude's `Read` renders images). The transcript
   `parse/1`s the lines back out and renders thumbnails via
-  `AttachmentController`. Never put attachment state in a second field or a
-  structured prompt — the string IS the durable contract.
+  `AttachmentController`. Never put attachment state in a second field —
+  the string IS the durable contract. **The model still SEES the pixels:**
+  `Harness.ACP.stream/2` calls `Attachments.prompt_blocks/2`, which reads
+  each image attachment out of the volume and sends it as an ACP `image`
+  content block alongside the text when the adapter advertises
+  `promptCapabilities.image` (Claude's does; ≤5 MB per image). A harness
+  without it gets text only and Reads the path.
 - **Composer queue is ONE card.** Messages queued while the agent is
   busy render as a single sender-labeled band (the workstation name,
   e.g. "Brad" — not "You") with every pending line inside it, each

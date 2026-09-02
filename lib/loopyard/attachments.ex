@@ -27,6 +27,15 @@ defmodule Loopyard.Attachments do
 
   The upload dir carries a self-ignoring `.gitignore` (`*`) so screenshots can
   never ride into a commit.
+
+  **Seeing the pixels.** The marker line is the durable contract, but a harness
+  that can take images in its prompt (ACP `promptCapabilities.image` — the
+  Claude adapter does) gets them INLINE too: `prompt_blocks/2` turns the text
+  into `[text | image blocks]`, reading each image out of the volume, so the
+  model looks at the screenshot in the same turn without a Read round-trip.
+  The text (and its marker lines) always goes; images ride along when they
+  can. Non-images, oversize images, and unreadable files simply stay
+  path-only.
   """
 
   alias Loopyard.Workspace
@@ -59,8 +68,62 @@ defmodule Loopyard.Attachments do
           optional(:client_size) => non_neg_integer() | nil
         }
 
+  # Largest image sent inline as a prompt block. Claude's API caps a single
+  # image at 5 MB; anything bigger stays path-only (the agent can still Read
+  # it — Claude Code downscales on read).
+  @max_inline_bytes 5 * 1024 * 1024
+
   @doc "Absolute in-container directory uploads land in."
   def dir, do: @dir
+
+  @doc """
+  ACP prompt content blocks for a message: the text block (verbatim, marker
+  lines included — the path is still useful to the agent), then one
+  `%{"type" => "image", "data" => base64, "mimeType" => mime}` block per
+  inline-able image attachment read from `volume`.
+
+  `ctx` carries `:volume` (the code volume the paths live in) and `:image?`
+  (whether the harness accepts image blocks). With `image?: false` or no
+  volume the result is the lone text block — exactly what a text-only
+  harness sends today.
+  """
+  @spec prompt_blocks(String.t(), %{
+          optional(:volume) => String.t() | nil,
+          optional(:image?) => boolean()
+        }) ::
+          [map()]
+  def prompt_blocks(text, ctx) when is_binary(text) do
+    text_block = %{"type" => "text", "text" => text}
+    volume = ctx[:volume]
+
+    if ctx[:image?] && is_binary(volume) do
+      {_body, atts} = parse(text)
+      [text_block | Enum.flat_map(atts, &image_block(volume, &1))]
+    else
+      [text_block]
+    end
+  end
+
+  defp image_block(volume, %{size: size} = att) do
+    cond do
+      not image?(att) ->
+        []
+
+      size > @max_inline_bytes ->
+        []
+
+      true ->
+        case reader().read_file(volume, att.path) do
+          {:ok, bytes} when byte_size(bytes) <= @max_inline_bytes ->
+            [%{"type" => "image", "data" => Base.encode64(bytes), "mimeType" => att.mime}]
+
+          _ ->
+            []
+        end
+    end
+  end
+
+  defp reader, do: Application.get_env(:loopyard, :volume_reader, Loopyard.VolumeIO)
 
   @doc """
   Copy uploaded files into the workspace's code volume.

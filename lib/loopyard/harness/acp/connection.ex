@@ -36,9 +36,24 @@ defmodule Loopyard.Harness.ACP.Connection do
   @doc "Block until the session is ready (handshake complete) or fails."
   def await_ready(pid, timeout \\ 30_000), do: GenServer.call(pid, :await_ready, timeout)
 
-  @doc "Start a prompt turn; events stream to `subscriber` tagged with `ref`."
-  def prompt(pid, text, subscriber, ref),
-    do: GenServer.cast(pid, {:prompt, text, subscriber, ref})
+  @doc """
+  Start a prompt turn; events stream to `subscriber` tagged with `ref`.
+  `prompt` is the text, or a ready list of ACP content blocks (text + images —
+  see `Loopyard.Attachments.prompt_blocks/2`).
+  """
+  def prompt(pid, prompt, subscriber, ref),
+    do: GenServer.cast(pid, {:prompt, prompt, subscriber, ref})
+
+  @doc """
+  What `Harness.ACP.stream/2` needs to build the prompt's content blocks:
+  `%{image?: adapter takes image blocks, volume: the code volume}`. A dead or
+  wedged connection answers text-only.
+  """
+  def prompt_context(pid) do
+    GenServer.call(pid, :prompt_context, 1_000)
+  catch
+    :exit, _ -> %{image?: false, volume: nil}
+  end
 
   @doc "Cancel the in-flight turn (ACP `session/cancel`) while keeping the session warm."
   def cancel(pid), do: GenServer.cast(pid, :cancel)
@@ -137,6 +152,9 @@ defmodule Loopyard.Harness.ACP.Connection do
           # don't advertise, and the adapter falls back to its non-elicitation
           # AskUserQuestion path.
           agent_id: Keyword.get(opts, :agent_id),
+          # The code volume the session's /workspace is — lets a prompt inline
+          # attached images (read out of the volume) when the adapter takes them.
+          volume: Keyword.get(opts, :volume),
           # Cost accounting: `session_cost_usd` is the latest CUMULATIVE figure
           # the adapter reported for this session; `reported_cost_usd` is how
           # much of it we've already handed upstream as per-turn cost. See
@@ -206,6 +224,18 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   def handle_call(:session_id, _from, state), do: {:reply, state.session_id, state}
 
+  def handle_call(:prompt_context, _from, state) do
+    image? =
+      case state do
+        %{init_result: init} -> Models.image_prompt_supported?(init)
+        _ -> false
+      end
+
+    # Map.get: a connection that was booted before this key existed (hot code
+    # reload mid-session) answers text-only instead of crashing the session.
+    {:reply, %{image?: image?, volume: Map.get(state, :volume)}, state}
+  end
+
   # Liveness probe. Only a :ready session gets the wire round-trip; anything
   # else answers its status immediately (starting up ≠ dead — the caller
   # decides). The waiter rides in `pending` next to the request id and is
@@ -235,11 +265,17 @@ defmodule Loopyard.Harness.ACP.Connection do
     {:noreply, state}
   end
 
-  def handle_cast({:prompt, text, subscriber, ref}, state) do
+  def handle_cast({:prompt, prompt, subscriber, ref}, state) do
+    blocks =
+      case prompt do
+        text when is_binary(text) -> [%{"type" => "text", "text" => text}]
+        blocks when is_list(blocks) -> blocks
+      end
+
     {state, _id} =
       request(state, "session/prompt", %{
         "sessionId" => state.session_id,
-        "prompt" => [%{"type" => "text", "text" => text}]
+        "prompt" => blocks
       })
 
     turn = %{ref: ref, subscriber: subscriber, translator: Translator.new(model: state.model)}

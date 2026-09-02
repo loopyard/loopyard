@@ -190,6 +190,41 @@ defmodule Loopyard.Harness.ACP.ConnectionTest do
       assert Process.alive?(conn)
     end
 
+    test "a prompt given as content blocks goes out verbatim (text + image)", %{conn: conn} do
+      blocks = [
+        %{"type" => "text", "text" => "what is this?"},
+        %{"type" => "image", "data" => Base.encode64("PNG!"), "mimeType" => "image/png"}
+      ]
+
+      Connection.prompt(conn, blocks, self(), make_ref())
+      assert_receive {:sent, %{"method" => "session/prompt"} = frame}
+      assert frame["params"]["prompt"] == blocks
+    end
+
+    test "prompt_context reports the adapter's image capability and the volume" do
+      {conn, _t} = start_conn(volume: "loopyard-ws-code")
+      assert_receive {:sent, %{"method" => "initialize", "id" => init_id}}
+
+      send(
+        conn,
+        {:acp_msg,
+         %{
+           "id" => init_id,
+           "result" => %{"agentCapabilities" => %{"promptCapabilities" => %{"image" => true}}}
+         }}
+      )
+
+      assert_receive {:sent, %{"method" => "session/new", "id" => new_id}}
+      send(conn, {:acp_msg, %{"id" => new_id, "result" => %{"sessionId" => "sess-img"}}})
+      :ok = Connection.await_ready(conn, 1_000)
+
+      assert Connection.prompt_context(conn) == %{image?: true, volume: "loopyard-ws-code"}
+    end
+
+    test "prompt_context is text-only when the adapter never said it takes images", %{conn: conn} do
+      assert Connection.prompt_context(conn) == %{image?: false, volume: nil}
+    end
+
     test "the prompt result's usage reaches SessionResult", %{conn: conn} do
       ref = make_ref()
       Connection.prompt(conn, "go", self(), ref)
