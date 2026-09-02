@@ -67,6 +67,8 @@ defmodule LoopyardWeb.ReviewLive do
      |> assign(:subscribed, MapSet.new())
      |> assign(:operator_id, operator_id)
      |> assign(:threads, %{})
+     |> assign(:queued, %{})
+     |> assign(:operator_status, nil)
      |> assign(:streaming, "")
      |> assign(:awaiting, nil)
      |> assign(:user_label, user_label(operator_id))
@@ -158,29 +160,41 @@ defmodule LoopyardWeb.ReviewLive do
     |> assign(:slides, Deck.merge(socket.assigns.slides, fresh))
     |> sync_secret_scope()
     |> subscribe_slides()
+    |> load_threads()
   end
 
   # ── the threads (talk about THIS decision) ───────────────────────────────
 
   # The operator's messages tagged to each decision on the deck, oldest first,
   # keyed by decision ref. One ETS read for all of them.
+  # Also what's PARKED: a message sent while the operator was busy sits in its
+  # pending queue, not its messages — invisible here until it drained, which
+  # read as "I hit send and it's gone". Parked texts still carry their marker,
+  # so they group by decision the same way. And the operator's status, so the
+  # thread can say what's actually happening while you wait.
   defp load_threads(%{assigns: %{operator_id: op}} = socket) when is_binary(op) do
-    threads =
-      case ChatAgent.get_state(op) do
-        %{messages: messages} when is_list(messages) ->
+    case ChatAgent.get_state(op) do
+      %{messages: messages} = st when is_list(messages) ->
+        threads =
           messages
           |> Enum.filter(&match?({_, _}, &1[:re]))
           |> Enum.group_by(& &1[:re])
 
-        _ ->
-          %{}
-      end
+        queued =
+          (st[:pending_sends] || [])
+          |> Enum.map(&Thread.split/1)
+          |> Enum.filter(&match?({_, {_, _}}, &1))
+          |> Enum.group_by(&elem(&1, 1), &elem(&1, 0))
 
-    assign(socket, :threads, threads)
+        assign(socket, threads: threads, queued: queued, operator_status: st[:status])
+
+      _ ->
+        assign(socket, threads: %{}, queued: %{}, operator_status: nil)
+    end
   rescue
-    _ -> assign(socket, :threads, %{})
+    _ -> assign(socket, threads: %{}, queued: %{}, operator_status: nil)
   catch
-    _, _ -> assign(socket, :threads, %{})
+    _, _ -> assign(socket, threads: %{}, queued: %{}, operator_status: nil)
   end
 
   defp load_threads(socket), do: socket
@@ -294,6 +308,8 @@ defmodule LoopyardWeb.ReviewLive do
       target={@target}
       history?={@history?}
       threads={@threads}
+      queued={@queued}
+      operator_status={@operator_status}
       streaming={@streaming}
       awaiting={@awaiting}
       operator_id={@operator_id}
@@ -311,6 +327,8 @@ defmodule LoopyardWeb.ReviewLive do
   attr :target, :any, default: nil, doc: "slide key to open at"
   attr :history?, :boolean, default: false
   attr :threads, :map, default: %{}
+  attr :queued, :map, default: %{}
+  attr :operator_status, :atom, default: nil
   attr :streaming, :string, default: ""
   attr :awaiting, :any, default: nil
   attr :operator_id, :string, default: nil
@@ -361,6 +379,8 @@ defmodule LoopyardWeb.ReviewLive do
             next={Enum.at(@cards, idx)}
             target?={card.slide.key == @target}
             thread={Map.get(@threads, {card.slide.agent_id, card.slide.msg_id}, [])}
+            queued={Map.get(@queued, {card.slide.agent_id, card.slide.msg_id}, [])}
+            operator_status={@operator_status}
             streaming={(@awaiting == {card.slide.agent_id, card.slide.msg_id} && @streaming) || ""}
             operator_id={@operator_id}
             user_label={@user_label}
@@ -395,6 +415,8 @@ defmodule LoopyardWeb.ReviewLive do
   attr :next, :map, default: nil
   attr :target?, :boolean, default: false
   attr :thread, :list, default: []
+  attr :queued, :list, default: []
+  attr :operator_status, :atom, default: nil
   attr :streaming, :string, default: ""
   attr :operator_id, :string, default: nil
   attr :user_label, :string, required: true
@@ -506,7 +528,7 @@ defmodule LoopyardWeb.ReviewLive do
         the LOOK. --%>
           <div
             data-sticky-header
-            class="group sticky top-0 z-10 -mx-4 md:-mx-6 mt-4 bg-brand-paper dark:bg-brand-ink"
+            class="group sticky -top-px pt-px z-10 -mx-4 md:-mx-6 mt-4 bg-brand-paper dark:bg-brand-ink"
           >
             <%!-- Big enough to read AND to hit: two lines of the question at
           chat size, a full-height row, and a filled Answer chip — this is
@@ -515,7 +537,13 @@ defmodule LoopyardWeb.ReviewLive do
               href={"#top-" <> @card.dom_id}
               class="hidden group-data-[stuck]:flex items-center gap-3 px-4 md:px-6 py-3 min-h-16 border-l-4 border-orange-500 bg-orange-50 dark:bg-orange-500/10 text-lead text-zinc-900 dark:text-zinc-50 shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
             >
-              <span class="min-w-0 flex-1 line-clamp-3">{@prompt}</span>
+              <span class="min-w-0 flex-1">
+                <span class="block text-meta text-zinc-500 dark:text-zinc-400">
+                  From {@who}<span :if={@card.slide.asked_at}> · {Deck.ago(@card.slide.asked_at)}</span>
+                  · {@index} of {@total}
+                </span>
+                <span class="block line-clamp-3">{@prompt}</span>
+              </span>
               <span class="flex-none inline-flex items-center min-h-11 px-3 rounded-sm bg-orange-600 text-white text-body font-semibold">
                 {(@pending? && "Answer ↑") || "Back ↑"}
               </span>
@@ -549,14 +577,27 @@ defmodule LoopyardWeb.ReviewLive do
               />
             </div>
 
+            <%!-- Parked sends, shown where they were sent from: the operator
+            was busy, so this waits in its queue and goes out when it's
+            free. Without this the message vanished until it drained. --%>
+            <div
+              :for={text <- @queued}
+              class="mt-3 px-3 py-2 border-l-2 border-violet-400/60 bg-violet-500/5 text-lead text-zinc-700 dark:text-zinc-300"
+            >
+              <span class="block text-meta text-violet-600 dark:text-violet-400">
+                Queued — the operator is busy; this sends when it's free
+              </span>
+              {text}
+            </div>
+
             <div :if={@streaming != ""} class="px-1 py-2 text-lead whitespace-pre-wrap">
               {@streaming}
             </div>
             <p
-              :if={@awaiting? and @streaming == "" and !@blocked?}
+              :if={(@awaiting? or @queued != []) and @streaming == "" and !@blocked?}
               class="px-1 py-2 text-body text-zinc-400 dark:text-zinc-500"
             >
-              Thinking…
+              {waiting_line(@operator_status)}
             </p>
           </div>
         </div>
@@ -632,6 +673,15 @@ defmodule LoopyardWeb.ReviewLive do
     </section>
     """
   end
+
+  # What the operator is doing while you wait — the honest word, not a
+  # generic spinner. A queued send while it's idle means it's about to take it.
+  defp waiting_line(status) when status in [:booting, :starting, :restarting],
+    do: "Waking the operator…"
+
+  defp waiting_line(:compacting), do: "The operator is tidying its context first…"
+  defp waiting_line(:rate_limited), do: "The operator is rate-limited — it retries on its own"
+  defp waiting_line(_), do: "Working on it…"
 
   defp awaiting_reply?(thread) do
     case List.last(thread) do

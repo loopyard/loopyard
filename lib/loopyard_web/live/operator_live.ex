@@ -24,7 +24,6 @@ defmodule LoopyardWeb.OperatorLive do
 
   alias Loopyard.{ChatAgent, Operator, StreamBuffer}
   alias Loopyard.Events
-  alias LoopyardWeb.Components.Nav
   alias LoopyardWeb.Live.WorkspaceLive.AgentEvents
   alias LoopyardWeb.OperatorLive.Shell
   import LoopyardWeb.Live.WorkspaceLive.Components.Chat, only: [chat_panel: 1]
