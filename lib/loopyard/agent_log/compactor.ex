@@ -71,7 +71,7 @@ defmodule Loopyard.AgentLog.Compactor do
   Like `compact/1`, but keeps the pre-compaction log as `<path>.prev`.
 
   This is the checkpoint / snapshot primitive for move #8 in
-  `plans/coordination-hardening.md`. Where `compact/1` rewrites the log
+  `plans/archive/coordination-hardening.md`. Where `compact/1` rewrites the log
   and discards the old bytes, `compact_keep_previous/1` always leaves the
   prior log beside the new one so `AgentLog.replay_with_fallback/1` can
   recover from a corrupt primary.

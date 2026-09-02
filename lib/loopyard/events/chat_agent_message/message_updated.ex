@@ -8,4 +8,5 @@ defmodule Loopyard.Events.ChatAgentMessage.MessageUpdated do
   viewer — an answered question card stayed visually pending until a reload.
   """
   defstruct [:agent_id, :msg]
+  @type t :: %__MODULE__{}
 end

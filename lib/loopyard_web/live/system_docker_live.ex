@@ -100,6 +100,20 @@ defmodule LoopyardWeb.SystemDockerLive do
   end
 
   @impl true
+  def handle_async({:kill_container, _name}, {:ok, {:ok, _}}, socket) do
+    # The Observer poll inside the task already re-snapshotted; the
+    # container is gone from @containers by the time this lands.
+    {:noreply, socket}
+  end
+
+  def handle_async({:kill_container, name}, {:ok, {:error, reason}}, socket) do
+    {:noreply, put_flash(socket, :error, "Could not remove #{name}: #{reason}")}
+  end
+
+  def handle_async({:kill_container, name}, {:exit, reason}, socket) do
+    {:noreply, put_flash(socket, :error, "Could not remove #{name}: #{inspect(reason)}")}
+  end
+
   def handle_async(key, {:ok, value}, socket) do
     {:noreply,
      assign(socket, key, AsyncResult.ok(socket.assigns[key] || AsyncResult.loading(), value))}
@@ -112,12 +126,16 @@ defmodule LoopyardWeb.SystemDockerLive do
 
   @impl true
   def handle_event("kill_container", %{"name" => name}, socket) do
-    Loopyard.Docker.docker(["rm", "-f", name])
-    # The docker events stream will pick up the container destroy event
-    # and trigger a re-snapshot automatically. Force an immediate one
-    # so the user sees the container vanish in the same render cycle.
-    Loopyard.Docker.Observer.poll_now()
-    {:noreply, socket}
+    # `docker rm -f` blocks for the container's stop grace period — never
+    # hold the LiveView on it. The task does the rm, then forces an Observer
+    # re-snapshot so the container vanishes as soon as it's gone (the docker
+    # events stream would get there too, just later). Result → handle_async.
+    {:noreply,
+     start_async(socket, {:kill_container, name}, fn ->
+       result = Loopyard.Docker.docker(["rm", "-f", name])
+       Loopyard.Docker.Observer.poll_now()
+       result
+     end)}
   end
 
   @impl true

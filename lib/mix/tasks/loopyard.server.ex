@@ -1,4 +1,7 @@
 defmodule Mix.Tasks.Loopyard.Server do
+  # Node names and the distribution cookie MUST be atoms (that's the API);
+  # both come from this machine's own files/pid, not from a request.
+  # credo:disable-for-this-file Credo.Check.Warning.UnsafeToAtom
   @moduledoc """
   Starts Loopyard with IEx console and node name for remote access.
 
@@ -30,7 +33,7 @@ defmodule Mix.Tasks.Loopyard.Server do
     # Loopback longname, NOT a hostname-derived shortname — macOS flips the
     # hostname (Mac ↔ Mac.localdomain ↔ macbook), which silently broke remote
     # access (`loopyard.rpc` could no longer find the node). 127.0.0.1 is stable.
-    case Node.start(:"loopyard@127.0.0.1", :longnames) do
+    case Node.start(:"loopyard@127.0.0.1", name_domain: :longnames) do
       {:ok, _} ->
         Node.set_cookie(cookie)
 

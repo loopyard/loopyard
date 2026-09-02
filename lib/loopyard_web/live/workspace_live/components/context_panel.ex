@@ -521,13 +521,41 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   def compact_number(n) when is_float(n), do: compact_number(round(n))
   def compact_number(_), do: "0"
 
-  @doc "Build Docker context info from agent state."
+  @doc """
+  Build Docker context info from agent state.
+
+  `container` is the container the agent's tools exec into — the same
+  preference order as `Workspace.agent_container/1` (the compose `workspace`
+  service when the preview cluster is up, otherwise the cheap WorkContainer),
+  but answered from the Docker.Observer ETS cache: this runs at render time,
+  and `agent_container/1` shells out to `docker inspect`. When neither is up
+  yet, show the WorkContainer name — it's what `ensure_working/1` boots on the
+  next tool call. Names come from the owning modules, never hand-built here, so
+  the panel can't drift from the real resource prefix / naming scheme.
+  """
   def docker_ctx(agent) do
     ws_id = agent[:workspace_id]
-    container = if ws_id, do: "loopyard-#{ws_id}-workspace-1"
-    volume = if ws_id, do: "loopyard-#{ws_id}-code"
+    container = if ws_id, do: agent_container_name(ws_id)
+    volume = if ws_id, do: Loopyard.VolumeManager.code_volume_name(ws_id)
     mode = if agent[:bind_mount], do: :bind_mount, else: :container
 
     %{container: container, volume: volume, workspace_id: ws_id, mode: mode}
+  end
+
+  defp agent_container_name(ws_id) do
+    compose = Loopyard.Workspace.ServiceManager.service_container_name(ws_id, "workspace")
+
+    if compose_workspace_running?(ws_id, compose),
+      do: compose,
+      else: Loopyard.Workspace.WorkContainer.container_name(ws_id)
+  end
+
+  defp compose_workspace_running?(ws_id, name) do
+    ws_id
+    |> Loopyard.Docker.Observer.containers_for()
+    |> Enum.any?(&(&1.name == name and Map.get(&1, :running, false)))
+  rescue
+    # Observer table not up yet (very early boot) → assume the cheap default.
+    _ -> false
   end
 end

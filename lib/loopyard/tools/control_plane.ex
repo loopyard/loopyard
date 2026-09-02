@@ -13,7 +13,7 @@ defmodule Loopyard.Tools.ControlPlane do
 
   Toolkit contract: `__tool_server__/0` → `%{name: "loopyard-control-plane",
   tools: [...]}`, consumed by `ChatAgent.ToolConfig`. See
-  [plans/gbrain-onboarding.md].
+  [plans/archive/gbrain-onboarding.md].
   """
 
   alias Loopyard.Harness.Approvals

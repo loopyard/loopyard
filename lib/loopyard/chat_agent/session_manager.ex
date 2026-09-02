@@ -19,7 +19,7 @@ defmodule Loopyard.ChatAgent.SessionManager do
   # Stop a backend session with a 3s timeout. Uses async_nolink so a
   # crash in backend.stop/1 never propagates back as an EXIT signal
   # to the ChatAgent GenServer — an unsupervised Task.async would
-  # link and kill us. See plans/agent-sanity.md "unsupervised
+  # link and kill us. See plans/archive/agent-sanity.md "unsupervised
   # Task.async" audit finding.
   #
   # Returns :ok regardless of what happened to the task. The caller

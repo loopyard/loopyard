@@ -43,6 +43,7 @@ defmodule Loopyard.Tools.Container.Volumes do
   # Enforce workspace boundary: a volume belongs to a workspace iff its
   # name starts with "loopyard-<workspace_id>". This is the same prefix used
   # by VolumeManager.list_workspace_volumes/1.
+  # `parse_volume_action/1` only ever yields binaries here.
   defp authorize_volume(workspace_id, volume_name) when is_binary(volume_name) do
     if String.starts_with?(volume_name, "#{Loopyard.Docker.prefix()}#{workspace_id}") do
       :ok
@@ -52,8 +53,6 @@ defmodule Loopyard.Tools.Container.Volumes do
          "volumes prefixed with loopyard-#{workspace_id}. Use `volumes list` to see yours."}
     end
   end
-
-  defp authorize_volume(_, _), do: {:error, "volume name must be a string"}
 
   defp parse_volume_action(action) do
     case String.split(String.trim(action), ~r/\s+/, parts: 3) do

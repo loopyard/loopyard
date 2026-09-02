@@ -77,6 +77,7 @@ defmodule Loopyard.AgentPersistenceRestoreTest do
     end
 
     test "replay populates ETS table", %{ws_id: ws_id, log_path: log_path} do
+      # credo:disable-for-next-line Credo.Check.Warning.UnsafeToAtom
       table = :ets.new(:"test_agents_#{:erlang.unique_integer()}", [:set, :public])
 
       AgentLog.append({:agent, "agent-2", %{name: "ETS Agent"}},

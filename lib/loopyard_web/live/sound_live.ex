@@ -28,7 +28,7 @@ defmodule LoopyardWeb.SoundLive do
   @doc "The bed roster: `{id, name, description}`."
   def tracks, do: @tracks
 
-  @doc "A track's display name (\"Serene\"), or \"Sound\" for an unknown id."
+  @doc ~s|A track's display name ("Serene"), or "Sound" for an unknown id.|
   def track_name(id) do
     Enum.find_value(@tracks, "Sound", fn {tid, name, _} -> tid == id && name end)
   end

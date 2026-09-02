@@ -76,7 +76,7 @@ defmodule Loopyard.CanonicalRepoTest do
 
   test "full v1 loop: init → fork → commit → integrate → fork-sees-it → push → clone-back", ids do
     # New blank project.
-    assert {:ok, _canonA} = CanonicalRepo.init(ids.projA)
+    assert {:ok, _canon_a} = CanonicalRepo.init(ids.projA)
 
     # Fork a workspace off main.
     assert {:ok, ws1vol} = CanonicalRepo.fork(ids.projA, ids.ws1, "main", "feature")
@@ -101,9 +101,9 @@ defmodule Loopyard.CanonicalRepoTest do
     assert {:ok, _} = empty_bare(remote)
     assert {:ok, _} = CanonicalRepo.push(ids.projA, {:volume, remote}, refspec: "main:main")
 
-    assert {:ok, _canonB} = CanonicalRepo.init_from_remote(ids.projB, {:volume, remote})
-    assert {:ok, wsBvol} = CanonicalRepo.fork(ids.projB, ids.wsB, "main", "fromclone")
-    assert {:ok, out2} = git_in(wsBvol, "cat greeting.txt")
+    assert {:ok, _canon_b} = CanonicalRepo.init_from_remote(ids.projB, {:volume, remote})
+    assert {:ok, ws_b_vol} = CanonicalRepo.fork(ids.projB, ids.wsB, "main", "fromclone")
+    assert {:ok, out2} = git_in(ws_b_vol, "cat greeting.txt")
     assert out2 =~ "hello"
   end
 
@@ -135,8 +135,8 @@ defmodule Loopyard.CanonicalRepoTest do
     # The REMOTE's main now carries the feature commit — proves it landed on the
     # remote (not canonical). Clone it back and check.
     assert {:ok, _} = CanonicalRepo.init_from_remote(ids.projB, {:volume, remote})
-    assert {:ok, wsBvol} = CanonicalRepo.fork(ids.projB, ids.wsB, "main", "check")
-    assert {:ok, out} = git_in(wsBvol, "cat f.txt")
+    assert {:ok, ws_b_vol} = CanonicalRepo.fork(ids.projB, ids.wsB, "main", "check")
+    assert {:ok, out} = git_in(ws_b_vol, "cat f.txt")
     assert out =~ "hi"
   end
 
@@ -145,15 +145,15 @@ defmodule Loopyard.CanonicalRepoTest do
     assert {:ok, _} = CanonicalRepo.init(ids.projA)
 
     # Both branches forked off the SAME (initial) main.
-    assert {:ok, wsAvol} = CanonicalRepo.fork(ids.projA, ids.wsA, "main", "a")
-    assert {:ok, wsCvol} = CanonicalRepo.fork(ids.projA, ids.wsC, "main", "c")
+    assert {:ok, ws_a_vol} = CanonicalRepo.fork(ids.projA, ids.wsA, "main", "a")
+    assert {:ok, ws_c_vol} = CanonicalRepo.fork(ids.projA, ids.wsC, "main", "c")
 
     # A adds c.txt and integrates cleanly.
-    assert {:ok, _} = git_in(wsAvol, "echo fromA > c.txt && git add -A && git commit -m A")
+    assert {:ok, _} = git_in(ws_a_vol, "echo fromA > c.txt && git add -A && git commit -m A")
     assert {:ok, _} = CanonicalRepo.integrate(ids.projA, ids.wsA, "a")
 
     # C adds the SAME file with different content → rebase onto updated main conflicts.
-    assert {:ok, _} = git_in(wsCvol, "echo fromC > c.txt && git add -A && git commit -m C")
+    assert {:ok, _} = git_in(ws_c_vol, "echo fromC > c.txt && git add -A && git commit -m C")
     assert {:error, _} = CanonicalRepo.integrate(ids.projA, ids.wsC, "c")
   end
 end

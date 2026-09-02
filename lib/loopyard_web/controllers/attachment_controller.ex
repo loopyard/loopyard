@@ -52,6 +52,10 @@ defmodule LoopyardWeb.AttachmentController do
     end
   end
 
+  # sobelow_skip ["XSS.ContentType"] — `type` is never caller-supplied: it's one
+  # of the fixed image MIMEs `Attachments.sniff_image/1` recognises from the
+  # bytes, else application/octet-stream as an attachment; the response is also
+  # served under a `sandbox` CSP + nosniff.
   defp send_attachment(conn, name, content) do
     {type, disposition} =
       case Attachments.sniff_image(content) do

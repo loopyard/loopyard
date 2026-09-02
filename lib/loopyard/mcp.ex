@@ -21,29 +21,24 @@ defmodule Loopyard.MCP do
 
   @doc """
   Build the ACP `mcpServers` spec list for one agent. Mints a scoped bearer
-  token and points the adapter at this node's MCP plug. Returns `[]` when the
-  URL isn't configured/derivable, so a missing setting degrades to "no Loopyard
-  tools" rather than a broken session.
+  token and points the adapter at this node's MCP plug. `base_url/0` always
+  resolves (configured URL, else the `host.docker.internal` default), so the
+  list is never empty.
   """
   def acp_mcp_servers(agent_id, workspace_id, scope \\ :workspace) when is_binary(agent_id) do
-    case base_url() do
-      nil ->
-        []
+    base = base_url()
+    token = Token.sign(agent_id, workspace_id, scope)
 
-      base ->
-        token = Token.sign(agent_id, workspace_id, scope)
-
-        [
-          %{
-            "type" => "http",
-            "name" => ToolRouter.server_name(),
-            "url" => base <> @path,
-            "headers" => [
-              %{"name" => "Authorization", "value" => "Bearer " <> token}
-            ]
-          }
+    [
+      %{
+        "type" => "http",
+        "name" => ToolRouter.server_name(),
+        "url" => base <> @path,
+        "headers" => [
+          %{"name" => "Authorization", "value" => "Bearer " <> token}
         ]
-    end
+      }
+    ]
   end
 
   @doc """

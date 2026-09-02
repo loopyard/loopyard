@@ -2,7 +2,7 @@ defmodule Loopyard.Events.ChatAgent.Subscriber do
   @moduledoc """
   Behaviour for LiveViews that subscribe to the `"chat_agents"` topic.
 
-  Move #3 of plans/coordination-hardening.md. Every LV that subscribes to
+  Move #3 of plans/archive/coordination-hardening.md. Every LV that subscribes to
   chat-agent events declares `@behaviour Loopyard.Events.ChatAgent.Subscriber`
   and implements the callbacks it cares about. Callbacks it doesn't care
   about can return `{:noreply, socket}` unchanged. The compiler flags any

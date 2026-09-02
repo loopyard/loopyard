@@ -20,12 +20,10 @@ defmodule Loopyard.Tools.Container.Tree do
     max_entries = Map.get(params, :max_entries, 200)
 
     with {:ok, _} <- Helpers.validate_workspace_path(path) do
-      cond do
-        depth < 1 or depth > 8 ->
-          {:error, "depth must be between 1 and 8"}
-
-        true ->
-          tree_in_container(agent_id, path, depth, max_entries)
+      if depth < 1 or depth > 8 do
+        {:error, "depth must be between 1 and 8"}
+      else
+        tree_in_container(agent_id, path, depth, max_entries)
       end
     end
   end

@@ -533,7 +533,7 @@ defmodule LoopyardWeb.Components.Common do
   end
 
   @doc """
-  The MODE NAV — ONE control, per plans/ia-two-modes.md.
+  The MODE NAV — ONE control, per plans/archive/ia-two-modes.md.
 
   The Operator sits ABOVE the workspaces, so this is a move in altitude, not a
   choice between peers: it always points AWAY from where you are — up to the

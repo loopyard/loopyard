@@ -1,0 +1,23 @@
+# Sobelow (security static analysis) — a HARD gate in CI (`mix sobelow --config`
+# exits non-zero on any finding at or above the threshold).
+#
+# threshold "medium": the low-confidence Traversal.FileModule hits are on
+# AgentLog paths built from a workspace id Loopyard itself minted, never a
+# request parameter; they add nothing but noise.
+#
+# ignore: Config.CSP — a strict CSP breaks LiveView's inline styles/scripts and
+# the app is local-only by design (docs/SECURITY.md → threat model); the one
+# origin an uploader controls (attachments) sends its own `sandbox` CSP.
+# Config.HTTPS — served on loopback/LAN, TLS is the reverse proxy's job when
+# there is one (docs/HOSTING.md).
+#
+# skip: honour `# sobelow_skip [...]` comments at the (few) sites whose finding
+# is reviewed and benign — each carries its reason inline. Without this flag
+# the comments are inert and the gate can never go green.
+[
+  verbose: true,
+  skip: true,
+  threshold: "medium",
+  exit: "low",
+  ignore: ["Config.CSP", "Config.HTTPS"]
+]

@@ -350,13 +350,11 @@ defmodule Loopyard.AgentLog do
   # Wraps replay/1 so crashes during decode become {:error, reason} rather
   # than propagating up — the fallback path needs this to engage.
   defp try_replay(opts) do
-    try do
-      replay(opts)
-    rescue
-      e -> {:error, {:exception, Exception.message(e)}}
-    catch
-      kind, reason -> {:error, {kind, reason}}
-    end
+    replay(opts)
+  rescue
+    e -> {:error, {:exception, Exception.message(e)}}
+  catch
+    kind, reason -> {:error, {kind, reason}}
   end
 
   @doc """
@@ -498,6 +496,7 @@ defmodule Loopyard.AgentLog do
   # the BEAM via atom exhaustion or allocate massive binaries on
   # replay. Every atom we legitimately persist is module-defined and
   # exists in the atom table before replay runs.
+  # sobelow_skip ["Misc.BinToTerm"]
   defp safe_binary_to_term(compressed) do
     binary = :zlib.uncompress(compressed)
     {:ok, :erlang.binary_to_term(binary, [:safe])}

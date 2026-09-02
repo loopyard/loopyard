@@ -35,18 +35,16 @@ defmodule Loopyard.Tools.Container.Helpers do
   and null bytes. Returns {:ok, normalized} or {:error, reason}.
   """
   def validate_workspace_path(path) when is_binary(path) do
-    cond do
-      String.contains?(path, <<0>>) ->
-        {:error, "Path contains null bytes"}
+    if String.contains?(path, <<0>>) do
+      {:error, "Path contains null bytes"}
+    else
+      normalized = Path.expand(path, "/workspace")
 
-      true ->
-        normalized = Path.expand(path, "/workspace")
-
-        if String.starts_with?(normalized, "/workspace/") or normalized == "/workspace" do
-          {:ok, normalized}
-        else
-          {:error, "Path must be within /workspace: #{path}"}
-        end
+      if String.starts_with?(normalized, "/workspace/") or normalized == "/workspace" do
+        {:ok, normalized}
+      else
+        {:error, "Path must be within /workspace: #{path}"}
+      end
     end
   end
 
@@ -65,6 +63,21 @@ defmodule Loopyard.Tools.Container.Helpers do
     do: :ok
 
   def validate_timeout(_), do: {:error, "timeout must be between 1 and 3600 seconds"}
+
+  @doc """
+  The daemon gate for tools that own their own `Port.open` (exec, compose
+  streaming) instead of going through `Docker.docker/2` / `Docker.open_port/2`.
+  Those entry points are gated centrally; a tool that spawns `docker` itself
+  must ask first, or the default (daemon-less) test suite reaches the daemon
+  through it — docs/CODE_RULES.md → "Every Docker shell-out honours the daemon
+  gate". Returns a tool-shaped error the agent can read.
+  """
+  @spec require_docker_daemon() :: :ok | {:error, String.t()}
+  def require_docker_daemon do
+    if Docker.daemon_available?(),
+      do: :ok,
+      else: {:error, "Docker is not available in this environment"}
+  end
 
   @doc """
   Resolve the agent's own workspace container. The agent_id comes from

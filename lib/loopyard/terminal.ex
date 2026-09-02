@@ -125,9 +125,7 @@ defmodule Loopyard.Terminal do
           build_cmd(container)
         end
 
-    unless cmd do
-      {:stop, :container_not_running}
-    else
+    if cmd do
       port = open_port(cmd)
 
       {:ok,
@@ -136,6 +134,8 @@ defmodule Loopyard.Terminal do
          port: port,
          buffer: ""
        }}
+    else
+      {:stop, :container_not_running}
     end
   end
 

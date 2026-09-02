@@ -329,13 +329,11 @@ defmodule Loopyard.PortExposer do
   end
 
   defp safe_close(sock) do
-    try do
-      :gen_tcp.close(sock)
-    rescue
-      _ -> :ok
-    catch
-      _, _ -> :ok
-    end
+    :gen_tcp.close(sock)
+  rescue
+    _ -> :ok
+  catch
+    _, _ -> :ok
   end
 
   defp normalize_host({_, _, _, _} = tuple), do: tuple

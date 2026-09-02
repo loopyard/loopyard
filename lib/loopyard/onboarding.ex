@@ -169,9 +169,10 @@ defmodule Loopyard.Onboarding do
 
         name =
           Keyword.get(opts, :name) ||
-            cond do
-              service_name -> "#{service_name}-agent"
-              true -> Loopyard.Agents.Name.for_workspace(ws_id, Keyword.get(opts, :backend))
+            if service_name do
+              "#{service_name}-agent"
+            else
+              Loopyard.Agents.Name.for_workspace(ws_id, Keyword.get(opts, :backend))
             end
 
         agent_opts =

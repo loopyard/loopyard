@@ -17,7 +17,7 @@ defmodule LoopyardWeb.Components.AppHeader do
   attr :breadcrumbs, :list, default: []
   attr :iex_session, :map, default: %{level: nil}
   # Which IA mode this page belongs to (highlights in the mode nav) — see
-  # plans/ia-two-modes.md. nil = a page outside the three roots.
+  # plans/archive/ia-two-modes.md. nil = a page outside the three roots.
   attr :mode, :atom, default: nil
   attr :current_path, :string, default: "/"
   attr :host_exposed, :boolean, default: false

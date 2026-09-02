@@ -98,7 +98,9 @@ config :tailwind,
 
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",
-  metadata: [:request_id]
+  # :loopyard is EventLog's source tag (`agent:<name>`, `ports`, …) — declared
+  # here so it actually prints, and so credo's Logger-metadata check knows it.
+  metadata: [:request_id, :loopyard]
 
 config :phoenix, :json_library, Jason
 

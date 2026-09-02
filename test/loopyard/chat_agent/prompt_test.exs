@@ -17,7 +17,7 @@ defmodule Loopyard.ChatAgent.PromptTest do
       assert prompt =~ "test-id"
       assert prompt =~ "loopyard-container"
       # The one self-determining agent tells itself to assess before acting.
-      assert prompt =~ "service_status"
+      assert prompt =~ "service_containers"
     end
 
     test "unified agent carries the setup playbook in its catalog" do

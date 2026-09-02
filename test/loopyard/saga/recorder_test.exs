@@ -290,8 +290,8 @@ defmodule Loopyard.Saga.RecorderTest do
       ones = Recorder.recent(saga: :filter_test_one)
       twos = Recorder.recent(saga: :filter_test_two)
 
-      assert length(ones) >= 1
-      assert length(twos) >= 1
+      assert ones != []
+      assert twos != []
       assert Enum.all?(ones, &(&1.saga == :filter_test_one))
       assert Enum.all?(twos, &(&1.saga == :filter_test_two))
     end

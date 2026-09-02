@@ -401,7 +401,7 @@ defmodule Loopyard.Docker do
   #
   # Delegates to `Loopyard.Retry` so the schedule math + attempt
   # cap live in one place shared with other retry call sites. See
-  # plans/coordination-hardening.md move #7d.
+  # plans/archive/coordination-hardening.md move #7d.
   defp run_with_retry(args, cmd_opts, timeout, false = _retry?) do
     run_once(args, cmd_opts, timeout)
   end

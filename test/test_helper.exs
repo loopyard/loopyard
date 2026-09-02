@@ -49,6 +49,9 @@ _ =
     path
     |> Path.basename(".beam")
     |> String.replace_prefix("Elixir.", "")
+    # Module names read from OUR compiled beams — bounded by the build, not
+    # by input; the atom may not exist yet, which is the point of loading it.
+    # credo:disable-for-next-line Credo.Check.Warning.UnsafeToAtom
     |> String.to_atom()
     |> Code.ensure_loaded()
   end

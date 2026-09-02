@@ -38,8 +38,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanelTest do
       agent = %{workspace_id: "abc1", bind_mount: nil}
       ctx = ContextPanel.docker_ctx(agent)
 
-      assert ctx.container == "loopyard-abc1-workspace-1"
-      assert ctx.volume == "loopyard-abc1-code"
+      # Nothing is running in the test env, so the panel names the container
+      # the next tool call would boot — the WorkContainer — via the owning
+      # module, never a hand-built "loopyard-<id>-…" string.
+      assert ctx.container == Loopyard.Workspace.WorkContainer.container_name("abc1")
+      assert ctx.volume == Loopyard.VolumeManager.code_volume_name("abc1")
       assert ctx.mode == :container
       assert ctx.workspace_id == "abc1"
     end
@@ -49,7 +52,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanelTest do
       ctx = ContextPanel.docker_ctx(agent)
 
       assert ctx.mode == :bind_mount
-      assert ctx.container == "loopyard-abc1-workspace-1"
+      assert ctx.container == Loopyard.Workspace.WorkContainer.container_name("abc1")
     end
 
     test "agent without workspace_id" do

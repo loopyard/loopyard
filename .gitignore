@@ -70,3 +70,6 @@ sagas.log
 .boomlooper_home/
 .gstack/
 /tmp/showcase/
+
+# Dialyzer PLT (built in CI, cached; see mix.exs :dialyzer)
+priv/plts/

@@ -72,13 +72,11 @@ defmodule LoopyardWeb.SystemSagasLive do
   # BEAM died mid-run and haven't yet been resolved. Empty in the
   # steady state. Any entry here is a red-banner condition.
   defp load_incomplete do
-    try do
-      Journal.incomplete()
-    rescue
-      _ -> []
-    catch
-      _, _ -> []
-    end
+    Journal.incomplete()
+  rescue
+    _ -> []
+  catch
+    _, _ -> []
   end
 
   defp saga_names(sagas), do: sagas |> Enum.map(& &1.saga) |> Enum.uniq() |> Enum.sort()

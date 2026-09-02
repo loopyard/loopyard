@@ -19,6 +19,7 @@ defmodule LoopyardWeb.Router do
   # itself, JSON only). No session. Pure media endpoints.
   pipeline :aural do
     plug :accepts, ["*/*", "json", "html", "mpeg"]
+    plug :put_secure_browser_headers
   end
 
   # Aural LV ships from the `:aural` package. Each visitor lands on

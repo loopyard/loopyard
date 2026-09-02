@@ -80,39 +80,37 @@ defmodule Loopyard.ChatAgent.Persistence do
   # Now: we catch raises, emit telemetry with the reason, and return
   # :ok so the caller keeps serving from memory. Persistence failure
   # is OBSERVABLE at /system/events but doesn't kill agents.
-  # See plans/agent-sanity.md #17.
+  # See plans/archive/agent-sanity.md #17.
   defp safe_append(event, path, agent_id, workspace_id) do
-    try do
-      append_via_writer(event, path, workspace_id)
+    append_via_writer(event, path, workspace_id)
+    :ok
+  rescue
+    e ->
+      :telemetry.execute(
+        [:loopyard, :persistence, :error],
+        %{count: 1},
+        %{agent_id: agent_id, path: path, reason: Exception.message(e), kind: elem(event, 0)}
+      )
+
+      require Logger
+
+      Logger.warning(
+        "[Persistence] Failed to append #{elem(event, 0)} for agent #{agent_id} " <>
+          "to #{path}: #{Exception.message(e)}. Agent keeps serving from memory but " <>
+          "this change will NOT survive a Loopyard restart. Fix the disk/permissions " <>
+          "and restart the agent."
+      )
+
       :ok
-    rescue
-      e ->
-        :telemetry.execute(
-          [:loopyard, :persistence, :error],
-          %{count: 1},
-          %{agent_id: agent_id, path: path, reason: Exception.message(e), kind: elem(event, 0)}
-        )
+  catch
+    kind, reason ->
+      :telemetry.execute(
+        [:loopyard, :persistence, :error],
+        %{count: 1},
+        %{agent_id: agent_id, path: path, reason: inspect({kind, reason}), kind: elem(event, 0)}
+      )
 
-        require Logger
-
-        Logger.warning(
-          "[Persistence] Failed to append #{elem(event, 0)} for agent #{agent_id} " <>
-            "to #{path}: #{Exception.message(e)}. Agent keeps serving from memory but " <>
-            "this change will NOT survive a Loopyard restart. Fix the disk/permissions " <>
-            "and restart the agent."
-        )
-
-        :ok
-    catch
-      kind, reason ->
-        :telemetry.execute(
-          [:loopyard, :persistence, :error],
-          %{count: 1},
-          %{agent_id: agent_id, path: path, reason: inspect({kind, reason}), kind: elem(event, 0)}
-        )
-
-        :ok
-    end
+      :ok
   end
 
   # Write a record to the agent log. When a per-workspace Checkpointer is

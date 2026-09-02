@@ -12,6 +12,16 @@ defmodule Loopyard.MixProject do
       # listeners. Without this it warns on every reloaded request in dev.
       listeners: [Phoenix.CodeReloader],
       aliases: aliases(),
+      dialyzer: [
+        # PLT under priv/plts so CI can cache it (ci.yml caches that path;
+        # the default lives in _build and was never hitting the cache).
+        plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
+        # Mix tasks call Mix.*; test support modules reference ExUnit; HotReload
+        # calls IEx.Helpers.recompile/0.
+        plt_add_apps: [:mix, :ex_unit, :iex],
+        ignore_warnings: ".dialyzer_ignore.exs",
+        list_unused_filters: true
+      ],
       deps: deps(),
       releases: releases(),
       description:

@@ -14,7 +14,7 @@ defmodule Loopyard.Operator do
 
   The harness seam: every agent runs ACP + Claude Code in-container. Workspace
   agents run in their work container against `/workspace`; the operator runs in
-  its workstation container against `$HOME`. See [plans/gbrain-onboarding.md].
+  its workstation container against `$HOME`. See [plans/archive/gbrain-onboarding.md].
 
   `ensure_agent/1` idempotently ensures a live operator for a workstation. It's
   lazily (re)spawned on demand (e.g. opening `/operator`).

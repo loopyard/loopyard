@@ -14,8 +14,8 @@ defmodule Loopyard.Operator.Queue do
   States (from the live agent status): `:needs_you` (asked a question / broken),
   `:chugging` (busy), `:done` (idle). ETS-cheap — no shell-out.
   """
-  alias LoopyardWeb.Components.Birdseye
   alias Loopyard.Operator.Jobs
+  alias Loopyard.WorkspaceTree.Headline
 
   @recency_hours 48
 
@@ -40,7 +40,7 @@ defmodule Loopyard.Operator.Queue do
   def items(_, _), do: []
 
   defp item(project, ws, job, agent_id) do
-    headline = Birdseye.headline(ws)
+    headline = Headline.headline(ws)
     state = state(headline, ws)
 
     %{

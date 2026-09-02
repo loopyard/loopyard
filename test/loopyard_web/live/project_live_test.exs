@@ -49,7 +49,7 @@ defmodule LoopyardWeb.ProjectLiveTest do
     test "shows the main workspace", %{conn: conn, project: project} do
       {:ok, _view, html} = live(conn, "/projects/#{project.id}")
       workspaces = ProjectRegistry.list_workspaces(project.id)
-      assert length(workspaces) >= 1
+      assert workspaces != []
       assert html =~ "default"
     end
   end

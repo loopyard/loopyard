@@ -306,7 +306,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
         cond do
           diff < 60 -> "just now"
           diff < 3600 -> "#{div(diff, 60)}m ago"
-          diff < 86400 -> "#{div(diff, 3600)}h ago"
+          diff < 86_400 -> "#{div(diff, 3600)}h ago"
           diff < 604_800 -> "#{div(diff, 86400)}d ago"
           true -> Calendar.strftime(dt, "%b %d")
         end

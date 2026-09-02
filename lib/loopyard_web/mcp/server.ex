@@ -59,7 +59,7 @@ defmodule LoopyardWeb.MCP.Server do
     conn
     |> put_resp_header("www-authenticate", "Bearer")
     |> json(401, %{
-      "error" => %{"code" => -32001, "message" => "unauthorized (#{reason})"},
+      "error" => %{"code" => -32_001, "message" => "unauthorized (#{reason})"},
       "jsonrpc" => "2.0",
       "id" => nil
     })
@@ -68,7 +68,12 @@ defmodule LoopyardWeb.MCP.Server do
   # --- JSON-RPC dispatch ---
 
   # Batch: an array of requests → array of (non-notification) responses.
-  defp dispatch(conn, requests, identity) when is_list(requests) do
+  # `Plug.Parsers.JSON` (the Listener pipeline) wraps a top-level JSON array
+  # as `%{"_json" => list}` — body_params is ALWAYS a map, so this is the
+  # only shape a batch can arrive in. Matching a bare list here meant real
+  # batches fell through to the single-request clause and were dropped as
+  # malformed.
+  defp dispatch(conn, %{"_json" => requests}, identity) when is_list(requests) do
     responses =
       requests
       |> Enum.map(&handle_rpc(&1, identity))
@@ -77,16 +82,17 @@ defmodule LoopyardWeb.MCP.Server do
     if responses == [], do: send_resp(conn, 202, ""), else: json(conn, 200, responses)
   end
 
+  # No JSON body was parsed (wrong content-type, empty body): not a request.
+  defp dispatch(conn, %Plug.Conn.Unfetched{}, _identity) do
+    json(conn, 200, error(nil, -32_600, "invalid request"))
+  end
+
   defp dispatch(conn, request, identity) when is_map(request) do
     case handle_rpc(request, identity) do
       # A notification (no id) → nothing to return.
       nil -> send_resp(conn, 202, "")
       response -> json(conn, 200, response)
     end
-  end
-
-  defp dispatch(conn, _other, _identity) do
-    json(conn, 200, error(nil, -32600, "invalid request"))
   end
 
   # A JSON-RPC message with no "id" is a notification — ack, return nothing.
@@ -128,14 +134,14 @@ defmodule LoopyardWeb.MCP.Server do
 
     cond do
       not is_binary(name) ->
-        {:error, -32602, "missing tool name"}
+        {:error, -32_602, "missing tool name"}
 
       not is_map(args) ->
-        {:error, -32602, "arguments must be an object"}
+        {:error, -32_602, "arguments must be an object"}
 
       true ->
         case ToolRouter.call_tool(name, args, agent_id, ToolRouter.tool_modules(scope(identity))) do
-          {:error, :unknown_tool} -> {:error, -32602, "unknown tool: #{name}"}
+          {:error, :unknown_tool} -> {:error, -32_602, "unknown tool: #{name}"}
           result -> result
         end
     end
@@ -146,7 +152,7 @@ defmodule LoopyardWeb.MCP.Server do
   defp handle_method("notifications/" <> _rest, _params, _identity), do: %{}
 
   defp handle_method(method, _params, _identity),
-    do: {:error, -32601, "method not found: #{method}"}
+    do: {:error, -32_601, "method not found: #{method}"}
 
   # The token's scope selects which toolset this session sees (workspace vs
   # operator). Defaults to :workspace for older tokens.

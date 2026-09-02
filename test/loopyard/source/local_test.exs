@@ -35,9 +35,7 @@ defmodule Loopyard.Source.LocalTest do
       # If mutagen isn't installed on this machine, add_project will return
       # {:error, :mutagen_not_installed}; in that case skip the assertion
       # since we're only checking the happy shape.
-      if not Loopyard.Source.Local.Mutagen.installed?() do
-        :skip
-      else
+      if Loopyard.Source.Local.Mutagen.installed?() do
         dir = make_repo()
 
         assert {:ok, project} = Local.add_project(dir)
@@ -49,6 +47,8 @@ defmodule Loopyard.Source.LocalTest do
         assert is_binary(project.source_config.default_branch)
 
         File.rm_rf!(dir)
+      else
+        :skip
       end
     end
 

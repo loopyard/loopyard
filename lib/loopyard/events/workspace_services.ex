@@ -2,7 +2,7 @@ defmodule Loopyard.Events.WorkspaceServices do
   @moduledoc """
   Publisher module for the `"workspace_services"` PubSub topic.
 
-  Move #2 of plans/coordination-hardening.md. `Workspace.ServiceManager`
+  Move #2 of plans/archive/coordination-hardening.md. `Workspace.ServiceManager`
   broadcasts here when service statuses change or a compose up/down
   completes (the second one is what unsticks LVs from
   :starting / :stopping).
@@ -42,5 +42,5 @@ defmodule Loopyard.Events.WorkspaceServices.Subscriber do
   @callback on_services_updated(WorkspaceServices.ServicesUpdated.t(), socket) :: result
   @callback on_compose_result(WorkspaceServices.ComposeResult.t(), socket) :: result
 
-  # See plans/post-migration-audit.md MEDIUM #5 — no @optional_callbacks.
+  # See plans/archive/post-migration-audit.md MEDIUM #5 — no @optional_callbacks.
 end

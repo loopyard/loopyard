@@ -5,7 +5,7 @@ defmodule Loopyard.Health do
   daemon outage the affected features render degraded banners rather
   than going blank and looking like app bugs.
 
-  Move #11 of plans/coordination-hardening.md (narrowed scope — flat
+  Move #11 of plans/archive/coordination-hardening.md (narrowed scope — flat
   map, no dependency graph). Components get added as they earn the
   overhead; starting with the handful that have real health signals:
 
@@ -65,34 +65,30 @@ defmodule Loopyard.Health do
   `{:degraded, reason}`, `{:down, reason}`.
   """
   def component(:docker) do
-    try do
-      h = Loopyard.Docker.Observer.health()
+    h = Loopyard.Docker.Observer.health()
 
-      cond do
-        h.connected and h.snapshot_failures == 0 ->
-          :healthy
+    cond do
+      h.connected and h.snapshot_failures == 0 ->
+        :healthy
 
-        h.connected and h.snapshot_failures > 0 ->
-          {:degraded,
-           "#{h.snapshot_failures} consecutive snapshot failures — reconciler retrying"}
+      h.connected and h.snapshot_failures > 0 ->
+        {:degraded, "#{h.snapshot_failures} consecutive snapshot failures — reconciler retrying"}
 
-        h.connected == false and h.last_snapshot_at == nil ->
-          {:down, "Docker daemon unreachable — no snapshot has ever succeeded"}
+      h.connected == false and h.last_snapshot_at == nil ->
+        {:down, "Docker daemon unreachable — no snapshot has ever succeeded"}
 
-        h.connected == false ->
-          secs_ago = DateTime.diff(DateTime.utc_now(), h.last_snapshot_at)
+      h.connected == false ->
+        secs_ago = DateTime.diff(DateTime.utc_now(), h.last_snapshot_at)
 
-          {:degraded,
-           "Event stream disconnected — last snapshot #{secs_ago}s ago, cache retained"}
+        {:degraded, "Event stream disconnected — last snapshot #{secs_ago}s ago, cache retained"}
 
-        true ->
-          :healthy
-      end
-    rescue
-      _ -> {:down, "Observer raised during health check"}
-    catch
-      :exit, _ -> {:down, "Observer GenServer unresponsive"}
+      true ->
+        :healthy
     end
+  rescue
+    _ -> {:down, "Observer raised during health check"}
+  catch
+    :exit, _ -> {:down, "Observer GenServer unresponsive"}
   end
 
   def component(:pubsub) do

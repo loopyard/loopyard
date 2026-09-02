@@ -1,7 +1,7 @@
 defmodule LoopyardWeb.SystemRecoveryLive do
   @moduledoc """
   Per-workspace checkpoint health for move #8 in
-  `plans/coordination-hardening.md`.
+  `plans/archive/coordination-hardening.md`.
 
   Shows, for every running Checkpointer:
 

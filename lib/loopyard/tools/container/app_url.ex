@@ -107,7 +107,7 @@ defmodule Loopyard.Tools.Container.AppUrl do
 
   defp docker_host_port(workspace_id, container) do
     case Loopyard.Docker.container_ports(container) do
-      {:ok, ports} when map_size(ports) > 0 ->
+      ports when is_map(ports) and map_size(ports) > 0 ->
         {_container_port, host_port} = Enum.at(ports, 0)
         {:ok, host_port}
 

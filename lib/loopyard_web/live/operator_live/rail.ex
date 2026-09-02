@@ -206,7 +206,7 @@ defmodule LoopyardWeb.OperatorLive.Rail do
           <span data-bell-label>Notify me about questions</span>
         </button>
         <%!-- Workstations — the operator's own identities/creds live in this
-             mode (plans/ia-two-modes.md). A quiet footer destination. --%>
+             mode (plans/archive/ia-two-modes.md). A quiet footer destination. --%>
         <.link
           navigate="/workstations"
           class="mt-4 flex items-center gap-2 -mx-1 px-1 py-2 text-meta text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"

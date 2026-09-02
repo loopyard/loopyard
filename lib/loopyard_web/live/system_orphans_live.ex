@@ -2,7 +2,7 @@ defmodule LoopyardWeb.SystemOrphansLive do
   @moduledoc """
   Lists every tracked `Loopyard.Resources` entry, grouped by owner.
 
-  Move #7b in `plans/coordination-hardening.md`. The janitor releases
+  Move #7b in `plans/archive/coordination-hardening.md`. The janitor releases
   every resource when its owner goes DOWN, so in steady state every
   entry here has `owner_alive? = true`. Any `owner_alive? = false`
   row is an invariant violation — the monitor-driven cleanup should

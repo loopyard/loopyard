@@ -1,6 +1,6 @@
 defmodule Loopyard.ChatAgent.CliTrackingTest do
   @moduledoc """
-  Surface #12 of plans/agent-sanity.md.
+  Surface #12 of plans/archive/agent-sanity.md.
 
   The Claude CLI subprocess runs as a real OS process spawned by the
   SDK Session pid via a Port. If the ChatAgent GenServer crashes in

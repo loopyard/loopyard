@@ -4,4 +4,5 @@ defmodule Loopyard.Events.WorkspaceSetup.RetryScheduled do
   Distinct from `Failed` — `Failed` only fires when retries are exhausted.
   """
   defstruct [:workspace_id, :phase, :attempt, :delay_ms, :scheduled_at]
+  @type t :: %__MODULE__{}
 end

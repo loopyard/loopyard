@@ -32,8 +32,9 @@ defmodule Loopyard.Agents.Loader do
         case YamlElixir.read_from_string(yaml) do
           {:ok, parsed} when is_map(parsed) -> {:ok, parsed, String.trim(body)}
           {:ok, _} -> {:error, "frontmatter must be a map"}
+          # YamlElixir's errors are always ParsingError/FileNotFoundError
+          # structs carrying `message` — there is no other error shape.
           {:error, %{message: msg}} -> {:error, "invalid YAML: #{msg}"}
-          {:error, reason} -> {:error, "invalid YAML: #{inspect(reason)}"}
         end
 
       nil ->

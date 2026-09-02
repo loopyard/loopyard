@@ -5,7 +5,7 @@ defmodule LoopyardWeb.SystemEventsLive do
   bug report — the 30s-window view makes "what happened just before
   the UI did X" answerable without reproduction.
 
-  Move #7 of plans/coordination-hardening.md.
+  Move #7 of plans/archive/coordination-hardening.md.
   """
   use LoopyardWeb, :live_view
   use LoopyardWeb.IExAware

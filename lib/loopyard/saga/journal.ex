@@ -2,7 +2,7 @@ defmodule Loopyard.Saga.Journal do
   @moduledoc """
   Durable saga journal + resume-on-boot.
 
-  Move #9 in `plans/coordination-hardening.md`.
+  Move #9 in `plans/archive/coordination-hardening.md`.
 
   ## The bug class this kills
 
@@ -531,6 +531,8 @@ defmodule Loopyard.Saga.Journal do
   # file is host-side under `LOOPYARD_HOME`, so the direct attack
   # surface is narrower than `agents.log`, but the rule is uniform:
   # never decode untrusted ETF without `:safe`.
+  # sobelow_skip ["Misc.BinToTerm"] — decoded with [:safe] (no new atoms, no
+  # executable terms); see the comment above.
   defp safe_decode(compressed) do
     binary = :zlib.uncompress(compressed)
     {:ok, :erlang.binary_to_term(binary, [:safe])}

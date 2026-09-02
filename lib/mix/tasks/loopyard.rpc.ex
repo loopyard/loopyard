@@ -1,4 +1,7 @@
 defmodule Mix.Tasks.Loopyard.Rpc do
+  # Node names and the distribution cookie MUST be atoms (that's the API);
+  # both come from this machine's own files/pid, not from a request.
+  # credo:disable-for-this-file Credo.Check.Warning.UnsafeToAtom
   @moduledoc """
   Evaluate Elixir on the running Loopyard node.
 
@@ -60,7 +63,7 @@ defmodule Mix.Tasks.Loopyard.Rpc do
 
     sname = :"rpc_#{System.pid()}_#{System.monotonic_time()}@127.0.0.1"
 
-    case Node.start(sname, :longnames) do
+    case Node.start(sname, name_domain: :longnames) do
       {:ok, _} ->
         Node.set_cookie(cookie)
 

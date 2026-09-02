@@ -1,6 +1,6 @@
 defmodule Loopyard.PubSubBoundaryTest do
   @moduledoc """
-  Move #2 of plans/coordination-hardening.md — CI boundary enforcement.
+  Move #2 of plans/archive/coordination-hardening.md — CI boundary enforcement.
 
   Every PubSub broadcast in `lib/` MUST go through a publisher module
   under `lib/loopyard/events/`. Raw `Phoenix.PubSub.broadcast` calls

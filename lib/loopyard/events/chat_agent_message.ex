@@ -2,7 +2,7 @@ defmodule Loopyard.Events.ChatAgentMessage do
   @moduledoc """
   Publisher module for the per-agent `"chat_agent:{id}"` PubSub topic.
 
-  Move #2 of plans/coordination-hardening.md. All message + streaming output
+  Move #2 of plans/archive/coordination-hardening.md. All message + streaming output
   events for an individual chat agent flow through this module. The topic
   name includes the agent id so subscribers only receive events for the
   agent they care about (workspace LV, message LV).
@@ -45,7 +45,7 @@ end
 defmodule Loopyard.Events.ChatAgentMessage.Subscriber do
   @moduledoc """
   Behaviour for views that subscribe to a specific agent's
-  `"chat_agent:{id}"` topic. Move #3 of plans/coordination-hardening.md.
+  `"chat_agent:{id}"` topic. Move #3 of plans/archive/coordination-hardening.md.
   """
 
   alias Loopyard.Events.ChatAgentMessage
@@ -58,5 +58,5 @@ defmodule Loopyard.Events.ChatAgentMessage.Subscriber do
   @callback on_text_delta(ChatAgentMessage.TextDelta.t(), socket) :: result
   @callback on_stream_output(ChatAgentMessage.StreamOutput.t(), socket) :: result
 
-  # See plans/post-migration-audit.md MEDIUM #5 — no @optional_callbacks.
+  # See plans/archive/post-migration-audit.md MEDIUM #5 — no @optional_callbacks.
 end

@@ -142,6 +142,9 @@ defmodule Loopyard.ProjectStore do
   defp decode_config(nil), do: nil
 
   defp decode_config(map) when is_map(map) do
+    # Keys come from projects.json, which only encode_record/1 writes (atoms
+    # from our own structs) — not user input, so the atom table is bounded.
+    # credo:disable-for-next-line Credo.Check.Warning.UnsafeToAtom
     Map.new(map, fn {k, v} -> {String.to_atom(k), v} end)
   end
 

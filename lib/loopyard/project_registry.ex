@@ -257,22 +257,20 @@ defmodule Loopyard.ProjectRegistry do
   def rename_project(project_id, new_name) do
     name = String.trim(to_string(new_name || ""))
 
-    cond do
-      name == "" ->
-        {:error, :empty_name}
+    if name == "" do
+      {:error, :empty_name}
+    else
+      case :ets.lookup(:project_registry, project_id) do
+        [{_, project}] ->
+          unique = unique_name(name, project_id)
+          updated = Map.put(project, :name, unique)
+          :ets.insert(:project_registry, {project_id, updated})
+          persist_all_projects()
+          {:ok, updated}
 
-      true ->
-        case :ets.lookup(:project_registry, project_id) do
-          [{_, project}] ->
-            unique = unique_name(name, project_id)
-            updated = Map.put(project, :name, unique)
-            :ets.insert(:project_registry, {project_id, updated})
-            persist_all_projects()
-            {:ok, updated}
-
-          [] ->
-            {:error, :not_found}
-        end
+        [] ->
+          {:error, :not_found}
+      end
     end
   end
 
@@ -367,15 +365,13 @@ defmodule Loopyard.ProjectRegistry do
           p when is_binary(p) -> {p, nil}
         end
 
+      # Git URL (volume-based)
       result =
-        cond do
-          # Git URL (volume-based)
-          String.starts_with?(path, "git@") or String.starts_with?(path, "https://") ->
-            add_from_url(path)
-
+        if String.starts_with?(path, "git@") or String.starts_with?(path, "https://") do
+          add_from_url(path)
+        else
           # Local path (bind-mount based)
-          true ->
-            add(path)
+          add(path)
         end
 
       case result do

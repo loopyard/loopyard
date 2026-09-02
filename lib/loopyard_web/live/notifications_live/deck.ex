@@ -128,7 +128,7 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
   def operator?(%{project_name: project}) when is_binary(project) and project != "", do: false
   def operator?(_), do: true
 
-  @doc "Relative age in words for a byline: \"moments ago\", \"3 hours ago\", \"21 days ago\"."
+  @doc ~s(Relative age in words for a byline: "moments ago", "3 hours ago", "21 days ago".)
   @spec ago_words(DateTime.t() | term()) :: String.t() | nil
   def ago_words(%DateTime{} = at) do
     secs = DateTime.diff(DateTime.utc_now(), at)
@@ -146,7 +146,7 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
   defp plural(1, noun), do: "1 " <> noun
   defp plural(n, noun), do: "#{n} #{noun}s"
 
-  @doc "Relative age for the bar: \"moments ago\", \"3h ago\", \"21d ago\"."
+  @doc ~s(Relative age for the bar: "moments ago", "3h ago", "21d ago".)
   @spec ago(DateTime.t() | term()) :: String.t() | nil
   def ago(%DateTime{} = at) do
     secs = DateTime.diff(DateTime.utc_now(), at)

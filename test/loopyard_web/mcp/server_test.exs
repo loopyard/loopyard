@@ -8,11 +8,15 @@ defmodule LoopyardWeb.MCP.ServerTest do
 
   @path "/mcp/acp"
 
+  # Mirrors what the Listener's `Plug.Parsers.JSON` hands the plug: an object
+  # body is the params map itself; a top-level array lands under "_json".
   defp rpc(body, token) do
+    body_params = if is_list(body), do: %{"_json" => body}, else: body
+
     conn =
       conn(:post, @path, "")
       |> put_req_header("content-type", "application/json")
-      |> Map.put(:body_params, body)
+      |> Map.put(:body_params, body_params)
 
     conn = if token, do: put_req_header(conn, "authorization", "Bearer " <> token), else: conn
     LoopyardWeb.MCP.Server.call(conn, LoopyardWeb.MCP.Server.init([]))
@@ -73,7 +77,7 @@ defmodule LoopyardWeb.MCP.ServerTest do
 
   test "unknown method returns JSON-RPC method-not-found", %{token: token} do
     body = rpc(%{"jsonrpc" => "2.0", "id" => 9, "method" => "no/such"}, token) |> decode()
-    assert body["error"]["code"] == -32601
+    assert body["error"]["code"] == -32_601
     assert body["id"] == 9
   end
 
@@ -85,7 +89,7 @@ defmodule LoopyardWeb.MCP.ServerTest do
       )
       |> decode()
 
-    assert body["error"]["code"] == -32602
+    assert body["error"]["code"] == -32_602
   end
 
   test "tools/call to an unknown tool is invalid params", %{token: token} do
@@ -101,7 +105,7 @@ defmodule LoopyardWeb.MCP.ServerTest do
       )
       |> decode()
 
-    assert body["error"]["code"] == -32602
+    assert body["error"]["code"] == -32_602
     assert body["error"]["message"] =~ "unknown tool"
   end
 

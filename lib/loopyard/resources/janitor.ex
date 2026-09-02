@@ -3,7 +3,7 @@ defmodule Loopyard.Resources.Janitor do
   Supervised GenServer backing `Loopyard.Resources`. Owns the
   `:resource_registry` ETS table and monitors every owner pid.
 
-  Move #7b in `plans/coordination-hardening.md`.
+  Move #7b in `plans/archive/coordination-hardening.md`.
 
   ## ETS layout
 
@@ -354,54 +354,52 @@ defmodule Loopyard.Resources.Janitor do
   end
 
   defp run_release(fun, kind, id, reason) when is_function(fun, 0) do
-    try do
-      fun.()
+    fun.()
+
+    :telemetry.execute(
+      [:loopyard, :resources, :released],
+      %{count: 1},
+      %{kind: kind, id: id, reason: reason}
+    )
+  rescue
+    e ->
+      Logger.warning(
+        "[Resources.Janitor] release_fn crashed for #{inspect(kind)}=#{inspect(id)}: " <>
+          Exception.message(e)
+      )
 
       :telemetry.execute(
         [:loopyard, :resources, :released],
         %{count: 1},
-        %{kind: kind, id: id, reason: reason}
+        %{kind: kind, id: id, reason: :release_fn_error}
       )
-    rescue
-      e ->
-        Logger.warning(
-          "[Resources.Janitor] release_fn crashed for #{inspect(kind)}=#{inspect(id)}: " <>
-            Exception.message(e)
-        )
+  catch
+    :exit, reason_exit ->
+      Logger.warning(
+        "[Resources.Janitor] release_fn exited for #{inspect(kind)}=#{inspect(id)}: " <>
+          inspect(reason_exit)
+      )
 
-        :telemetry.execute(
-          [:loopyard, :resources, :released],
-          %{count: 1},
-          %{kind: kind, id: id, reason: :release_fn_error}
-        )
-    catch
-      :exit, reason_exit ->
-        Logger.warning(
-          "[Resources.Janitor] release_fn exited for #{inspect(kind)}=#{inspect(id)}: " <>
-            inspect(reason_exit)
-        )
+      :telemetry.execute(
+        [:loopyard, :resources, :released],
+        %{count: 1},
+        %{kind: kind, id: id, reason: :release_fn_error}
+      )
 
-        :telemetry.execute(
-          [:loopyard, :resources, :released],
-          %{count: 1},
-          %{kind: kind, id: id, reason: :release_fn_error}
-        )
+    # A throwing release_fn must not crash the Janitor mid-sweep (it would
+    # skip the owner's remaining resources) nor re-throw inside init/1 on
+    # rehydrate (restart loop → app shutdown). Contain it like exit/rescue.
+    :throw, value ->
+      Logger.warning(
+        "[Resources.Janitor] release_fn threw for #{inspect(kind)}=#{inspect(id)}: " <>
+          inspect(value)
+      )
 
-      # A throwing release_fn must not crash the Janitor mid-sweep (it would
-      # skip the owner's remaining resources) nor re-throw inside init/1 on
-      # rehydrate (restart loop → app shutdown). Contain it like exit/rescue.
-      :throw, value ->
-        Logger.warning(
-          "[Resources.Janitor] release_fn threw for #{inspect(kind)}=#{inspect(id)}: " <>
-            inspect(value)
-        )
-
-        :telemetry.execute(
-          [:loopyard, :resources, :released],
-          %{count: 1},
-          %{kind: kind, id: id, reason: :release_fn_error}
-        )
-    end
+      :telemetry.execute(
+        [:loopyard, :resources, :released],
+        %{count: 1},
+        %{kind: kind, id: id, reason: :release_fn_error}
+      )
   end
 
   defp run_release(bad_fn, kind, id, _reason) do

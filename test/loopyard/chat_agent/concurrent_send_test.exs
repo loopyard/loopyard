@@ -1,6 +1,6 @@
 defmodule Loopyard.ChatAgent.ConcurrentSendTest do
   @moduledoc """
-  Surface #15 of plans/agent-sanity.md.
+  Surface #15 of plans/archive/agent-sanity.md.
 
   Pre-fix: two humans (or a human + a tool-triggered auto-send)
   casting `:send_message` nearly simultaneously both went to

@@ -5,4 +5,5 @@ defmodule Loopyard.Events.WorkspaceSetup.Failed do
   `consequence`, `action`, `transient?`, `raw`.
   """
   defstruct [:workspace_id, :phase, :error]
+  @type t :: %__MODULE__{}
 end

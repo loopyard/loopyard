@@ -5,4 +5,5 @@ defmodule Loopyard.Events.WorkspaceSetup.PhaseProgress do
   status line.
   """
   defstruct [:workspace_id, :phase, :payload]
+  @type t :: %__MODULE__{}
 end

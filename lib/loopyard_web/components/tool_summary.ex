@@ -206,11 +206,13 @@ defmodule LoopyardWeb.Components.ToolSummary do
       {"rebuild", _} ->
         "Rebuild"
 
-      {"service_status", _} ->
-        "Check service status"
-
       {"service_containers", _} ->
         "List service containers"
+
+      # Legacy name — the tool is `service_containers` now; old logs still
+      # carry this one.
+      {"service_status", _} ->
+        "Check service status"
 
       {"list_secrets", _} ->
         "List secrets"

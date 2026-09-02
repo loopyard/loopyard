@@ -55,7 +55,7 @@ defmodule Loopyard.SagaIntegrationTest do
             Recorder.recent(saga: :rebuild_workspace)
             |> Enum.filter(fn r -> r.metadata[:workspace_id] == workspace_id end)
 
-          assert length(rebuilds) >= 1,
+          assert rebuilds != [],
                  "Expected a :rebuild_workspace saga to be recorded; got: " <>
                    "#{inspect(Recorder.recent(saga: :rebuild_workspace))}"
 
@@ -107,7 +107,7 @@ defmodule Loopyard.SagaIntegrationTest do
       # The recorder should have exactly one :boot_agent run.
       sagas = Recorder.recent(saga: :boot_agent)
 
-      assert length(sagas) >= 1,
+      assert sagas != [],
              "Expected at least one :boot_agent saga recorded. Got: #{inspect(sagas)}"
 
       saga = hd(sagas)

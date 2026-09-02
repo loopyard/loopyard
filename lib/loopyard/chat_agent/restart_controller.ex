@@ -1,6 +1,6 @@
 defmodule Loopyard.ChatAgent.RestartController do
   @moduledoc """
-  Move #10 Quarantine (plans/coordination-hardening.md).
+  Move #10 Quarantine (plans/archive/coordination-hardening.md).
 
   Owns every respawn decision for ChatAgents under a single
   workspace. Stock `DynamicSupervisor` supervises the actual agents

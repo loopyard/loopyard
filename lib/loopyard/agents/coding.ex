@@ -1,7 +1,7 @@
 defmodule Loopyard.Agents.Coding do
   @moduledoc """
   THE agent. One self-determining coding agent — it reads the situation
-  (`service_status`, the workspace) and acts: bootstraps the dev environment
+  (`service_containers`, the workspace) and acts: bootstraps the dev environment
   only if missing, otherwise just codes. Its definition (`agent.md`) and the
   support files it reads on demand (setup guide, per-stack templates) live in
   `priv/agents/coding/`.

@@ -22,7 +22,12 @@ defmodule Loopyard.Tools.Container.DockerCompose do
     # The agent can override with a shorter timeout for quick commands.
     timeout_seconds = Map.get(params, :timeout, 600)
 
+    # Gate BEFORE the host sync + the own-Port stream below: `up`/`build`
+    # spawn `docker` directly rather than via `Docker.docker/2`, so this is
+    # where the daemon gate is honoured (docs/CODE_RULES.md → "Every Docker
+    # shell-out honours the daemon gate").
     with :ok <- CommandGuard.compose(command),
+         :ok <- Helpers.require_docker_daemon(),
          %{workspace_id: workspace_id} when is_binary(workspace_id) <-
            Loopyard.ChatAgent.get_state(agent_id) do
       run_compose(agent_id, workspace_id, command, timeout_seconds)
@@ -59,6 +64,8 @@ defmodule Loopyard.Tools.Container.DockerCompose do
   # chat window via PubSub. Returns {:ok, output} or {:error, output}
   # to the agent when done — the agent sees the full result and can
   # decide what to do next.
+  # Own-Port streaming bypasses `Docker.docker/2`'s gate — `execute/2` checks
+  # `Helpers.require_docker_daemon/0` before anything reaches here.
   defp compose_stream(agent_id, full_args, command, timeout_seconds) do
     stream_msg = %{
       role: :build,

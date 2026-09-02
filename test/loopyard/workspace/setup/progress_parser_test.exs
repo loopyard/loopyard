@@ -13,7 +13,7 @@ defmodule Loopyard.Workspace.Setup.ProgressParserTest do
       assert payload.rate_bps == 12_340_000
       assert payload.eta_seconds == 23
       assert payload.files_done == 4231
-      assert payload.files_total == 15000
+      assert payload.files_total == 15_000
     end
 
     test "parses progress2 line without xfr block" do

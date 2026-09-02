@@ -115,7 +115,8 @@ defmodule Loopyard.ChatAgent.Prompt do
   def agent_definition do
     case Coding.definition() do
       {:ok, agent} ->
-        body = agent.body || ""
+        # `Loader.build/3` always sets `body` to a (possibly empty) string.
+        body = agent.body
         catalog_str = catalog_section()
         [body, catalog_str] |> Enum.reject(&(&1 == "")) |> Enum.join("\n\n")
 

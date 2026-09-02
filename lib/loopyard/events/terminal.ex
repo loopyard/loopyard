@@ -4,7 +4,7 @@ defmodule Loopyard.Events.Terminal do
   topic. Used by `Loopyard.Terminal` to ship terminal I/O to channels
   (xterm.js) and SSH sessions.
 
-  Move #2 of plans/coordination-hardening.md.
+  Move #2 of plans/archive/coordination-hardening.md.
   """
 
   @telemetry [:loopyard, :events, :publish]

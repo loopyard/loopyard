@@ -4,7 +4,7 @@ defmodule Loopyard.Events.SourceSync do
   PubSub topic. `Loopyard.Source.Local.SyncMonitor` publishes here when
   the mutagen sync session status changes.
 
-  Move #2 of plans/coordination-hardening.md.
+  Move #2 of plans/archive/coordination-hardening.md.
   """
 
   @telemetry [:loopyard, :events, :publish]

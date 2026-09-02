@@ -8,7 +8,7 @@ defmodule Loopyard.Workstation.Env do
   `docker run`. The container just sees a normal env var — it never knows
   Loopyard's store exists. Management is centralized; delivery stays Unix-plain.
 
-  Stored at `<LOOPYARD_HOME>/workstation/env.json` (mode 0600). Changes apply on
+  Stored at `<LOOPYARD_HOME>/workstations/<id>/env.json` (mode 0600). Changes apply on
   the next container (re)create — i.e. hit **Restart** on the Workstation page.
 
   Single-user MVP: one global set shared by the console + all agents. Per-user /
@@ -73,7 +73,7 @@ defmodule Loopyard.Workstation.Env do
   @spec set?(String.t(), String.t()) :: boolean()
   def set?(key, id), do: Map.has_key?(all(id), key)
 
-  @doc "The full env map, `%{\"KEY\" => \"value\"}`."
+  @doc ~s(The full env map, `%{"KEY" => "value"}`.)
   @spec all(String.t()) :: %{optional(String.t()) => String.t()}
   def all(id) do
     case read_map(id) do
@@ -198,7 +198,7 @@ defmodule Loopyard.Workstation.Env do
     :ok
   end
 
-  @doc "`docker run` args injecting every env var: `[\"-e\", \"K=V\", ...]`."
+  @doc ~s(`docker run` args injecting every env var: `["-e", "K=V", ...]`.)
   @spec env_args(String.t()) :: [String.t()]
   def env_args(id) do
     all(id) |> Enum.flat_map(fn {k, v} -> ["-e", "#{k}=#{v}"] end)

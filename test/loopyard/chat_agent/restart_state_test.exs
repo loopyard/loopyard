@@ -1,6 +1,6 @@
 defmodule Loopyard.ChatAgent.RestartStateTest do
   @moduledoc """
-  Surfaces #2 + #4 of plans/agent-sanity.md.
+  Surfaces #2 + #4 of plans/archive/agent-sanity.md.
 
   Two related invariants about state that rides across CLI / server
   restart cycles:

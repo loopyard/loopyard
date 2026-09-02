@@ -26,30 +26,28 @@ defmodule Loopyard.ChatAgent.OSProcess do
   answer and must not crash the caller.
   """
   def pid_of(session) do
-    try do
-      {:links, links} = Process.info(session, :links)
+    {:links, links} = Process.info(session, :links)
 
-      Enum.find_value(links, fn pid ->
-        if is_pid(pid) and Process.alive?(pid) do
-          try do
-            state = :sys.get_state(pid, 500)
+    Enum.find_value(links, fn pid ->
+      if is_pid(pid) and Process.alive?(pid) do
+        try do
+          state = :sys.get_state(pid, 500)
 
-            if is_map(state) and Map.has_key?(state, :port) and is_port(state.port) do
-              case Port.info(state.port, :os_pid) do
-                {:os_pid, os_pid} -> os_pid
-                _ -> nil
-              end
+          if is_map(state) and Map.has_key?(state, :port) and is_port(state.port) do
+            case Port.info(state.port, :os_pid) do
+              {:os_pid, os_pid} -> os_pid
+              _ -> nil
             end
-          catch
-            _, _ -> nil
           end
+        catch
+          _, _ -> nil
         end
-      end)
-    rescue
-      _ -> nil
-    catch
-      _, _ -> nil
-    end
+      end
+    end)
+  rescue
+    _ -> nil
+  catch
+    _, _ -> nil
   end
 
   @doc """

@@ -181,7 +181,7 @@ defmodule Loopyard.ChatAgentTest do
       state = ChatAgent.get_state(id)
       # Should have at least the user message
       user_msgs = Enum.filter(state.messages, &(&1.role == :user))
-      assert length(user_msgs) >= 1
+      assert user_msgs != []
 
       # Every message must have an :id
       for msg <- state.messages do

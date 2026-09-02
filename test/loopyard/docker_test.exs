@@ -17,7 +17,7 @@ defmodule Loopyard.DockerTest do
 
   describe "port_open?/1" do
     test "returns false for unused port" do
-      refute Docker.port_open?(59999)
+      refute Docker.port_open?(59_999)
     end
   end
 

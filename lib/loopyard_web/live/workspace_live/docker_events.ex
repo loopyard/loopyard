@@ -237,9 +237,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.DockerEvents do
   Returns one of :stopped | :starting | :started | :stopping | :partial.
   """
   def derive_workspace_state(_workspace_id, service_statuses, previous) do
-    if not docker_connected?() do
-      previous || :stopped
-    else
+    if docker_connected?() do
       running_count = Enum.count(service_statuses, &(&1.status == :running))
       total_count = length(service_statuses)
       any_running? = running_count > 0
@@ -265,6 +263,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.DockerEvents do
       else
         state
       end
+    else
+      previous || :stopped
     end
   end
 

@@ -5,7 +5,7 @@ defmodule Loopyard.Events.Tap do
   `/system/events` — the "what fired when" timeline that turns
   ghost-in-the-machine bug reports into readable tape.
 
-  Move #7 of plans/coordination-hardening.md.
+  Move #7 of plans/archive/coordination-hardening.md.
 
   ## Scope
 

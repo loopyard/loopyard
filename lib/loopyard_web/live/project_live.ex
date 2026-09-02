@@ -16,9 +16,7 @@ defmodule LoopyardWeb.ProjectLive do
   def mount(%{"project_id" => project_id}, _session, socket) do
     project = ProjectRegistry.get_project(project_id)
 
-    unless project do
-      {:ok, push_navigate(socket, to: "/")}
-    else
+    if project do
       if connected?(socket) do
         ChatAgent.subscribe()
         Loopyard.Workspace.ServiceManager.subscribe()
@@ -52,6 +50,8 @@ defmodule LoopyardWeb.ProjectLive do
        |> assign(:confirming_remove, false)
        |> assign(:editing_name, false)
        |> assign(:removing, false)}
+    else
+      {:ok, push_navigate(socket, to: "/")}
     end
   end
 

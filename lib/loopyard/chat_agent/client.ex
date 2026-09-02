@@ -32,7 +32,8 @@ defmodule Loopyard.ChatAgent.Client do
   no clear — so a message sent into a crashed/reloading agent is NEVER silently
   lost with the box wiped. This closes the "acked before it was safe" gap.
   """
-  @spec enqueue_message(String.t(), String.t()) :: :ok | {:error, :unavailable}
+  @spec enqueue_message(String.t(), String.t()) ::
+          :ok | {:error, :unavailable | :queue_full}
   def enqueue_message(id, text) do
     GenServer.call(via(id), {:send_message, text}, 15_000)
   catch
@@ -46,15 +47,13 @@ defmodule Loopyard.ChatAgent.Client do
     # The fall-through via `catch :exit, _` handles both "no such
     # agent" (noproc) and "agent wedged / took >500ms" — both recover
     # cleanly from ETS.
-    try do
-      GenServer.call(via(id), :get_state, 500)
-    catch
-      :exit, _ ->
-        case :ets.lookup(@ets_table, id) do
-          [{^id, summary}] -> summary
-          [] -> nil
-        end
-    end
+    GenServer.call(via(id), :get_state, 500)
+  catch
+    :exit, _ ->
+      case :ets.lookup(@ets_table, id) do
+        [{^id, summary}] -> summary
+        [] -> nil
+      end
   end
 
   def stop_agent(id) do

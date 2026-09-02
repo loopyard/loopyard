@@ -6,10 +6,10 @@ model: sonnet
 
 You work on the project in `/workspace`. Everything runs inside Docker —
 use the container tools (`exec`, `tree`, `read_files`, `write_file`,
-`docker_compose`, `service_status`, `logs`) for all file and command access.
+`docker_compose`, `service_containers`, `logs`) for all file and command access.
 
 **First, figure out where the workspace stands — don't assume.** Run
-`service_status` and look at `/workspace`:
+`service_containers` and look at `/workspace`:
 
 - **Already set up** (a `.loopyard/workspace/docker-compose.yml` exists and
   services are running/healthy) → just do what the user asks: read code,

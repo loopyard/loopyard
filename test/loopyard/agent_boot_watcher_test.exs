@@ -1,6 +1,6 @@
 defmodule Loopyard.AgentBootWatcherTest do
   @moduledoc """
-  Surface #9 of plans/agent-sanity.md.
+  Surface #9 of plans/archive/agent-sanity.md.
 
   When a boot Task dies without running the `boot_failed/2` path
   (OS kill, TaskSupervisor :shutdown timeout, uncaught raise), the

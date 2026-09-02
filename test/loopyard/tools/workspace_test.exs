@@ -158,7 +158,7 @@ defmodule Loopyard.Tools.WorkspaceTest do
       Process.sleep(50)
       state = Loopyard.ChatAgent.get_state(id)
       system_msgs = Enum.filter(state.messages, &(&1[:role] == :system))
-      assert length(system_msgs) >= 1
+      assert system_msgs != []
       assert Enum.any?(system_msgs, &(&1.content =~ "Container started"))
     end
 

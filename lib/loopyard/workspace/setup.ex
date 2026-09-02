@@ -370,6 +370,8 @@ defmodule Loopyard.Workspace.Setup do
     case result do
       {:ok, payload} ->
         publish_phase_completed(workspace_id, phase, phase_started_mono)
+        # `phase` is one of the three atoms in @phases — a closed set.
+        # credo:disable-for-next-line Credo.Check.Warning.UnsafeToAtom
         {:ok, Map.put(%{}, :"#{phase}_payload", payload)}
 
       :ok ->

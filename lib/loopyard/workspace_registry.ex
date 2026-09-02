@@ -54,9 +54,7 @@ defmodule Loopyard.WorkspaceRegistry do
   def add_workspace(project_id, branch_name) do
     project = Loopyard.ProjectRegistry.get_project(project_id)
 
-    unless project do
-      {:error, "Project not found"}
-    else
+    if project do
       existing = list_workspaces(project_id) |> Enum.find(&(&1.name == branch_name))
 
       if existing do
@@ -75,6 +73,8 @@ defmodule Loopyard.WorkspaceRegistry do
             {:error, reason}
         end
       end
+    else
+      {:error, "Project not found"}
     end
   end
 
