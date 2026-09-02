@@ -229,21 +229,50 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
             :if={!@q[:multi]}
             class="flex flex-col sm:flex-row sm:items-center gap-2 mt-2 sm:mt-0 order-last sm:ml-auto"
           >
+            <%!-- DISMISS does double duty, and which duty is decided by CSS from
+            the form's own state (`group-has-[:checked]`, the Other box's
+            placeholder), never by a round-trip:
+              * an answer is selected → "Dismiss" CLEARS it: a native form
+                reset (radios + the Other box) plus the draft-clear event so
+                every viewer's rows deselect too;
+              * nothing selected → "Dismiss" ARMS: it swaps for the orange
+                "Dismiss decision", which does it; any other tap disarms.
+            Arm/disarm toggle a class rather than inline display, so the
+            has-checked rules keep working while armed. --%>
+            <button
+              :if={!@q[:multi]}
+              type="reset"
+              phx-click="draft_question_option"
+              phx-value-question_id={@msg.question_id}
+              phx-value-q={@q.id}
+              class={[
+                "hidden group-has-[:checked]/qform:inline-flex",
+                "group-has-[[data-qother]:not(:placeholder-shown)]/qform:inline-flex",
+                "w-full sm:w-auto order-last sm:order-first",
+                StreamCard.action_class()
+              ]}
+            >
+              Dismiss
+            </button>
             <button
               :if={!@q[:multi]}
               type="button"
               id={"dismiss-#{@msg[:id] || @msg.question_id}-#{@q.id}"}
               phx-click={
-                Phoenix.LiveView.JS.hide()
-                |> Phoenix.LiveView.JS.show(
-                  to: "#confirm-dismiss-#{@msg[:id] || @msg.question_id}-#{@q.id}",
-                  display: "inline-flex"
+                Phoenix.LiveView.JS.add_class("hidden")
+                |> Phoenix.LiveView.JS.remove_class("hidden",
+                  to: "#confirm-dismiss-#{@msg[:id] || @msg.question_id}-#{@q.id}"
                 )
                 |> Phoenix.LiveView.JS.focus(
                   to: "#confirm-dismiss-#{@msg[:id] || @msg.question_id}-#{@q.id}"
                 )
               }
-              class={["w-full sm:w-auto order-last sm:order-first", StreamCard.action_class()]}
+              class={[
+                "group-has-[:checked]/qform:hidden",
+                "group-has-[[data-qother]:not(:placeholder-shown)]/qform:hidden",
+                "w-full sm:w-auto order-last sm:order-first",
+                StreamCard.action_class()
+              ]}
             >
               Dismiss
             </button>
@@ -255,10 +284,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
               phx-value-question_id={@msg.question_id}
               phx-value-q={@q.id}
               phx-click-away={
-                Phoenix.LiveView.JS.hide()
-                |> Phoenix.LiveView.JS.show(
-                  to: "#dismiss-#{@msg[:id] || @msg.question_id}-#{@q.id}",
-                  display: "inline-flex"
+                Phoenix.LiveView.JS.add_class("hidden")
+                |> Phoenix.LiveView.JS.remove_class("hidden",
+                  to: "#dismiss-#{@msg[:id] || @msg.question_id}-#{@q.id}"
                 )
               }
               class={[
@@ -266,7 +294,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
                 StreamCard.action_class(variant: :primary)
               ]}
             >
-              Confirm
+              Dismiss decision
             </button>
             <.link
               :if={!@q[:multi] && @chat_path}
