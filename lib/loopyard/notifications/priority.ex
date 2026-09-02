@@ -27,7 +27,10 @@ defmodule Loopyard.Notifications.Priority do
   def tier(%Item{kind: :approval}), do: 1
   def tier(%Item{kind: :question}), do: 2
   def tier(%Item{kind: :secret}), do: 3
-  def tier(%Item{kind: :finished, meta: %{changes: n}}) when is_integer(n) and n > 0, do: 4
+
+  def tier(%Item{kind: :finished, meta: %{changes: %{added: a, removed: r}}}) when a + r > 0,
+    do: 4
+
   def tier(%Item{kind: :finished}), do: 5
   def tier(_), do: 8
 

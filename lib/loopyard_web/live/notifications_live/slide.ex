@@ -350,10 +350,11 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
           {finished_word(@item)}
         </span>
         <span
-          :if={is_integer(@changes) and @changes > 0}
+          :if={@changes && @changes.added + @changes.removed > 0}
           class="normal-case tracking-normal tabular-nums text-zinc-500 dark:text-zinc-400"
         >
-          · {@changes} {(@changes == 1 && "file") || "files"} changed
+          · <span class="text-emerald-600 dark:text-emerald-400">+{@changes.added}</span>
+          <span class="text-red-500 dark:text-red-400">−{@changes.removed}</span> uncommitted
         </span>
       </div>
       <p class="mt-2 text-lead text-zinc-900 dark:text-zinc-50">{@item.label}</p>

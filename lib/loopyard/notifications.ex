@@ -258,10 +258,10 @@ defmodule Loopyard.Notifications do
   # operator's own turns are not notifications.
   def handle_info(%Events.Activity.Event{kind: :turn_end, workspace_id: ws} = e, state)
       when is_binary(ws) do
-    changes = Loopyard.ChangeCounts.get(ws)
+    changes = line_changes(Loopyard.ChangeCounts.get(ws))
     summary = if e.summary in [nil, ""], do: nil, else: e.summary
 
-    if summary || (is_integer(changes) and changes > 0) do
+    if summary || (changes && changes.added + changes.removed > 0) do
       {:noreply, put_finished(state, e, summary || "finished a turn", changes)}
     else
       {:noreply, state}
@@ -325,6 +325,13 @@ defmodule Loopyard.Notifications do
       _ -> put(state, item, :added)
     end
   end
+
+  # ChangeCounts caches the workspace's uncommitted diff as LINES
+  # `%{added: n, removed: m}`; the item carries that map (nil = unknown).
+  defp line_changes(%{added: a, removed: r}) when is_integer(a) and is_integer(r),
+    do: %{added: a, removed: r}
+
+  defp line_changes(_), do: nil
 
   defp where(ws_id) do
     case Loopyard.WorkspaceRegistry.get_workspace(ws_id) do
