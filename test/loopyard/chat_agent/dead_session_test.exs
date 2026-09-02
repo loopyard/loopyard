@@ -35,7 +35,7 @@ defmodule Loopyard.ChatAgent.DeadSessionTest do
   which is not what we're testing here.
   """
 
-  use ExUnit.Case, async: false
+  use Loopyard.AgentCase
 
   alias Loopyard.ChatAgent
   alias Loopyard.ChatAgent.DeadSessionTest.CountingDeadBackend
@@ -78,7 +78,6 @@ defmodule Loopyard.ChatAgent.DeadSessionTest do
       Loopyard.TestHelpers.start_agent(
         id: id,
         name: "Dead Session Test",
-        working_dir: File.cwd!(),
         started_by: "test"
       )
 

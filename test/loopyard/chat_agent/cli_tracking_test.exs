@@ -33,7 +33,7 @@ defmodule Loopyard.ChatAgent.CliTrackingTest do
   helper is called on every restart path.
   """
 
-  use ExUnit.Case, async: false
+  use Loopyard.AgentCase
 
   alias Loopyard.ChatAgent
   alias Loopyard.TestSupport.RecordingBackend
@@ -49,7 +49,6 @@ defmodule Loopyard.ChatAgent.CliTrackingTest do
       Loopyard.TestHelpers.start_agent(
         id: id,
         name: "CLI Tracking Test",
-        working_dir: File.cwd!(),
         started_by: "test",
         backend: RecordingBackend
       )

@@ -10,7 +10,7 @@ defmodule Loopyard.ChatAgent.TurnRetryTest do
   WHY/CONSEQUENCE/ACTION error, and hand the text back to the box
   (`{:restore_input, ...}`).
   """
-  use ExUnit.Case, async: false
+  use Loopyard.AgentCase
 
   alias Loopyard.ChatAgent
   alias Loopyard.Agent.Event
@@ -27,7 +27,6 @@ defmodule Loopyard.ChatAgent.TurnRetryTest do
       Loopyard.TestHelpers.start_agent(
         id: id,
         name: "Retry Test",
-        working_dir: File.cwd!(),
         started_by: "test",
         backend: RecordingBackend
       )

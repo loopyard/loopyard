@@ -1,5 +1,5 @@
 defmodule Loopyard.RegistryHelperTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   alias Loopyard.RegistryHelper
 

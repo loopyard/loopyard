@@ -15,7 +15,7 @@ defmodule Loopyard.ChatAgent.SessionResumeTest do
   server-restart-resume path.
   """
 
-  use ExUnit.Case, async: false
+  use Loopyard.AgentCase
 
   alias Loopyard.ChatAgent
   alias Loopyard.Agent.Event
@@ -35,7 +35,6 @@ defmodule Loopyard.ChatAgent.SessionResumeTest do
       Loopyard.TestHelpers.start_agent(
         id: id,
         name: "Resume Test",
-        working_dir: File.cwd!(),
         started_by: "test",
         backend: RecordingBackend
       )
@@ -273,7 +272,6 @@ defmodule Loopyard.ChatAgent.SessionResumeTest do
         Loopyard.TestHelpers.start_agent(
           id: id,
           name: "Resume Test",
-          working_dir: File.cwd!(),
           started_by: "test",
           backend: RecordingBackend,
           resume: true

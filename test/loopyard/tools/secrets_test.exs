@@ -1,5 +1,5 @@
 defmodule Loopyard.Tools.SecretsTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   alias Loopyard.Tools.Secrets
 

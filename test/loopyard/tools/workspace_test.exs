@@ -1,5 +1,5 @@
 defmodule Loopyard.Tools.WorkspaceTest do
-  use ExUnit.Case
+  use Loopyard.AgentCase
   @moduletag timeout: 15_000
 
   alias Loopyard.Tools.Workspace, as: WorkspaceTools
@@ -222,7 +222,6 @@ defmodule Loopyard.Tools.WorkspaceTest do
            name: "No Bind Test",
            workspace_id: nil,
            bind_mount: nil,
-           working_dir: File.cwd!(),
            started_at: DateTime.utc_now(),
            last_activity_at: DateTime.utc_now()
          }}

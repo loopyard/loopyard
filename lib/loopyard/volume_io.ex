@@ -264,6 +264,19 @@ defmodule Loopyard.VolumeIO do
   """
   def mirror_dir(volume_name, src_rel, dest_abs)
       when is_binary(volume_name) and is_binary(src_rel) and is_binary(dest_abs) do
+    # This one shells out on its own (System.shell, not Docker.docker/2), so it
+    # must honour the daemon gate itself: with Docker off (the default test
+    # suite) it used to spawn the real CLI on EVERY agent boot — ~230 ms a
+    # test, and `docker run -v <name>` auto-creates the volume, so each test
+    # workspace leaked one. Nothing to mirror is `:ok`.
+    if Docker.daemon_available?() do
+      do_mirror_dir(volume_name, src_rel, dest_abs)
+    else
+      :ok
+    end
+  end
+
+  defp do_mirror_dir(volume_name, src_rel, dest_abs) do
     File.mkdir_p!(dest_abs)
 
     # Use a shell pipeline to tar from the volume and untar on the host.

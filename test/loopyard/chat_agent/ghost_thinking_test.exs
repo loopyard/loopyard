@@ -18,7 +18,7 @@ defmodule Loopyard.ChatAgent.GhostThinkingTest do
   (the send still parks in the queue).
   """
 
-  use ExUnit.Case, async: false
+  use Loopyard.AgentCase
 
   alias Loopyard.ChatAgent
 
@@ -31,7 +31,6 @@ defmodule Loopyard.ChatAgent.GhostThinkingTest do
       Loopyard.TestHelpers.start_agent(
         id: id,
         name: "Ghost Thinking Test",
-        working_dir: File.cwd!(),
         started_by: "test"
       )
 

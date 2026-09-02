@@ -160,6 +160,9 @@ Test file: `test/loopyard/service_manager_terminate_test.exs`
 - **Test the real path, not a mock of it.** If production goes through GenServer → ETS → PubSub, the test does too. Stub at the boundary (Docker, Claude CLI), not in the middle.
 - **No mocks of our own code.** If you're tempted to mock a context module, refactor to pass data instead.
 - **Inject dependencies at the boundary.** `Docker.exec_in`, `VolumeIO`, and `Loopyard.Harness` are the boundaries; tests configure or stub these, not the callers.
+- **Never run an agent in the shared checkout workspace.** `TestHelpers.start_agent/1` gives every test its own temp workspace when you omit `:working_dir`; passing `File.cwd!()` puts your agent under the ONE workspace group every other cwd test shares, and a neighbour that crashes or restarts that group kills your agent mid-test (`:sys.get_state` → "no process", the classic "flaky under load" failure). The Sept 2026 audit moved all 18 agent tests off it. Reach for `File.cwd!()` only when the test is ABOUT the repo (git history, evals).
+- **No `Process.sleep` as a wait.** Wait on the event (`assert_receive` the broadcast, poll a state with a short interval), never a fixed sleep. A sleep is either too long (suite time) or too short (flake under load). The 2s per-test timeout is the tripwire.
+- **`async: true` unless the test touches global state.** Registries, ETS, `Application.put_env`, the shared workspace, Docker. Everything else (pure functions, `render_component`, struct/parsing logic) runs concurrently for free.
 
 ## When to write tests
 
@@ -203,6 +206,21 @@ Agent tools must go through Docker, never the host filesystem. Tests should veri
 - **Tool tests** should verify operations go through `Docker.exec_in` or `VolumeIO`, never host `File` operations. If a tool reads a file, it should use `VolumeIO.read_file/2` (which runs a `docker run` under the hood), not `File.read/1`.
 - **Truncation tests** should verify agents get bounded output. `Helpers.truncate_for_agent/1` caps tool output at ~80 lines. Test that long output is truncated and short output passes through unchanged.
 - **Tests tagged `:docker`** require a running Docker daemon. These test the real Docker path (volume I/O, container exec, compose lifecycle). Excluded from default runs.
+
+## Speed profile
+
+The default suite is ~2,050 tests in ~33 s wall (was ~49 s before the Sept
+2026 audit), and almost all of it is sync (non-async) modules that boot agents
+or workspace groups. `mix test --slowest 30` / `--slowest-modules 20` shows
+where the time goes (note: both force `max_cases: 1`, so their wall time is
+not the normal run's). The audit's finding: an agent boot cost ~220 ms, of
+which ~215 ms was `VolumeIO.mirror_dir` spawning the real `docker` CLI past
+the daemon gate — see CODE_RULES "Every Docker shell-out honours the daemon
+gate". Gating it took the agent suites from 47 s to 19 s. Smaller levers:
+`Loopyard.AgentCase` (one workspace group per module), 10 ms helper polling,
+a 1 ms backoff base in the crash-loop test. Parallelism is not a lever — the
+sync modules share the process registries. Profile before guessing:
+`:timer.tc` around `TestHelpers.start_agent/1` found this in one run.
 
 ## Known test issues
 

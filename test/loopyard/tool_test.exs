@@ -1,5 +1,5 @@
 defmodule Loopyard.ToolTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   defmodule SampleTool do
     use Loopyard.Tool,

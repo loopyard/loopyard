@@ -25,7 +25,7 @@ defmodule Loopyard.ChatAgent.ConcurrentSendTest do
     3. Queue drains in FIFO order.
   """
 
-  use ExUnit.Case, async: false
+  use Loopyard.AgentCase
 
   alias Loopyard.ChatAgent
   alias Loopyard.TestSupport.RecordingBackend
@@ -40,7 +40,6 @@ defmodule Loopyard.ChatAgent.ConcurrentSendTest do
       Loopyard.TestHelpers.start_agent(
         id: id,
         name: "Concurrent Send Test",
-        working_dir: File.cwd!(),
         started_by: "test",
         backend: RecordingBackend
       )

@@ -1,5 +1,5 @@
 defmodule Loopyard.ChatAgentTest do
-  use ExUnit.Case
+  use Loopyard.AgentCase
 
   # Every describe block's setup boots a ChatAgent via
   # Loopyard.TestHelpers.start_agent. Each setup gets a UNIQUE tmp_dir
@@ -621,6 +621,8 @@ defmodule Loopyard.ChatAgentTest do
       saved = %{
         id: id,
         name: "Resume Test",
+        # A durable field the resume validator requires — not the agent's
+        # actual dir (start_agent below resolves that).
         working_dir: File.cwd!(),
         bind_mount: nil,
         workspace_id: nil,
@@ -685,6 +687,8 @@ defmodule Loopyard.ChatAgentTest do
       saved = %{
         id: id,
         name: "Order Test",
+        # A durable field the resume validator requires — not the agent's
+        # actual dir (start_agent below resolves that).
         working_dir: File.cwd!(),
         bind_mount: nil,
         workspace_id: nil,

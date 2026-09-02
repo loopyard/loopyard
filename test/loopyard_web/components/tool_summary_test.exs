@@ -1,5 +1,5 @@
 defmodule LoopyardWeb.Components.ToolSummaryTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   alias LoopyardWeb.Components.ToolSummary
 

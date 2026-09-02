@@ -28,6 +28,17 @@ defmodule Loopyard.VolumeIOTest do
     end
   end
 
+  describe "mirror_dir/3 (no Docker)" do
+    test "with the daemon off it is a fast no-op, never a shell-out" do
+      dest = Path.join(System.tmp_dir!(), "mirror-#{System.unique_integer([:positive])}")
+      {us, result} = :timer.tc(fn -> VolumeIO.mirror_dir("loopyard-x-code", ".claude", dest) end)
+      assert result == :ok
+      # Spawning the docker CLI costs ~200ms; a gated no-op is microseconds.
+      assert us < 50_000
+      refute File.exists?(dest)
+    end
+  end
+
   describe "copy_in/3 validation (no Docker)" do
     test "rejects a destination outside /workspace and a missing host file" do
       assert {:error, :invalid_path} = VolumeIO.copy_in("loopyard-x-code", __ENV__.file, "../x")

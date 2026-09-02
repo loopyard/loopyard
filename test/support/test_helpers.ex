@@ -57,8 +57,11 @@ defmodule Loopyard.TestHelpers do
   defp register_workspace_cleanup(workspace_id) do
     cwd_id = Loopyard.Workspace.workspace_id(File.cwd!())
     seen = Process.get(:loopyard_test_cleanup_wids, MapSet.new())
+    # A module-owned workspace (Loopyard.AgentCase) is torn down by the module.
+    module_owned = Process.get(:loopyard_test_module_workspace_id)
 
-    if workspace_id != cwd_id and not MapSet.member?(seen, workspace_id) do
+    if workspace_id != cwd_id and workspace_id != module_owned and
+         not MapSet.member?(seen, workspace_id) do
       Process.put(:loopyard_test_cleanup_wids, MapSet.put(seen, workspace_id))
       ExUnit.Callbacks.on_exit(fn -> destroy_workspace(workspace_id) end)
     end
@@ -79,7 +82,7 @@ defmodule Loopyard.TestHelpers do
     # agree on the same dir (the agent reads working_dir from opts).
     opts = Keyword.put(opts, :working_dir, path)
     workspace_id = ensure_workspace_ready(path)
-    start_agent_with_retry(workspace_id, opts, 60)
+    start_agent_with_retry(workspace_id, opts, 240)
   end
 
   # One isolated temp workspace DIR per TEST (memoized in the test process's
@@ -113,14 +116,14 @@ defmodule Loopyard.TestHelpers do
   defp ensure_workspace_ready(path) do
     workspace_id = ensure_workspace(path)
 
-    case wait_for_workspace_ready(workspace_id, 100) do
+    case wait_for_workspace_ready(workspace_id, 500) do
       :ok ->
         workspace_id
 
       :timeout ->
         # Force a fresh start if the group is wedged.
         workspace_id = ensure_workspace(path)
-        _ = wait_for_workspace_ready(workspace_id, 100)
+        _ = wait_for_workspace_ready(workspace_id, 500)
         workspace_id
     end
   end
@@ -137,7 +140,9 @@ defmodule Loopyard.TestHelpers do
     if agent_sup and restart_ctrl do
       :ok
     else
-      Process.sleep(50)
+      # 10ms polls: the group is usually up within a few, and every agent test
+      # pays this wait — 50ms polls were a hidden floor on ~150 boots.
+      Process.sleep(10)
       wait_for_workspace_ready(workspace_id, attempts - 1)
     end
   end
@@ -149,7 +154,7 @@ defmodule Loopyard.TestHelpers do
   defp start_agent_with_retry(workspace_id, opts, attempts) do
     case Loopyard.WorkspaceGroup.start_agent(workspace_id, opts) do
       {:error, :workspace_not_running} ->
-        Process.sleep(100)
+        Process.sleep(25)
         start_agent_with_retry(workspace_id, opts, attempts - 1)
 
       result ->

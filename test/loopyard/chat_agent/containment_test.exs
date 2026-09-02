@@ -4,7 +4,7 @@ defmodule Loopyard.ChatAgent.ContainmentTest do
   start with a backend/opts that would run its harness process on the host.
   Enforced in `Initializer.assert_runtime_contained!`.
   """
-  use ExUnit.Case, async: false
+  use Loopyard.AgentCase
 
   alias Loopyard.ChatAgent
 
@@ -39,7 +39,6 @@ defmodule Loopyard.ChatAgent.ContainmentTest do
         Loopyard.ChatAgent.Initializer.build_state(id,
           id: id,
           name: "c",
-          working_dir: File.cwd!(),
           started_by: "test",
           backend: Loopyard.Harness.ACP
         )
@@ -55,7 +54,6 @@ defmodule Loopyard.ChatAgent.ContainmentTest do
     try_start(
       id: id,
       name: "f",
-      working_dir: File.cwd!(),
       started_by: "test",
       backend: Loopyard.Harness.Fake
     )

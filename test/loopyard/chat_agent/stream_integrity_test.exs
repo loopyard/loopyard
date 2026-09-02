@@ -25,7 +25,7 @@ defmodule Loopyard.ChatAgent.StreamIntegrityTest do
   mismatched events with a telemetry event.
   """
 
-  use ExUnit.Case, async: false
+  use Loopyard.AgentCase
 
   alias Loopyard.ChatAgent
   alias Loopyard.Agent.Event
@@ -42,7 +42,6 @@ defmodule Loopyard.ChatAgent.StreamIntegrityTest do
       Loopyard.TestHelpers.start_agent(
         id: id,
         name: "Stream Integrity Test",
-        working_dir: File.cwd!(),
         started_by: "test",
         backend: RecordingBackend
       )

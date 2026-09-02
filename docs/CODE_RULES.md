@@ -56,6 +56,18 @@ Rule of thumb the next time this comes up: **can a reader understand half this f
 
 **The pattern:** if you find yourself writing complex logic inside `defp` in a LiveView, stop. Extract it. Test it. Wire the LiveView to call it.
 
+## Every Docker shell-out honours the daemon gate
+
+`Docker.docker/2`, `stream/3` and `open_port/2` refuse to spawn the CLI when
+`:docker_enabled` is false (the default test suite). Anything that reaches
+for `System.shell`/`System.cmd`/`Port.open` with `docker` on its own MUST
+check `Docker.daemon_available?()` first and degrade to a no-op or
+`{:error, :docker_disabled}`. `VolumeIO.mirror_dir` didn't (Sept 2026): every
+agent boot in the suite spawned the real CLI — ~230 ms per test, a third of
+the whole run — and `docker run -v <name>` auto-created a volume per test
+workspace. A bypass is invisible in CI (Docker is off there) and only shows
+as "the suite is slow".
+
 ## Keep tests fast
 
 Unit tests should run in under 2 seconds total. If a test needs Docker, external services, or takes >1 second, tag it with `@tag :docker` or `@tag :slow` and exclude from default runs. Run full suite in CI.

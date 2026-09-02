@@ -1,5 +1,5 @@
 defmodule Loopyard.ChatAgent.CrashBackoffTest do
-  use ExUnit.Case, async: false
+  use Loopyard.AgentCase
 
   alias Loopyard.ChatAgent
 
@@ -16,7 +16,6 @@ defmodule Loopyard.ChatAgent.CrashBackoffTest do
       Loopyard.TestHelpers.start_agent(
         id: id,
         name: "Backoff Test",
-        working_dir: File.cwd!(),
         started_by: "test"
       )
 

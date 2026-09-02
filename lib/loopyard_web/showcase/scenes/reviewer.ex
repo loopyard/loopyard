@@ -99,14 +99,20 @@ defmodule LoopyardWeb.Showcase.Scenes.Reviewer do
   end
 
   defp card(opts) do
+    # Mirrors `NotificationsLive.Deck.slide/2` — the deck keys and routes off
+    # these fields, so the mock must carry the same shape as a live slide.
     %{
       slide: %{
-        project_name: "storefront",
-        workspace_name: opts[:workspace],
+        key: {"demo-agent", opts[:msg_id], opts[:q].id},
+        item_id: "demo-item-#{opts[:msg_id]}",
+        kind: :question,
         agent_id: "demo-agent",
         agent_name: "Claude",
         msg_id: opts[:msg_id],
         q_id: opts[:q].id,
+        workspace_id: "demo-ws",
+        project_name: "storefront",
+        workspace_name: opts[:workspace],
         path: opts[:path],
         asked_at: Mock.at(opts[:asked_secs])
       },
