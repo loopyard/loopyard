@@ -739,12 +739,13 @@ defmodule LoopyardWeb.ReviewLive do
   defp card_prompt(%{msg: %{questions: [%{prompt: p} | _]}}) when is_binary(p), do: p
   defp card_prompt(%{msg: msg}), do: Loopyard.CardText.render(msg) |> String.slice(0, 200)
 
+  # Parked means a LIVE ask: the broker still holds a waiter for this agent and
+  # its turn is inside the tool call. Status alone is not enough — an operator
+  # that is :booting or :thinking to answer THIS thread is busy, not parked.
   defp operator_blocked?(op, %{slide: %{agent_id: op}, msg: %{status: :pending}})
        when is_binary(op) do
-    case ChatAgent.get_state(op) do
-      %{status: status} -> status != :idle
-      _ -> false
-    end
+    Loopyard.Harness.Questions.pending_for_agent?(op) and
+      match?(%{status: s} when s != :idle, ChatAgent.get_state(op))
   rescue
     _ -> false
   catch
