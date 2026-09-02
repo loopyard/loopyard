@@ -148,8 +148,6 @@ defmodule Loopyard.ChatAgent.Persistence do
     end
   end
 
-  defp checkpointer_for(nil), do: nil
-
   defp checkpointer_for(key) do
     case Registry.lookup(Loopyard.AgentLog.CheckpointerRegistry, key) do
       [{pid, _}] -> pid

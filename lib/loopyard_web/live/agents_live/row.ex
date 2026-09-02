@@ -90,7 +90,10 @@ defmodule LoopyardWeb.AgentsLive.Row do
       />
       <span class="min-w-0 flex-1 flex items-baseline gap-2 truncate">
         <span class="text-lead font-medium text-zinc-900 dark:text-zinc-50 truncate">{@row.name}</span>
-        <span :if={!@compact && @row.loop} class="text-meta text-zinc-400 dark:text-zinc-500 truncate">
+        <span
+          :if={!@compact && @row.loop}
+          class="hidden md:inline text-meta text-zinc-400 dark:text-zinc-500 truncate"
+        >
           {@row.loop}<span :if={@row.model}> · {@row.model}</span>
         </span>
       </span>
