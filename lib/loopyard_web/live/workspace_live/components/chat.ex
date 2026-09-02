@@ -620,7 +620,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       phx-change="validate_attachments"
       phx-submit="validate_attachments"
       phx-hook="ChatAttachments"
-      data-count={length(@uploads.attachments.entries)}
+      data-count={Enum.count(@uploads.attachments.entries, & &1.valid?)}
       class="contents"
     >
       <.live_file_input upload={@uploads.attachments} class="sr-only" tabindex="-1" />

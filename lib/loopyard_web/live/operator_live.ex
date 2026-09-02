@@ -263,7 +263,7 @@ defmodule LoopyardWeb.OperatorLive do
         # ack, no error and no transitional state: from the outside, typing did
         # NOTHING. A cast is fine for internal/eval callers; a UI send must be
         # a call, because only a call can tell the person their text landed.
-        with {:ok, atts} <- ComposerAttachments.consume(socket),
+        with {:ok, socket, atts} <- ComposerAttachments.consume(socket),
              :ok <-
                ChatAgent.enqueue_message(
                  socket.assigns.agent_id,

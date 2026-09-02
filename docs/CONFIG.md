@@ -24,6 +24,7 @@ Read via `Application.get_env(:loopyard, key)`. Overridable at runtime in `confi
 |---|---|---|
 | `:clone_mode` | `:sync` | Project clone strategy — `:sync` blocks until clone finishes, `:async` returns immediately and clones in the background. |
 | `:mutagen_runner` | `&System.cmd/3` | Injection seam for the Mutagen CLI. Tests override with a fake to avoid shelling out. |
+| `:attachment_max_bytes` | `26_214_400` (25 MB) | Per-file cap for chat attachments (`allow_upload :max_file_size`). Tests shrink it to exercise the too-large path. |
 | `:container_io` | `Loopyard.ContainerIO` | Injection seam for by-container file I/O (`copy_in/3`, `write_file/3`, `read_file/2` against an absolute path in a running container) — the operator's attachment store. Tests use `Loopyard.Test.FakeContainerIO`. |
 | `:attachment_writer` | `Loopyard.VolumeIO` | Injection seam for chat attachments' write path (`copy_in/3` + `write_file/3` into the code volume). Tests use `Loopyard.Test.FakeAttachmentWriter` (on-disk fake volumes). Limits live as module attributes on `LoopyardWeb.Live.WorkspaceLive.Attachments`: 10 files per message, 25 MB each. |
 | `:container_ready_check` | `nil` | Injection seam for SyncMonitor's "is the destination container up" probe. Tests override; production uses the real Docker check. |
