@@ -516,14 +516,23 @@ Hooks.AppBadge = {
 // server's VAPID key → hand the subscription to the LV. Label reflects state.
 Hooks.PushBell = {
   async mounted() {
+    // The hook sits on a button (the operator rail) or on a wrapper holding
+    // a [data-bell-toggle] button and a [data-bell-finished] checkbox (the
+    // inbox) — the checkbox opts this device into "agents finished" pushes.
     this.label = this.el.querySelector("[data-bell-label]")
+    this.btn = this.el.matches("button") ? this.el : this.el.querySelector("[data-bell-toggle]")
+    this.finished = this.el.querySelector("[data-bell-finished]")
+    this.finishedWrap = this.el.querySelector("[data-bell-finished-wrap]")
     if (!("serviceWorker" in navigator) || !("PushManager" in window) || !this.el.dataset.vapid) {
       this.el.classList.add("hidden")
       return
     }
     this.sub = await this.currentSub()
     this.render()
-    this.el.addEventListener("click", () => this.toggle())
+    if (this.btn) this.btn.addEventListener("click", () => this.toggle())
+    if (this.finished) this.finished.addEventListener("change", () => {
+      if (this.sub) this.pushEvent("push_kinds", { endpoint: this.sub.endpoint, finished: this.finished.checked })
+    })
   },
   async currentSub() {
     try {
@@ -533,8 +542,9 @@ Hooks.PushBell = {
   },
   render() {
     if (this.label) this.label.textContent = this.sub
-      ? "Question notifications on ✓ (tap to turn off)"
-      : "Notify me about questions"
+      ? "Notifications on for this device ✓ (tap to turn off)"
+      : "Notify this device about decisions"
+    if (this.finishedWrap) this.finishedWrap.classList.toggle("hidden", !this.sub)
   },
   async toggle() {
     if (this.sub) {
@@ -553,7 +563,10 @@ Hooks.PushBell = {
         userVisibleOnly: true,
         applicationServerKey: this.urlB64ToUint8(this.el.dataset.vapid),
       })
-      this.pushEvent("push_subscribe", { subscription: this.sub.toJSON() })
+      this.pushEvent("push_subscribe", {
+        subscription: this.sub.toJSON(),
+        finished: !!(this.finished && this.finished.checked),
+      })
       this.render()
     } catch (e) {
       if (this.label) this.label.textContent = "Couldn't enable notifications"

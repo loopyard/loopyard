@@ -401,8 +401,41 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
   defp finished_receipt(%{status: :dismissed}), do: "Dismissed — nothing more to do here."
   defp finished_receipt(_), do: "Settled."
 
+  attr :vapid_key, :string, default: nil
+
+  @doc """
+  Push for THIS device: one tap subscribes (the `PushBell` hook owns the
+  permission + subscription), and, once on, a checkbox adds finished turns
+  to what it rings for. Rendered where the deck rests — the empty state and
+  the end slide — never in a bar.
+  """
+  def push_bell(assigns) do
+    ~H"""
+    <div
+      :if={@vapid_key}
+      id="push-bell"
+      phx-hook="PushBell"
+      phx-update="ignore"
+      data-vapid={@vapid_key}
+      class="mt-6 flex flex-col items-center gap-2 text-body text-zinc-500 dark:text-zinc-400"
+    >
+      <button
+        type="button"
+        data-bell-toggle
+        class="focus-ring inline-flex items-center min-h-11 px-3 rounded-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+      >
+        <span data-bell-label>Notify this device about decisions</span>
+      </button>
+      <label data-bell-finished-wrap class="hidden inline-flex items-center gap-2 min-h-11 px-3">
+        <input type="checkbox" data-bell-finished class="rounded-sm" /> …and when agents finish a turn
+      </label>
+    </div>
+    """
+  end
+
   attr :history?, :boolean, default: false
   attr :last, :map, default: nil
+  attr :vapid_key, :string, default: nil
 
   # The slide past the last decision: where the deck ends, and the way to the
   # past ones. Swipe on from the last decision and you land here.
@@ -428,6 +461,7 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
         >
           ← Home
         </.link>
+        <.push_bell :if={!@history?} vapid_key={@vapid_key} />
       </div>
     </section>
     """

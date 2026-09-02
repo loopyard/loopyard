@@ -114,6 +114,8 @@ defmodule Loopyard.Application do
       # The inbox store — replays its own log into StateKeeper's :notifications,
       # then keeps it true from the card funnels + a slow reconcile sweep.
       Loopyard.Notifications,
+      # Web Push from the inbox: every raised item → the devices that want it.
+      Loopyard.Notifications.Push,
       Loopyard.Operator.Digest,
 
       # Proactive harness memory management (Layer 2). Periodically reclaims a

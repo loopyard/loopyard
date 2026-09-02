@@ -70,17 +70,8 @@ defmodule Loopyard.Harness.Questions do
        }}
     )
 
-    # Push the question to subscribed devices — tapping opens THIS card's
-    # Reviewer slide. Fire-and-forget; never blocks the ask.
-    if is_binary(msg_id) do
-      first_prompt = questions |> List.first() |> then(&(&1 && &1[:prompt])) |> to_string()
-
-      Loopyard.WebPush.notify_question(
-        "Decision#{(msg[:source] && " — #{msg.source}") || ""}",
-        first_prompt,
-        "/notifications/#{agent_id}/#{msg_id}"
-      )
-    end
+    # Push reaches the pocket from the INBOX (Notifications.Push, off the
+    # store's Added event) — the same path as approvals and secrets.
 
     # Signal "the agent needs YOU" so the chime bridge can play its distinct
     # attention sound (vs the turn-finished "done" chime). Observability only —

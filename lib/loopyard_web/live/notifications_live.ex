@@ -75,6 +75,7 @@ defmodule LoopyardWeb.NotificationsLive do
      |> assign(:streaming, "")
      |> assign(:awaiting, nil)
      |> assign(:user_label, user_label(operator_id))
+     |> assign(:vapid_key, Loopyard.WebPush.public_key())
      |> LoopyardWeb.Live.ConsentUI.attach(secret_scope: scope)
      |> sync_secret_scope()
      |> subscribe_slides()
@@ -263,6 +264,41 @@ defmodule LoopyardWeb.NotificationsLive do
   # contract as every composer: the box clears only on the agent's ack. The
   # operator is booted here if it isn't up — the one place that cost is worth
   # paying synchronously, since the person just asked it something.
+  # Push for THIS device (the PushBell hook owns permission + subscription
+  # client-side; the server stores/deletes and the kinds it wants). The bell
+  # lives here, on the inbox, so a phone can subscribe — it used to exist only
+  # in the operator's desktop rail.
+  def handle_event("push_subscribe", %{"subscription" => sub} = params, socket) do
+    kinds = if params["finished"], do: ["finished"], else: []
+
+    case Loopyard.WebPush.subscribe(sub, kinds) do
+      :ok ->
+        Loopyard.EventLog.info("notifications", "push notifications enabled for a device")
+
+        Loopyard.WebPush.notify_one(
+          sub,
+          "Notifications on",
+          "Decisions land here — tapping one opens it.",
+          "/notifications"
+        )
+
+        {:reply, %{ok: true}, socket}
+
+      _ ->
+        {:reply, %{ok: false}, socket}
+    end
+  end
+
+  def handle_event("push_unsubscribe", %{"endpoint" => endpoint}, socket) do
+    Loopyard.WebPush.unsubscribe(endpoint)
+    {:reply, %{ok: true}, socket}
+  end
+
+  def handle_event("push_kinds", %{"endpoint" => endpoint} = params, socket) do
+    Loopyard.WebPush.set_kinds(endpoint, if(params["finished"], do: ["finished"], else: []))
+    {:reply, %{ok: true}, socket}
+  end
+
   # Finished-turn slides: the primary move, and the discard. Keep going hands
   # the agent its next prompt (the composer's text, or the plain word).
   def handle_event("keep_going", %{"id" => id} = params, socket) do
@@ -395,6 +431,7 @@ defmodule LoopyardWeb.NotificationsLive do
       awaiting={@awaiting}
       operator_id={@operator_id}
       user_label={@user_label}
+      vapid_key={@vapid_key}
     />
     """
   end
@@ -415,6 +452,7 @@ defmodule LoopyardWeb.NotificationsLive do
   attr :awaiting, :any, default: nil
   attr :operator_id, :string, default: nil
   attr :user_label, :string, default: "You"
+  attr :vapid_key, :string, default: nil
 
   def notifications_deck(assigns) do
     assigns = assign(assigns, :total, length(assigns.cards))
@@ -464,7 +502,7 @@ defmodule LoopyardWeb.NotificationsLive do
             operator_id={@operator_id}
             user_label={@user_label}
           />
-          <Slide.end_slide history?={@history?} last={List.last(@cards)} />
+          <Slide.end_slide history?={@history?} last={List.last(@cards)} vapid_key={@vapid_key} />
         </div>
 
         <%!-- Nothing on the deck: the "you're done" beat, with the one bar it needs. --%>
@@ -480,6 +518,7 @@ defmodule LoopyardWeb.NotificationsLive do
             >
               Past decisions →
             </.link>
+            <Slide.push_bell :if={!@history?} vapid_key={@vapid_key} />
           </div>
         </div>
       </div>

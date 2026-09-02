@@ -2,10 +2,11 @@ defmodule Loopyard.WebPush do
   @moduledoc """
   Web Push for the installed PWA — the "a question was asked, tell my phone"
   channel. Pure server-side: VAPID keys are generated once and persisted at
-  `~/.loopyard/web_push.json` alongside the browser subscriptions; nothing to
-  configure. `Questions.ask` calls `notify_question/4` so every pending
-  question can reach a pocket; tapping the notification opens the Reviewer
-  slide for that exact card (`/review/:agent_id/:msg_id`).
+  `~/.loopyard/web_push.json` alongside the browser subscriptions (each with
+  the KINDS it wants); nothing to configure. `Loopyard.Notifications.Push`
+  calls `notify/4` for every item raised on the inbox, so every decision —
+  and, opt-in per device, every finished turn — can reach a pocket; tapping
+  the notification opens that item's slide (`/notifications/:agent/:msg`).
 
   `WebPushEx` builds the signed RFC 8291/8292 (aes128gcm — what Apple
   requires) request; delivery is plain `:httpc` with verified TLS, so no
@@ -56,8 +57,15 @@ defmodule Loopyard.WebPush do
   @doc "The VAPID public key the browser subscribes with."
   def public_key, do: load()["public_key"]
 
-  @doc "Store a browser push subscription (unique by endpoint)."
-  def subscribe(%{"endpoint" => endpoint} = sub) when is_binary(endpoint) do
+  @doc """
+  Store a browser push subscription (unique by endpoint) with the KINDS it
+  wants: `"decision"` always; `"finished"` (agents wrapping a turn) is opt-in.
+  """
+  def subscribe(sub, kinds \\ ["decision"])
+
+  def subscribe(%{"endpoint" => endpoint} = sub, kinds) when is_binary(endpoint) do
+    sub = Map.put(sub, "kinds", normalize_kinds(kinds))
+
     locked(fn ->
       state = load()
       subs = state["subscriptions"] || []
@@ -66,7 +74,33 @@ defmodule Loopyard.WebPush do
     end)
   end
 
-  def subscribe(_), do: {:error, :invalid_subscription}
+  def subscribe(_, _), do: {:error, :invalid_subscription}
+
+  @doc "Change which kinds one device wants."
+  def set_kinds(endpoint, kinds) when is_binary(endpoint) do
+    locked(fn ->
+      state = load()
+
+      subs =
+        Enum.map(state["subscriptions"] || [], fn s ->
+          if s["endpoint"] == endpoint, do: Map.put(s, "kinds", normalize_kinds(kinds)), else: s
+        end)
+
+      write(Map.put(state, "subscriptions", subs))
+    end)
+  end
+
+  @doc "Does this subscription want pushes of `kind` (`:decision | :finished`)?"
+  def wants?(sub, :decision), do: "decision" in kinds_of(sub)
+  def wants?(sub, :finished), do: "finished" in kinds_of(sub)
+  def wants?(_sub, _), do: false
+
+  defp kinds_of(sub), do: sub["kinds"] || ["decision"]
+
+  defp normalize_kinds(kinds) when is_list(kinds),
+    do: ["decision" | Enum.map(kinds, &to_string/1)] |> Enum.uniq()
+
+  defp normalize_kinds(_), do: ["decision"]
 
   def unsubscribe(endpoint) when is_binary(endpoint) do
     locked(fn ->
@@ -79,11 +113,12 @@ defmodule Loopyard.WebPush do
   def subscriptions, do: load()["subscriptions"] || []
 
   @doc """
-  Push a question to every subscribed device. Fire-and-forget (supervised
-  task) — asking a question must NEVER block on push delivery.
+  Push an inbox item of `kind` (`:decision | :finished`) to every device that
+  wants that kind. Fire-and-forget (supervised task) — raising an item must
+  NEVER block on push delivery. Fired by `Loopyard.Notifications.Push`.
   """
-  def notify_question(title, body, url) do
-    subs = subscriptions()
+  def notify(kind, title, body, url) when kind in [:decision, :finished] do
+    subs = Enum.filter(subscriptions(), &wants?(&1, kind))
 
     if subs != [] do
       payload =
@@ -132,6 +167,9 @@ defmodule Loopyard.WebPush do
       :ok
   end
 
+  @doc "A decision push (kept for callers; new ones go through the inbox)."
+  def notify_question(title, body, url), do: notify(:decision, title, body, url)
+
   @doc """
   Push to ONE just-subscribed device — the instant "it works" confirmation
   (also stamps the current badge, so the count appears without waiting for
@@ -162,8 +200,10 @@ defmodule Loopyard.WebPush do
       :ok
   end
 
+  # Everything open on the inbox — decisions AND finished turns — since a
+  # tap on the badge lands on the inbox, not the decisions alone.
   defp waiting_count do
-    Loopyard.Attention.count()
+    Loopyard.Notifications.count()
   rescue
     _ -> 1
   catch
