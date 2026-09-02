@@ -588,3 +588,15 @@ has one stacks a ~2× dead band at the top of the installed PWA. Enforced by
 `design_system_test.exs` ("safe-area-top lives on page shells ONLY"); adding
 a new page shell means adding its file to that allowlist deliberately. The
 `#conn-banner` overlay uses `safe-pt` (fixed-position, separate concern).
+
+## Inner scrollers with sticky children are `isolate`
+
+A scroller (`overflow-y-auto`) is not a stacking context, so a `sticky …
+z-10` band inside it (the chat's prompt band, a decision's collapsed card)
+competes with `.app-bar` in the ROOT context. Chrome wins by z-index on
+paper — but during an iOS rubber-band WebKit composites the overscrolled
+content and painted it OVER the bar (the purple turn card popped above
+"Operator"; a decision's byline shoved the back arrow). Put `isolate` on the
+scroller: nothing inside can then outrank the chrome, whatever the
+compositor does. `#messages` and each decision slide's scroller carry it.
+

@@ -69,6 +69,15 @@ body {
   @apply sticky top-0 z-30 bg-brand-paper dark:bg-brand-ink;
 }
 
+/* Every INNER scroller that holds sticky children (the chat's #messages, a
+ * decision slide's scroller) is `isolate`. A scroller is not a stacking
+ * context on its own, so a `sticky … z-10` prompt band inside it competes
+ * with the chrome above in the ROOT context — and during an iOS rubber-band
+ * WebKit composites the overscrolled content and paints it over the bar:
+ * the purple turn card popped above "Operator"; a decision's byline shoved
+ * the back arrow. With the scroller isolated, nothing inside can outrank
+ * .app-bar (z-30) or .app-bar-secondary (z-20), whatever WebKit does. */
+
 .app-bar-secondary {
   @apply sticky top-14 z-20 bg-brand-paper dark:bg-brand-ink;
 }
