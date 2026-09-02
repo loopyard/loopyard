@@ -28,7 +28,7 @@ defmodule Loopyard.ChatAgent.ContextWindowTest do
   size and the triggers misbehave.
   """
 
-  use ExUnit.Case, async: false
+  use Loopyard.AgentCase
 
   alias Loopyard.ChatAgent
   alias Loopyard.Agent.Event
@@ -44,7 +44,6 @@ defmodule Loopyard.ChatAgent.ContextWindowTest do
       Loopyard.TestHelpers.start_agent(
         id: id,
         name: "Context Window Test",
-        working_dir: File.cwd!(),
         started_by: "test",
         backend: RecordingBackend
       )

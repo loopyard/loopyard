@@ -1,5 +1,5 @@
 defmodule Loopyard.Agents.CodingTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   alias Loopyard.Agents.Coding
 

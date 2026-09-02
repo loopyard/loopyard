@@ -87,10 +87,10 @@ defmodule LoopyardWeb.ShowcaseTest do
     # The Reviewer deck: pending decisions one per slide, waiting count,
     # per-decision permalink, and a settled receipt staying traversable.
     "reviewer" => [
-      "2 waiting",
+      "Fly.io (Recommended)",
       "Where should staging deploys go?",
       "Ship the fix now or hold for a real repro?",
-      "Open this decision",
+      "Quarantine and ship (Recommended)",
       "Answered"
     ],
     # The ambient sound bed's control page (the aural package's UI).

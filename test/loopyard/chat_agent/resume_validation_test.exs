@@ -13,7 +13,7 @@ defmodule Loopyard.ChatAgent.ResumeValidationTest do
   reason and a human can remove-and-recreate the agent.
   """
 
-  use ExUnit.Case, async: false
+  use Loopyard.AgentCase
 
   alias Loopyard.ChatAgent
   alias Loopyard.TestSupport.RecordingBackend
@@ -76,7 +76,6 @@ defmodule Loopyard.ChatAgent.ResumeValidationTest do
       bad_summary = %{
         id: id,
         # name MISSING
-        working_dir: File.cwd!(),
         # started_at MISSING
         last_activity_at: DateTime.utc_now(),
         status: :stopped,

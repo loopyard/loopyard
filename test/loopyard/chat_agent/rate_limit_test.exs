@@ -18,7 +18,7 @@ defmodule Loopyard.ChatAgent.RateLimitTest do
       silently lose their input.
   """
 
-  use ExUnit.Case, async: false
+  use Loopyard.AgentCase
 
   alias Loopyard.ChatAgent
   alias Loopyard.Agent.Event
@@ -35,7 +35,6 @@ defmodule Loopyard.ChatAgent.RateLimitTest do
       Loopyard.TestHelpers.start_agent(
         id: id,
         name: "Rate Limit Test",
-        working_dir: File.cwd!(),
         started_by: "test",
         backend: RecordingBackend
       )

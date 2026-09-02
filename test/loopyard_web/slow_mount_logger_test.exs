@@ -1,5 +1,5 @@
 defmodule LoopyardWeb.SlowMountLoggerTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true, async: false
 
   alias LoopyardWeb.SlowMountLogger
 

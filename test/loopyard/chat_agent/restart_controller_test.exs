@@ -17,7 +17,9 @@ defmodule Loopyard.ChatAgent.RestartControllerTest do
     # controller restart and the next crash (which used to fall out
     # of a 500ms window and produce flaky failures).
     Application.put_env(:loopyard, :quarantine_threshold, {3, 5_000})
-    Application.put_env(:loopyard, :crash_backoff_base_ms, 10)
+    # 1ms base: the crash-loop test drives ~8 respawns through the exponential
+    # backoff, so the base is the test's floor (10ms → ~2.5s of pure waiting).
+    Application.put_env(:loopyard, :crash_backoff_base_ms, 1)
 
     on_exit(fn ->
       Application.delete_env(:loopyard, :quarantine_threshold)

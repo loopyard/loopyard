@@ -18,7 +18,7 @@ defmodule Loopyard.ChatAgent.RestartStateTest do
   test pins down each reset path against re-introduction.
   """
 
-  use ExUnit.Case, async: false
+  use Loopyard.AgentCase
 
   alias Loopyard.ChatAgent
   alias Loopyard.Agent.Event
@@ -37,7 +37,6 @@ defmodule Loopyard.ChatAgent.RestartStateTest do
       Loopyard.TestHelpers.start_agent(
         id: id,
         name: "Restart State Test",
-        working_dir: File.cwd!(),
         started_by: "test",
         backend: RecordingBackend
       )
@@ -120,7 +119,6 @@ defmodule Loopyard.ChatAgent.RestartStateTest do
         Loopyard.TestHelpers.start_agent(
           id: id,
           name: "Restart State Test",
-          working_dir: File.cwd!(),
           started_by: "test",
           backend: RecordingBackend,
           resume: true
@@ -328,7 +326,6 @@ defmodule Loopyard.ChatAgent.RestartStateTest do
         Loopyard.TestHelpers.start_agent(
           id: id,
           name: "Restart State Test",
-          working_dir: File.cwd!(),
           started_by: "test",
           backend: RecordingBackend,
           resume: true

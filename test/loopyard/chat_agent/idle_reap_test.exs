@@ -30,7 +30,7 @@ defmodule Loopyard.ChatAgent.IdleReapTest do
        no need to re-test here).
   """
 
-  use ExUnit.Case, async: false
+  use Loopyard.AgentCase
 
   alias Loopyard.ChatAgent
   alias Loopyard.TestSupport.RecordingBackend
@@ -58,7 +58,6 @@ defmodule Loopyard.ChatAgent.IdleReapTest do
       Loopyard.TestHelpers.start_agent(
         id: id,
         name: "Idle Reap Test",
-        working_dir: File.cwd!(),
         started_by: "test",
         backend: RecordingBackend
       )

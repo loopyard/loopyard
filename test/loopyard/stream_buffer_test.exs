@@ -1,5 +1,5 @@
 defmodule Loopyard.StreamBufferTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   alias Loopyard.StreamBuffer
 
