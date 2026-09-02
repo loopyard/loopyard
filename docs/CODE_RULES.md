@@ -598,5 +598,8 @@ paper — but during an iOS rubber-band WebKit composites the overscrolled
 content and painted it OVER the bar (the purple turn card popped above
 "Operator"; a decision's byline shoved the back arrow). Put `isolate` on the
 scroller: nothing inside can then outrank the chrome, whatever the
-compositor does. `#messages` and each decision slide's scroller carry it.
+compositor does. `#messages` and each decision slide's scroller carry it,
+plus `overscroll-y-none` (a panel under a fixed header does not bounce), and
+the bars are `transform-gpu` so they are composited layers the rubber-band
+layer can't paint through.
 

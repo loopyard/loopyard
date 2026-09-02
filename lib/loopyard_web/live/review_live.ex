@@ -452,7 +452,7 @@ defmodule LoopyardWeb.ReviewLive do
       <div
         id={"scroll-" <> @card.dom_id}
         phx-hook="StickyShadow"
-        class="isolate flex-1 min-h-0 overflow-y-auto overscroll-y-contain"
+        class="isolate overscroll-y-none flex-1 min-h-0 overflow-y-auto"
       >
         <div class="mx-auto w-full max-w-2xl px-4 md:px-6 pt-3">
           <div id={"top-" <> @card.dom_id}></div>
