@@ -1,3 +1,5 @@
+> Archived Sept 2026 — merged. Per-tool workstation integrations live in `Loopyard.Workstation.Integration` and `LoopyardWeb.WorkstationToolLive`; the SSH access integration continues in plans/ssh-integration.md.
+
 # Workstation integrations — per-tool setup, docs for humans & agents
 
 ## The shape (decided with Brad, 2026-06-14)

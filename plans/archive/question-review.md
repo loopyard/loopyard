@@ -1,3 +1,5 @@
+> Archived Sept 2026 — superseded by plans/decisions.md and plans/notifications-and-agents.md; the Reviewer became `LoopyardWeb.NotificationsLive` (`/notifications`, with `/review*` kept as an alias).
+
 # Questions: a design language + the Review flow
 
 ## The insight (Brad, Jul 26)

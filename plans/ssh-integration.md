@@ -30,7 +30,7 @@ of inventing a parallel model.
 
 **2. Enrollment = curl your pubkey up the ingress we already have.**
 The `PUT /workstations/:id/file/*path` ingress is PushToken-gated for remote
-requests (`plans/integrations.md`). Enroll with:
+requests (`plans/archive/integrations.md`). Enroll with:
 
 ```bash
 cat ~/.ssh/id_ed25519.pub | curl -T - \
@@ -86,7 +86,7 @@ for that model — it's the first place the box has to care who's at the keyboar
 ## Invariants
 
 - **Never required.** Local daemon stays no-auth; empty enrollment → SSH still
-  works locally, agents still boot. (`plans/integrations.md` rule #1.)
+  works locally, agents still boot. (`plans/archive/integrations.md` rule #1.)
 - **Remote is always key-gated.** Network daemon never runs with `no_auth_needed`.
 - **Enrollment is always PushToken-gated for remote.** TOFU on the install token.
 - Host identity keys (`ensure_host_keys`) unchanged — those are the server's

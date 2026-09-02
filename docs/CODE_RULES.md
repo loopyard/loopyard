@@ -35,15 +35,19 @@ Historical wins (real concerns, not just size):
 - `project_registry.ex` → `ProjectRegistry` + `WorkspaceRegistry`. Different lifecycles, different callers.
 - `volume_manager.ex` → `VolumeManager` + `VolumeIO` + `VolumeCloner`. Different boundaries (CLI / file I/O / clone pipeline).
 
-Current files over 300 that stay whole on purpose:
-- `workspace_live.ex` (~1200). The workspace view multiplexes chat + file browser + git viewer + volumes + services against one PubSub subscription set. The **render pipeline and shared live data are the concern** — splitting into per-tool LiveViews loses multiplayer cohesion (see docs/ARCHITECTURE.md § LiveView architecture). Handler clusters with their own vocabulary (`DiffLoader`, `FileBrowser`) ARE extracted. The remaining size is genuine multiplexing, not mixed concerns.
-- `chat_agent.ex` (~990). One GenServer per agent session. Send/stop/restart/stream transitions are interleaved — extracting them would thread the same state across files. Section-header comments navigate by concern; OS-process and state-machine helpers are extracted as separate modules.
-- `compose.ex` (~560). One subject (Docker Compose lifecycle + validation). No internal vocabulary split.
+Current files over 300 that stay whole on purpose. Their sizes are ENFORCED,
+not hand-maintained here: `test/loopyard/invariants_test.exs` caps every file
+at `@default_max_lines` (800) and carries a per-file allowance list
+(`@size_allowlist`) for the known-large ones — when you split one, lower or
+remove its allowance; never raise a cap to make a file fit.
+- `workspace_live.ex`. The workspace view multiplexes chat + file browser + git viewer + volumes + services against one PubSub subscription set. The **render pipeline and shared live data are the concern** — splitting into per-tool LiveViews loses multiplayer cohesion (see docs/ARCHITECTURE.md § LiveView architecture). Handler clusters with their own vocabulary (`DiffLoader`, `FileBrowser`) ARE extracted. The remaining size is genuine multiplexing, not mixed concerns.
+- `chat_agent.ex`. One GenServer per agent session. Send/stop/restart/stream transitions are interleaved — extracting them would thread the same state across files. Section-header comments navigate by concern; OS-process and state-machine helpers are extracted as separate modules.
+- `compose.ex`. One subject (Docker Compose lifecycle + validation). No internal vocabulary split.
 
 Rule of thumb the next time this comes up: **can a reader understand half this file without reading the other half?** If yes, split. If no, section-header it.
 
 **LiveView extraction pattern:** extract into modules under `live/workspace_live/`. Each module exports functions that take and return sockets. The LiveView's handlers become one-line delegates:
-- `WorkspaceLive.Components` (use macro that imports Sidebar, Chat, Services, States, Formatters, ContextPanel, SyncDetail, Volumes)
+- `WorkspaceLive.Components` (use macro that imports Sidebar, Chat, Services, Volumes, SyncDetail, ContextPanel, States, Formatters, SetupProgress — the module's `__using__/1` is the list)
 - `WorkspaceLive.AgentLifecycle` — spawn, select, list agents
 - `WorkspaceLive.ServiceLogs` — fetch, refresh, format service logs
 - `WorkspaceLive.DiffLoader` — git diff / commit fetches (adapter-scoped)
@@ -67,6 +71,11 @@ agent boot in the suite spawned the real CLI — ~230 ms per test, a third of
 the whole run — and `docker run -v <name>` auto-created a volume per test
 workspace. A bypass is invisible in CI (Docker is off there) and only shows
 as "the suite is slow".
+
+The one named exception is the daemon probe itself: `DockerDaemon.probe/0`
+(`docker_daemon.ex`) shells `docker version` directly, by design — it is what
+DECIDES whether the daemon is up, so it cannot sit behind the gate it feeds.
+Its test seam is the `:docker_probe_fun` app config, not `:docker_enabled`.
 
 ## Keep tests fast
 
@@ -262,7 +271,7 @@ Views read from ETS/GenServers. They never create or modify infrastructure state
 
 ## Containers persist across server reboots
 
-`ServiceManager.terminate` does NOT call `compose down`. On restart, `init` detects running containers via `Compose.ps` and reconnects. Only `POST /system/reset` tears down containers.
+`ServiceManager.terminate` does NOT call `compose down`. On restart, `init` detects running containers via `Compose.ps` and reconnects. Containers come down only through the explicit teardown paths: `Compose.down/2` via `ServiceManager.stop_services/1` (the user's stop action), `Onboarding.stop_preview/1`, and `Workspace.Destructor` (workspace deletion). There is no `/system/reset` route.
 
 ## Message URL rules
 
@@ -338,7 +347,7 @@ When tearing down a project (eval cleanup, user deletion, system reset), always 
 
 ## Docker volume naming must be canonical
 
-Volume names are **always** `loopyard-<workspace_id>-code`. Never create volumes with other naming conventions (the old `code-<workspace_id>` pattern created ghost volumes that never got cleaned up). `VolumeManager.code_volume_name/1` is the single source of truth. `Workspace.volume_name_for/1` looks up the workspace's registered volume, falling back to `code_volume_name` — never to an ad-hoc format.
+Volume names are **always** `<prefix><workspace_id>-code`, produced by `VolumeManager.code_volume_name/1` — the single source of truth. The prefix is `Docker.prefix/0` (`:resource_prefix` app config, `loopyard-` by default; the test suite runs under its own prefix so it can never name a real resource). Never create volumes with other naming conventions (the old `code-<workspace_id>` pattern created ghost volumes that never got cleaned up), and never spell the prefix out by hand. `Workspace.volume_name_for/1` looks up the workspace's registered volume, falling back to `code_volume_name` — never to an ad-hoc format.
 
 ## Never silently swallow errors in cleanup
 
@@ -350,13 +359,20 @@ rescue _ -> :ok
 rescue e -> Logger.warning("[Module] cleanup failed: #{Exception.message(e)}")
 ```
 
+This rule is about RESOURCE-CLEANUP paths — volume/container/session release,
+`terminate/2`, janitor release fns — where a swallowed error is a leak nobody
+can diagnose. A bare `_ -> :ok` rescue elsewhere (a best-effort telemetry or
+EventLog call, an optional ETS read inside a probe) is fine when the failure
+changes nothing you would act on; ~20 such sites exist on purpose. The test:
+if this rescue fires and a resource is left behind, it needs the log line.
+
 ## Every Task must be supervised
 
 Never `Task.start(fn -> ... end)`. Always `Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn -> ... end)`. Unsupervised tasks crash silently — nobody notices, nothing retries, the work just disappears. `Task.start_link` is acceptable only when the parent GenServer needs to detect the crash (e.g., ChatAgent's streaming task).
 
 ## New fields go in normalize, not in fallback chains
 
-When you add a field to a workspace (or project), pre-existing records in ETS won't have it. Don't scatter fallback logic across consumers — add the backfill to `WorkspaceRegistry.normalize_workspace/1` (or the project equivalent). That function runs on every ETS read and is the single place for "if this field is missing, here's how to compute it."
+When you add a field to a workspace (or project), pre-existing records in ETS won't have it. Don't scatter fallback logic across consumers — add the backfill to the private `WorkspaceRegistry.normalize_workspace/1` (or the project equivalent). That function runs on every ETS read and is the single place for "if this field is missing, here's how to compute it."
 
 **The bug this prevents:** `worktree_path` was added but pre-refactor workspaces had `nil`. WorkspaceGroup, SyncMonitor, and Source.Local each wrote their own fallback to compute it — three different implementations that drifted. The fix: one backfill rule in `normalize_workspace`, zero fallbacks anywhere else.
 
@@ -415,14 +431,14 @@ Atoms are not garbage-collected. Calling `String.to_atom` on input from JSON, HT
 
 Use `String.to_existing_atom/1` when you're mapping a string to a known set of atoms, or keep the value as a string and dispatch on it.
 
-The two current internal uses (`mix loopyard.rpc` cookie file, `mix loopyard.server` cookie, `project_store.ex` config keys) are bounded — the input space is fixed and operator-controlled. If you extend the project store, source config, or any other deserializer to accept new keys, switch the conversion to `String.to_existing_atom/1` or keep keys as strings.
+The current internal uses are bounded — the input space is fixed and operator-controlled: the cookie file read by `mix loopyard.rpc`, `mix loopyard.server` and `mix loopyard.harness_check`, the `project_store.ex` config keys, and the closed `@phases` set interpolated into an atom in `workspace/setup.ex`. Credo's `Credo.Check.Warning.UnsafeToAtom` (`.credo.exs`) now guards this: each allowed site carries a `credo:disable-for-next-line` / `credo:disable-for-this-file` comment with its reason, and a new `String.to_atom` without one fails `mix credo`. If you extend the project store, source config, or any other deserializer to accept new keys, switch the conversion to `String.to_existing_atom/1` or keep keys as strings.
 
 ## `Phoenix.HTML.raw/1` only with proven-safe HTML
 
 `raw/1` skips Phoenix's auto-escaping. The bytes it receives land verbatim in the browser. Every call must satisfy one of:
 
 1. **Escape-then-mutate.** Input is run through `Phoenix.HTML.html_escape/1` first, then a transformation that only inserts known-safe markup (e.g. `Components.Ansi.to_html/1` escapes the text and only adds `<span class="...">` tags around it).
-2. **Trusted producer.** The HTML came from a library whose contract is "I emit safe HTML" (Makeup syntax highlighting, server-controlled SVGs like the QR code in `connect_live.ex`).
+2. **Trusted producer.** The HTML came from a library whose contract is "I emit safe HTML" (Makeup syntax highlighting, `Loopyard.Markdown.to_html/1` — MDEx with `unsafe_: false`, which escapes any raw HTML in the source; that option IS the boundary, never flip it — and server-controlled SVGs like the QR code in `connect_live.ex`).
 3. **Static literal.** A fixed string in the call site (`Phoenix.HTML.raw("&nbsp;")`).
 
 Never pass agent output, chat messages, filenames, log lines, terminal output, or anything a remote source produced directly into `raw/1`. If you need to render formatted agent content, escape first and add markup on top.
@@ -504,7 +520,7 @@ When a pattern exists, use it. Don't write your own version.
 | Write file to volume | `VolumeIO.write_file(vol, path, content)` | Rolling your own base64 + docker exec |
 | Clone repo into volume | `VolumeCloner.clone_into_volume(vol, url)` | Inline git clone + docker run |
 
-**Every Docker CLI call goes through `Loopyard.Docker`.** No `System.cmd("docker", ...)` anywhere else. Docker.docker/2 handles timeouts, telemetry, and error formatting. Docker.stream/3 handles long-running commands with callbacks. Docker.open_port/1 handles raw port needs (Observer events, terminal).
+**Every Docker CLI call goes through `Loopyard.Docker`.** No `System.cmd("docker", ...)` anywhere else — the one exception is the `DockerDaemon` liveness probe (see "Every Docker shell-out honours the daemon gate"). Docker.docker/2 handles timeouts, telemetry, and error formatting. Docker.stream/3 handles long-running commands with callbacks. Docker.open_port/1 handles raw port needs (Observer events, terminal).
 
 ## URL variants go in the path, never in a query string
 
@@ -514,7 +530,7 @@ Good:
 - `GET /aural/:id/stream.mp3`
 - `POST /aural/:id/stream.whep` (future WebRTC transport)
 - `GET /messages/:id/raw`
-- `GET /branding/logo.svg`, `/branding/logo.png`
+- `GET /branding/logo.svg`, `/branding/logo.png` (external site, served from `packages/brand`)
 
 Bad:
 - `GET /aural/:id/stream?format=mp3`
@@ -548,9 +564,14 @@ never walk the message list positionally.
   blocked-on-a-human and nothing else; amber is transitional caution; never
   interchange them. Iris is the violet family — the indigo experiment is
   reverted and guarded.
-- **Chat text uses the three tokens** (chat-body/sub/meta) — never text-lg /
-  text-base in chat renderers. "Slightly different sizes" is how the stream
-  turned into a jumble twice.
+- **Text uses the five-token scale** — `text-meta` / `text-body` / `text-lead` /
+  `text-title` / `text-hero`, px values in CSS custom properties at the top of
+  `assets/tailwind.config.js` so the whole scale shifts at one breakpoint.
+  Tailwind's default sizes are REPLACED (`text-sm` generates nothing), and the
+  chat's old private tokens (`chat-body`/`chat-sub`/`chat-meta`) are BANNED
+  along with `text-lg`/`text-base` and arbitrary `text-[…]` values
+  (`design_system_test.exs`, "the type scale is five tokens"). "Slightly
+  different sizes" is how the stream turned into a jumble twice.
 - **Hooks on phx-update="ignore" DOM must wire-once** (element persists across
   LiveView reconnects; mounted() re-runs → duplicated listeners). Guard with
   `el.dataset.wired`.
@@ -565,7 +586,7 @@ never walk the message list positionally.
 
 Every addressable thing gets a PATH, mirroring the existing grammar
 (`/projects/:project_id/workspaces/:workspace_id/...`,
-`/messages/:agent_id/:msg_id`, `/review/:agent_id/:msg_id`). Query strings are
+`/messages/:agent_id/:msg_id`, `/notifications/:agent_id/:msg_id`). Query strings are
 for OPTIONS on a resource (filters, legacy fallbacks), never for identity.
 Before adding a `?thing=id` param, add the route. A URL should read like it
 means something when pasted into a chat — that's the test.
@@ -625,6 +646,11 @@ so `h-screen` left the page taller than the screen) and carries
 behavior: none }`. A pull at a panel's top then has nothing to chain into;
 the bars cannot be dragged off. Only the panels scroll.
 
+Today only the Operator shell (`Components.AppShell`) does this.
+`workspace_live.ex` still renders `h-screen` WITHOUT `data-app-shell` — that
+is the pending migration, not a pattern to copy; a new shell follows
+`AppShell`.
+
 ## The inbox: raise through the funnels, never scan
 
 Every decision card (question / approval / secret request) is appended via
@@ -635,5 +661,10 @@ MUST go through them — a card written to ETS any other way is invisible to
 the inbox until the reconcile sweep catches it (up to 60 s), and a status
 flipped any other way leaves a phantom open item for as long. Never compute
 "what's waiting on a human" by scanning agent summaries; read the store
-(`Notifications.open/1`, `Attention.line/0`). It used to be a scan on every
-render of four surfaces and inside every push payload.
+(`Notifications.open/1`, `Attention.line/1`). It used to be a scan on every
+render of four surfaces and inside every push payload. The surfaces that read
+it are `/notifications` (canonical) and its `/decisions*` / `/review*` aliases
+(`router.ex`) — there is no `/queue`. Known wart: `Attention.line/1` accepts a
+`host` argument it ignores (`def line(_host \\ nil)`) while `dashboard_live`
+and `operator_live` still pass one; it is call-site compatibility, not a
+contract — don't build on it.

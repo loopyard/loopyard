@@ -1,3 +1,5 @@
+> Archived Sept 2026 — merged (issue #72). First-run walkthrough lives in `LoopyardWeb.DashboardLive` (guarded by `test/loopyard_web/live/dashboard_first_run_test.exs`) and `Loopyard.Onboarding`.
+
 # Onboarding — first run to first shipped change
 
 Tracking issue: [#72](https://github.com/loopyard/loopyard/issues/72)

@@ -1,3 +1,5 @@
+> Archived Sept 2026 — merged. The operator cockpit is `LoopyardWeb.OperatorLive` (`/operator`), `Loopyard.Operator`, `Operator.Digest`; see CLAUDE.md → "The Operator — the cockpit".
+
 # Plan: The Operator — one chief-of-staff agent + surface
 
 > **Build status (branch `operator-hub`, worktree):** Phases 1–4 built + compiling.

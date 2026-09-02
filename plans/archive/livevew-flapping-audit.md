@@ -1,3 +1,5 @@
+> Archived Sept 2026 — findings applied (`push_patch` for intra-module routes, no render-time `Registry.lookup`); guarded by `test/loopyard_web/live/workspace_live_test.exs`.
+
 # LiveView flapping audit — April 2026
 
 Two user-reported flashes in the workspace sidebar, both traced to

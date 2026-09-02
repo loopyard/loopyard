@@ -1,6 +1,8 @@
+> Archived Sept 2026 — audit complete; the unresolved leftovers (WorkspaceGroup `:one_for_all`, RestartController.release docstring) are tracked in docs/IMPROVEMENTS.md → Source-audit follow-ups.
+
 # Post-Migration Audit
 
-Audit of `plans/coordination-hardening.md` moves #2, #3, #6, #7, #7a, #7b, #7d, #8, #9, #10, #11, shipped on branch `harden-resume-state` (commits `139c852`..`0ab05d9`). Read-only pass; no code edited.
+Audit of `plans/archive/coordination-hardening.md` moves #2, #3, #6, #7, #7a, #7b, #7d, #8, #9, #10, #11, shipped on branch `harden-resume-state` (commits `139c852`..`0ab05d9`). Read-only pass; no code edited.
 
 ## Summary
 

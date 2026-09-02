@@ -1,3 +1,5 @@
+> Archived Sept 2026 — merged (`Common.mode_nav`, `AppHeader`), then partially reversed by plans/notifications-and-agents.md (the three-tab bar); see that plan for the current IA.
+
 # IA reset: two modes, not a tree
 
 ## The insight (Brad, Jul 26)
