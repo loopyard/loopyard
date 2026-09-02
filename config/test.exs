@@ -101,3 +101,4 @@ config :loopyard, docker_enabled: System.get_env("LOOPYARD_DOCKER_TESTS") in ["1
 # Chat attachments write into a fake on-disk "volume" (see
 # Loopyard.Test.FakeAttachmentWriter) — the real writer is `docker cp`.
 config :loopyard, attachment_writer: Loopyard.Test.FakeAttachmentWriter
+config :loopyard, container_io: Loopyard.Test.FakeContainerIO

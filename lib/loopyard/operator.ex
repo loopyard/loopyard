@@ -42,6 +42,16 @@ defmodule Loopyard.Operator do
     {:ok, %{agent_id: agent_id}}
   end
 
+  @doc """
+  Where the operator's chat attachments live: its workstation container, under
+  the identity's `$HOME/.loopyard/uploads` (see `Loopyard.Attachments`).
+  """
+  @spec attachment_target(String.t() | nil) :: Loopyard.Attachments.target()
+  def attachment_target(workstation_id \\ nil) do
+    identity = workstation_id || Workstation.current()
+    {:container, Workstation.container_name(identity), "/home/#{identity}"}
+  end
+
   @doc "The current operator agent id for an identity, or nil (no spawn)."
   def agent_id(workstation_id \\ nil) do
     identity = workstation_id || Workstation.current()

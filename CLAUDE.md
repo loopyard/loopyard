@@ -388,7 +388,12 @@ boots the cloned config once cloning is done — not just forks.
   each image attachment out of the volume and sends it as an ACP `image`
   content block alongside the text when the adapter advertises
   `promptCapabilities.image` (Claude's does; ≤5 MB per image). A harness
-  without it gets text only and Reads the path.
+  without it gets text only and Reads the path. The store is a **target**:
+  `{:workspace, id}` (code volume, via `VolumeIO`) or `{:container, name,
+  home}` (the operator's workstation `$HOME/.loopyard/uploads`, via
+  `ContainerIO`); the Connection's `prompt_context` carries volume AND
+  container so `prompt_blocks/2` reads from whichever the session has.
+  `/operator/attachments/:name` serves the operator's.
 - **Composer queue is ONE card.** Messages queued while the agent is
   busy render as a single sender-labeled band (the workstation name,
   e.g. "Brad" — not "You") with every pending line inside it, each

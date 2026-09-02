@@ -29,6 +29,8 @@ defmodule LoopyardWeb.OperatorLive do
   import LoopyardWeb.Components.Breadcrumbs, only: [breadcrumbs: 1]
   import LoopyardWeb.Live.WorkspaceLive.Components.Chat, only: [chat_panel: 1]
 
+  alias LoopyardWeb.Live.WorkspaceLive.Attachments, as: ComposerAttachments
+
   import LoopyardWeb.OperatorLive.Rail,
     only: [for_you_rail: 1, sound_player: 1, fade_class: 2, bucket_done: 2]
 
@@ -81,6 +83,9 @@ defmodule LoopyardWeb.OperatorLive do
     socket =
       socket
       |> assign(:agent_id, agent_id)
+      # Chat attachments: the operator keeps them in its workstation container.
+      |> ComposerAttachments.allow()
+      |> assign(:attachment_target, Loopyard.Operator.attachment_target())
       # The shared chat handlers key everything off :selected_id — the operator's
       # single agent IS the selection.
       |> assign(:selected_id, agent_id)
@@ -220,6 +225,7 @@ defmodule LoopyardWeb.OperatorLive do
     # ChatForm hook clears the box.
     message = String.trim(message)
     editing = socket.assigns[:editing_pending]
+    attachments? = ComposerAttachments.pending?(socket)
 
     cond do
       # EDIT-IN-PLACE: save an edited queued message at its position instead of
@@ -232,7 +238,7 @@ defmodule LoopyardWeb.OperatorLive do
 
         {:reply, %{ok: true}, assign(socket, :editing_pending, nil)}
 
-      message == "" ->
+      message == "" and not attachments? ->
         {:reply, %{ok: true}, socket}
 
       is_nil(socket.assigns.agent_id) ->
@@ -252,9 +258,16 @@ defmodule LoopyardWeb.OperatorLive do
         # ack, no error and no transitional state: from the outside, typing did
         # NOTHING. A cast is fine for internal/eval callers; a UI send must be
         # a call, because only a call can tell the person their text landed.
-        case ChatAgent.enqueue_message(socket.assigns.agent_id, message) do
-          :ok ->
-            {:reply, %{ok: true}, socket}
+        with {:ok, atts} <- ComposerAttachments.consume(socket),
+             :ok <-
+               ChatAgent.enqueue_message(
+                 socket.assigns.agent_id,
+                 Loopyard.Attachments.annotate(message, atts)
+               ) do
+          {:reply, %{ok: true}, socket}
+        else
+          {:error, note} when is_binary(note) ->
+            {:reply, %{ok: false, note: note}, socket}
 
           {:error, :queue_full} ->
             {:reply,
@@ -274,6 +287,12 @@ defmodule LoopyardWeb.OperatorLive do
   end
 
   # Composer/queue controls (chat_panel emits these) — wired so no button is dead.
+  # The composer's upload tray (see WorkspaceLive.Attachments).
+  def handle_event("validate_attachments", _params, socket), do: {:noreply, socket}
+
+  def handle_event("cancel_attachment", %{"ref" => ref}, socket),
+    do: {:noreply, ComposerAttachments.cancel(socket, ref)}
+
   def handle_event("clear_pending", _p, socket) do
     ChatAgent.clear_pending(socket.assigns.agent_id)
     {:noreply, assign(socket, :editing_pending, nil)}
@@ -719,6 +738,7 @@ defmodule LoopyardWeb.OperatorLive do
             streaming_text={@streaming_text}
             streaming_thinking={@streaming_thinking}
             agent={@selected_agent}
+            uploads={assigns[:uploads]}
             workspace_id={nil}
             host={@host}
             thinking_word={@thinking_word || "Thinking"}
