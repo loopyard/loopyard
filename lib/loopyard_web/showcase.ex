@@ -131,7 +131,7 @@ defmodule LoopyardWeb.Showcase do
         path: "",
         script_name: [],
         static_path: "",
-        static_url: URI.to_string(url)
+        static_url: "http://loopyard.local"
       })
     end
 
