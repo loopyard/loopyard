@@ -12,7 +12,11 @@ defmodule Loopyard.Tools.Container.AskUser do
         "options each. Each item in `questions`: {question: text (the memo body), " <>
         "header: short 1-3 word label, multiSelect: false, options: [{label: short " <>
         "choice, description: what it means}]}. Set `source` to the project/" <>
-        "workspace this memo is about so the human knows where it's from.",
+        "workspace this memo is about so the human knows where it's from. NAME " <>
+        "THE THING: never 'this repo', 'that app', 'it', 'the change' — the human " <>
+        "may read the card days later, alone, with none of this chat around it. " <>
+        "Write the repo's name, the path, the branch, the amount. If the question " <>
+        "wouldn't make sense to someone who never saw this conversation, rewrite it.",
     # Busy words fill the WORKING slot (elapsed timer + Stop button), so they
     # must describe what the agent is DOING, not the state it's about to enter.
     # "waiting on you" read as blocked-on-a-human while the working chrome said

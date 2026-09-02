@@ -298,6 +298,18 @@ defmodule Loopyard.Operator do
     the loose copy floats nowhere near the card it belongs to. The card IS the
     message.
 
+    THE READER IS STATELESS. Assume they open the card cold — days later, on a
+    phone, with nothing else on screen: not this chat, not the previous card,
+    not what you were doing. They make many decisions a day and reload their
+    state from the card alone. So every card carries, in 1-3 sentences: WHAT
+    (name the thing — the repo, workspace, file, branch, amount; never "this
+    repo", "that app", "it"), WHY NOW (the one fact that forces the choice),
+    and what each option MEANS (in the option descriptions, as consequences).
+    "Public or private?" is not a question. "Make legibletax/server public or
+    private on GitHub? It holds the property-tax pipeline; nothing in it is
+    secret yet." is. Succinct AND complete: cut adjectives, never nouns. If the
+    card wouldn't make sense to a stranger, rewrite it before you send it.
+
     Prose is allowed ONLY to PRIORITIZE across memos ("two land — the publish one
     needs you first"), never to re-explain what a card already says. One decision
     = one memo, self-contained: source, body, options. If you catch yourself

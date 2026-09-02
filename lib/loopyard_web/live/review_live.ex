@@ -438,7 +438,7 @@ defmodule LoopyardWeb.ReviewLive do
         ago" with "8 of 11" opposite, in the same calm meta voice as the rest
         of the card, so it flicks with the decision instead of looking like a
         second bar that flicks. The one bar that stays put says Decisions. --%>
-          <div class="flex items-center gap-2 min-w-0 mb-3 text-meta text-zinc-500 dark:text-zinc-400">
+          <div class="flex items-center gap-2 min-w-0 mb-3 text-lead text-zinc-500 dark:text-zinc-400">
             <span
               aria-hidden="true"
               class={[
@@ -450,7 +450,7 @@ defmodule LoopyardWeb.ReviewLive do
               From <span class="font-medium text-zinc-700 dark:text-zinc-200">{@who}</span>
               <span :if={@card.slide.asked_at}> · {Deck.ago(@card.slide.asked_at)}</span>
             </span>
-            <span class="ml-auto flex-none inline-flex items-center gap-1 tabular-nums whitespace-nowrap">
+            <span class="ml-auto flex-none inline-flex items-center gap-1 text-meta tabular-nums whitespace-nowrap">
               <a
                 :if={@prev}
                 href={"#slide-" <> @prev.dom_id}
