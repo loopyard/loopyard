@@ -124,8 +124,10 @@ defmodule LoopyardWeb.Showcase do
 
       :persistent_term.put(key, %{
         struct_url: url,
-        url: URI.to_string(url),
-        host: url.host,
+        # Literal, not URI.to_string(url): OTP 28's dialyzer treats URI.t() as
+        # opaque and flags the call (OTP 29 does not).
+        url: "http://loopyard.local",
+        host: "loopyard.local",
         path: "",
         script_name: [],
         static_path: "",
