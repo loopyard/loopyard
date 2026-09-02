@@ -251,6 +251,42 @@ defmodule Loopyard.Harness.QuestionsTest do
       refute Questions.pending?(qid)
     end
 
+    test "answer_with_text/2 answers the NEWEST live ask when several are pending" do
+      # Seen live: the harness abandons an elicitation on its own clock while
+      # our ask keeps blocking, so leaked-but-alive waiters pile up. A typed
+      # reply must go to the ask the agent is actually parked on — the newest
+      # — never to a stale one that happens to come first in ETS.
+      agent = "q-newest-agent-#{System.unique_integer([:positive])}"
+
+      {:ok, older_q} =
+        ClaudeCode.parse([%{"question" => "Old?", "options" => [%{"label" => "A"}]}])
+
+      {:ok, newer_q} =
+        ClaudeCode.parse([%{"question" => "New?", "options" => [%{"label" => "B"}]}])
+
+      older = Task.async(fn -> Questions.ask(agent, older_q) end)
+      older_qid = wait_for_pending()
+      Process.sleep(5)
+      newer = Task.async(fn -> Questions.ask(agent, newer_q) end)
+
+      newer_qid =
+        Enum.find_value(1..100, fn _ ->
+          :ets.tab2list(:harness_questions)
+          |> Enum.find_value(fn
+            {qid, %{agent_id: ^agent}} when qid != older_qid -> qid
+            _ -> nil
+          end) || (Process.sleep(10) && nil)
+        end)
+
+      assert is_binary(newer_qid)
+
+      assert :ok = Questions.answer_with_text(agent, "the new one")
+
+      assert {:ok, %{"q0" => ["the new one"]}} = Task.await(newer, 2_000)
+      assert Questions.pending?(older_qid), "the stale ask must not have taken the reply"
+      Task.shutdown(older, :brutal_kill)
+    end
+
     test "answer_with_text/2 with nothing pending is a clean no-op" do
       assert {:error, :none_pending} =
                Questions.answer_with_text("q-none-#{System.unique_integer()}", "hi")

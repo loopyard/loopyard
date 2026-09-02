@@ -58,7 +58,16 @@ defmodule Loopyard.Harness.Questions do
 
     :ets.insert(
       @table,
-      {qid, %{agent_id: agent_id, msg_id: msg_id, waiter: self(), questions: questions}}
+      {qid,
+       %{
+         agent_id: agent_id,
+         msg_id: msg_id,
+         waiter: self(),
+         questions: questions,
+         # When it was asked — the NEWEST live ask is the one a typed reply
+         # answers (see pending_for_agent/1).
+         asked_at: System.monotonic_time(:millisecond)
+       }}
     )
 
     # Push the question to subscribed devices — tapping opens THIS card's
@@ -351,9 +360,26 @@ defmodule Loopyard.Harness.Questions do
   """
   @spec pending_for_agent(String.t()) :: {String.t(), map()} | nil
   def pending_for_agent(agent_id) when is_binary(agent_id) do
+    # The NEWEST live ask wins. ETS order is arbitrary, and an agent can hold
+    # several live waiters at once: the harness abandons an elicitation on its
+    # own ~60s clock while our ask/2 keeps blocking for its full window, so
+    # leaked-but-alive entries from earlier asks pile up ahead of the real
+    # one. A typed reply routed to one of those answered a stale card (seen
+    # live: "k" became "Answer to your earlier question — Where should this
+    # repo live?") while the ask the agent was actually parked on stayed open
+    # and the chat seized. Entries without asked_at (rebuilt from a card, or
+    # pre-dating the field) sort last.
+    agent_id
+    |> live_entries()
+    |> Enum.max_by(fn {_qid, entry} -> entry[:asked_at] || 0 end, fn -> nil end)
+  end
+
+  # Every entry of the agent's whose waiter is alive — reaping dead-waiter
+  # entries on the way, and skipping waiterless (card-rebuilt) ones.
+  defp live_entries(agent_id) do
     :ets.tab2list(@table)
     |> Enum.filter(fn {_qid, entry} -> entry.agent_id == agent_id end)
-    |> Enum.find_value(fn {qid, entry} ->
+    |> Enum.flat_map(fn {qid, entry} ->
       # A question is only really pending if its waiter (the blocked
       # harness tool process) is still alive. If the tool died abnormally
       # (session restart, stream replaced, CLI crash) the receive in
@@ -362,14 +388,14 @@ defmodule Loopyard.Harness.Questions do
       # message (route it to a dead pid = silently lost).
       cond do
         waiter_alive?(entry.waiter) ->
-          {qid, entry}
+          [{qid, entry}]
 
         # A waiter that WAS a process and has died: the receive in ask/2 never
         # ran, so the entry leaked. Reap it and flip the card off "Asking…".
         is_pid(entry.waiter) ->
           :ets.delete(@table, qid)
           update_msg(entry.agent_id, entry.msg_id, %{status: :timeout})
-          nil
+          []
 
         # NO waiter at all — an entry rebuilt from a durable card (see
         # with_entry/2, which exists precisely so an orphaned card is still
@@ -382,7 +408,7 @@ defmodule Loopyard.Harness.Questions do
         # card existed, every message to that agent killed the GenServer and
         # vanished.
         true ->
-          nil
+          []
       end
     end)
   end
@@ -405,18 +431,17 @@ defmodule Loopyard.Harness.Questions do
   """
   @spec cancel_for_agent(String.t()) :: :ok
   def cancel_for_agent(agent_id) when is_binary(agent_id) do
-    case pending_for_agent(agent_id) do
-      {qid, entry} ->
-        if is_pid(entry.waiter) and Process.alive?(entry.waiter),
-          do: Process.exit(entry.waiter, :kill)
+    # EVERY live entry, not just one: an idle agent with several leaked
+    # waiters used to shed one per message and keep hijacking the rest.
+    for {qid, entry} <- live_entries(agent_id) do
+      if is_pid(entry.waiter) and Process.alive?(entry.waiter),
+        do: Process.exit(entry.waiter, :kill)
 
-        :ets.delete(@table, qid)
-        update_msg(agent_id, entry.msg_id, %{status: :timeout})
-        :ok
-
-      nil ->
-        :ok
+      :ets.delete(@table, qid)
+      update_msg(agent_id, entry.msg_id, %{status: :timeout})
     end
+
+    :ok
   end
 
   @doc """
