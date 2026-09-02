@@ -129,26 +129,48 @@ defmodule Loopyard.AgentBoot do
     working_dir = Keyword.fetch!(agent_opts, :working_dir)
     service_name = Keyword.get(opts, :service_name)
     initial_message = Keyword.get(opts, :initial_message)
+    scope = Keyword.get(agent_opts, :scope) || :workspace
 
-    # Use workspace_id from opts if provided (volume-based workspaces pass it),
-    # otherwise compute from path (bind-mount workspaces)
-    workspace_id = Keyword.get(agent_opts, :workspace_id) || Workspace.workspace_id(working_dir)
+    # A SYSTEM agent has no workspace: its compute is the identity's
+    # workstation container, its group the identity's SystemGroup.
+    {workspace_id, key, steps} =
+      case scope do
+        :system ->
+          identity =
+            Keyword.get(agent_opts, :workstation_identity) || Loopyard.Workstation.current()
 
-    # Volume-based workspaces pass the volume name, otherwise compute from workspace_id
-    volume_name = Keyword.get(agent_opts, :volume) || "code-#{workspace_id}"
+          key = {:system, identity}
 
-    steps = [
-      load_config_step(volume_name),
-      ensure_services_step(id, workspace_id, working_dir),
-      start_agent_step(id, workspace_id, agent_opts, working_dir),
-      send_initial_message_step(id, initial_message, service_name)
-    ]
+          {nil, key,
+           [
+             ensure_workstation_step(id, identity),
+             start_agent_step(id, key, agent_opts, working_dir),
+             send_initial_message_step(id, initial_message, service_name)
+           ]}
+
+        _ ->
+          # Use workspace_id from opts if provided (volume-based workspaces pass it),
+          # otherwise compute from path (bind-mount workspaces)
+          workspace_id =
+            Keyword.get(agent_opts, :workspace_id) || Workspace.workspace_id(working_dir)
+
+          # Volume-based workspaces pass the volume name, otherwise compute from workspace_id
+          volume_name = Keyword.get(agent_opts, :volume) || "code-#{workspace_id}"
+
+          {workspace_id, workspace_id,
+           [
+             load_config_step(volume_name),
+             ensure_services_step(id, workspace_id, working_dir),
+             start_agent_step(id, workspace_id, agent_opts, working_dir),
+             send_initial_message_step(id, initial_message, service_name)
+           ]}
+      end
 
     saga_result =
       Saga.run(steps,
         name: :boot_agent,
-        context: %{id: id, workspace_id: workspace_id},
-        metadata: %{agent_id: id, workspace_id: workspace_id},
+        context: %{id: id, workspace_id: workspace_id, scope_key: key},
+        metadata: %{agent_id: id, workspace_id: workspace_id, scope_key: inspect(key)},
         # :rollback is the safest default for mid-crash recovery.
         # If the BEAM dies between :start_agent and
         # :send_initial_message, resuming forward would try to re-send
@@ -288,22 +310,51 @@ defmodule Loopyard.AgentBoot do
     end
   end
 
+  # A system agent's compute: the identity's workstation container. The name
+  # it came up under rides in the ctx for the start step. Hard-fails — there
+  # is no system agent without its container.
+  defp ensure_workstation_step(id, identity) do
+    %{
+      name: :ensure_workstation,
+      run: fn _ctx ->
+        ChatAgent.update_boot_status(id, "Starting the workstation…")
+
+        case workstation_container().ensure_up(identity) do
+          {:ok, container} -> {:ok, %{container: container}}
+          {:error, reason} -> {:error, {:workstation_container, reason}}
+          other -> {:error, {:workstation_container, other}}
+        end
+      end
+    }
+  end
+
+  defp workstation_container,
+    do: Application.get_env(:loopyard, :workstation_container, Loopyard.Workstation.Container)
+
   # Spawn the ChatAgent GenServer. Rollback stops it so a
-  # later-step failure doesn't leak a running agent.
-  defp start_agent_step(id, workspace_id, agent_opts, working_dir) do
+  # later-step failure doesn't leak a running agent. `key` is the scope key:
+  # a workspace id, or {:system, identity}.
+  defp start_agent_step(id, key, agent_opts, working_dir) do
     %{
       name: :start_agent,
-      run: fn _ctx ->
+      run: fn ctx ->
         ChatAgent.update_boot_status(id, "Starting Claude session...")
 
-        Logger.info("[AgentBoot] #{id} starting Claude session ws=#{workspace_id}")
+        Logger.info("[AgentBoot] #{id} starting Claude session #{inspect(key)}")
 
-        case start_agent_with_retry(workspace_id, agent_opts, working_dir) do
+        # The workstation step resolved the container this agent runs in.
+        agent_opts =
+          case Map.get(ctx, :container) do
+            c when is_binary(c) -> Keyword.put(agent_opts, :container, c)
+            _ -> agent_opts
+          end
+
+        case start_agent_with_retry(key, agent_opts, working_dir) do
           {:ok, pid} ->
             Logger.info("[AgentBoot] #{id} Claude session started successfully")
 
             Loopyard.EventLog.info(
-              "agent_boot:#{workspace_id}",
+              "agent_boot:#{scope_label(key)}",
               "Agent #{id} Claude session started"
             )
 
@@ -372,6 +423,18 @@ defmodule Loopyard.AgentBoot do
   # recover via WorkspaceSupervisor.start_workspace (now handles
   # partial-state rebuilds), then try again. If it still fails,
   # the error bubbles with the real cause.
+  defp start_agent_with_retry({:system, identity}, agent_opts, _working_dir) do
+    case Loopyard.Agents.SystemGroup.start_agent(identity, agent_opts) do
+      {:error, :group_not_running} ->
+        with {:ok, _} <- Loopyard.Agents.SystemSupervisor.ensure_group(identity) do
+          Loopyard.Agents.SystemGroup.start_agent(identity, agent_opts)
+        end
+
+      other ->
+        other
+    end
+  end
+
   defp start_agent_with_retry(workspace_id, agent_opts, working_dir) do
     case Loopyard.WorkspaceGroup.start_agent(workspace_id, agent_opts) do
       {:error, :workspace_not_running} ->
@@ -394,6 +457,9 @@ defmodule Loopyard.AgentBoot do
         other
     end
   end
+
+  defp scope_label({:system, identity}), do: "system:" <> identity
+  defp scope_label(ws_id), do: to_string(ws_id)
 
   # One self-determining kick-off. The agent runs service_status first and does
   # the right thing — bootstrap if unconfigured, confirm health if already set

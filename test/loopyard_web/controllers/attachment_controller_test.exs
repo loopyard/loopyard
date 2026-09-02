@@ -68,7 +68,7 @@ defmodule LoopyardWeb.AttachmentControllerTest do
   end
 
   test "the operator's attachments are served out of its workstation container", %{conn: conn} do
-    {:container, container, home} = Loopyard.Operator.attachment_target()
+    {:container, container, home} = Loopyard.Agents.default_attachment_target()
 
     Loopyard.Test.FakeContainerIO.seed(
       container,

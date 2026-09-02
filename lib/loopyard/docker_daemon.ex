@@ -313,7 +313,7 @@ defmodule Loopyard.DockerDaemon do
   end
 
   defp operator_note(text) do
-    case Loopyard.Operator.agent_id() do
+    case Loopyard.Agents.default_id() do
       id when is_binary(id) ->
         note = %{role: :system, content: text, timestamp: DateTime.utc_now()}
         _ = Loopyard.ChatAgent.MessageWindow.append_message_ets(id, note)

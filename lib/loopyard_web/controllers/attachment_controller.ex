@@ -39,7 +39,9 @@ defmodule LoopyardWeb.AttachmentController do
 
   @doc "The operator's attachments: read out of its workstation container's $HOME."
   def operator(conn, %{"name" => name}) do
-    {:container, container, home} = Loopyard.Operator.attachment_target()
+    {:container, container, home} =
+      Loopyard.Agents.attachment_target(Loopyard.Agents.default_id()) ||
+        Loopyard.Agents.default_attachment_target()
 
     with {:ok, path} <- Attachments.container_path(home, name),
          {:ok, content} <-

@@ -46,13 +46,13 @@ defmodule Loopyard.MCP.Token do
   @doc """
   Sign a token binding this MCP session to one agent. `scope` selects which
   toolset the bridge serves: `:workspace` (the default — container/service
-  control-plane tools, scoped to `workspace_id`) or `:operator` (the operator's
-  project/identity control-plane tools; `workspace_id` is nil). Returns the
+  control-plane tools, scoped to `workspace_id`) or `:system` (a system agent's
+  control-plane tools; `workspace_id` is nil). Returns the
   opaque token string.
   """
   def sign(agent_id, workspace_id, scope \\ :workspace)
       when is_binary(agent_id) and (is_binary(workspace_id) or is_nil(workspace_id)) and
-             scope in [:workspace, :operator] do
+             scope in [:workspace, :system] do
     Phoenix.Token.sign(signing_secret(), @salt, %{
       agent_id: agent_id,
       workspace_id: workspace_id,
@@ -68,8 +68,11 @@ defmodule Loopyard.MCP.Token do
   def verify(token) when is_binary(token) and token != "" do
     case Phoenix.Token.verify(signing_secret(), @salt, token, max_age: @max_age_seconds) do
       {:ok, %{agent_id: agent_id} = claims} when is_binary(agent_id) ->
+        # A token minted under the old name of the system scope still verifies.
+        claims = if claims[:scope] == :operator, do: %{claims | scope: :system}, else: claims
+
         cond do
-          claims[:scope] not in [:workspace, :operator] ->
+          claims[:scope] not in [:workspace, :system] ->
             {:error, :invalid}
 
           # A token minted before the agent's current epoch has been revoked.

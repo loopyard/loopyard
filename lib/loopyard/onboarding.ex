@@ -19,7 +19,6 @@ defmodule Loopyard.Onboarding do
 
   alias Loopyard.{
     CanonicalRepo,
-    ChatAgent,
     ProjectRegistry,
     WorkspaceRegistry,
     VolumeManager,
@@ -148,88 +147,21 @@ defmodule Loopyard.Onboarding do
   end
 
   @doc """
-  Spawn an agent for a workspace — the single backend spawn path shared by the
-  LiveView ("New agent") and provisioning flows (fork). Builds the agent opts,
-  registers the booting stub (so it lands in ETS immediately), and boots it via
-  AgentBoot. Returns `{:ok, agent_id}` or `{:error, reason}`.
+  Spawn an agent — THE single spawn path (`Loopyard.Agents.Spawn`), for every
+  scope. `spawn_agent(template_id, opts)` stamps that template;
+  `spawn_agent(workspace_id, opts)` is the shim every existing caller uses
+  and means "a coding agent in that workspace". Workspace ids are 16 hex
+  chars and template ids are words, so the two never collide.
 
-  opts: `:name`, `:service_name`, `:initial_message`,
-  `:started_by` (default "system").
+  Returns `{:ok, agent_id}` or `{:error, reason}`.
   """
   @spec spawn_agent(String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
-  def spawn_agent(ws_id, opts \\ []) do
-    case WorkspaceRegistry.get_workspace(ws_id) do
-      nil ->
-        {:error, :not_found}
+  def spawn_agent(template_or_ws_id, opts \\ [])
 
-      ws ->
-        working_dir = ws[:path] || ws[:working_dir]
-        id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
-        service_name = Keyword.get(opts, :service_name)
-
-        name =
-          Keyword.get(opts, :name) ||
-            cond do
-              service_name -> "#{service_name}-agent"
-              true -> Loopyard.Agents.Name.for_workspace(ws_id, Keyword.get(opts, :backend))
-            end
-
-        agent_opts =
-          [
-            id: id,
-            name: name,
-            working_dir: working_dir,
-            started_by: Keyword.get(opts, :started_by, "system"),
-            workspace_id: ws_id,
-            # Inherit THIS workspace's workstation identity (its creds/home), not
-            # the global `current` — so agents in a workspace attached to another
-            # workstation follow that identity.
-            workstation_identity: Loopyard.Workspace.workstation_id(ws)
-          ]
-
-        # SECURITY BOUNDARY — workspace agents are ALWAYS container-only. They act
-        # on their code volume through the sandboxed `loopyard-container` MCP
-        # (`exec` runs INSIDE the container); native host tools (Bash/Read/Write,
-        # `docker`, `mix loopyard.rpc`) are NEVER exposed. We do not add a
-        # `bind_mount` here, ever.
-        #
-        # Host `bind_mount` used to grant an agent direct host access, decided by
-        # transient runtime state (`container_running?` / a `volume_based` flag).
-        # A freshly-provisioned agent hit that fallback BEFORE its container was up
-        # and got host `Bash` — which it used to `mix loopyard.rpc` and forge a
-        # workspace behind the app's back. That escape hatch is removed. Local-source
-        # projects sync host↔volume via Mutagen, so no agent needs host access.
-        #
-        # Do NOT reintroduce a per-agent bind_mount. See docs/SECURITY.md.
-
-        agent_opts =
-          if service_name, do: agent_opts ++ [service_name: service_name], else: agent_opts
-
-        # Pass through a custom toolkit + system prompt for special agents (the
-        # operator), and an EXPLICIT `host_access: true` opt-in (never a fallback —
-        # absent ⇒ container-only). These thread straight to Initializer, which
-        # honors :tools / :system_prompt / :host_access. nil → default agent.
-        agent_opts =
-          [:template_id, :backend, :harness, :model, :tools, :host_access]
-          |> Enum.reduce(agent_opts, fn key, acc ->
-            case Keyword.get(opts, key) do
-              nil -> acc
-              val -> acc ++ [{key, val}]
-            end
-          end)
-
-        boot_opts =
-          cond do
-            service_name -> [service_name: service_name]
-            msg = Keyword.get(opts, :initial_message) -> [initial_message: msg]
-            true -> [initial_message: :none]
-          end
-
-        register_opts = if service_name, do: [service_name: service_name], else: []
-        ChatAgent.register_booting(id, name, working_dir, register_opts)
-        Loopyard.AgentBoot.start_monitored(id, agent_opts, boot_opts)
-        {:ok, id}
-    end
+  def spawn_agent(id, opts) when is_binary(id) do
+    if Loopyard.Agents.Template.exists?(id),
+      do: Loopyard.Agents.Spawn.spawn(id, opts),
+      else: Loopyard.Agents.Spawn.spawn("coding", Keyword.put(opts, :workspace_id, id))
   end
 
   @doc """

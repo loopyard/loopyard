@@ -40,11 +40,18 @@ defmodule Loopyard.MCP.ToolRouter do
   Tool modules exposed over the ACP MCP bridge for a token `scope`:
 
     * `:workspace` — the container/service control-plane subset (default).
-    * `:operator` — the operator's project/identity control-plane toolkit.
+    * `:system` — a system agent's control-plane toolkit (`Tools.ControlPlane`).
+
+  An unknown scope RAISES — a token that verified carries one of the two, and
+  handing an unrecognised scope the workspace toolkit by default was a silent
+  widening waiting to happen.
   """
   def tool_modules(scope \\ :workspace)
-  def tool_modules(:operator), do: ToolConfig.acp_operator_tools()
-  def tool_modules(_workspace), do: ToolConfig.acp_control_plane_tools()
+  def tool_modules(:system), do: ToolConfig.acp_system_tools()
+  # The system scope's old name, for a token minted before the rename.
+  def tool_modules(:operator), do: ToolConfig.acp_system_tools()
+  def tool_modules(:workspace), do: ToolConfig.acp_control_plane_tools()
+  def tool_modules(other), do: raise(ArgumentError, "unknown MCP scope #{inspect(other)}")
 
   @doc """
   MCP `tools/list` payload — one entry per exposed tool, bare-named.

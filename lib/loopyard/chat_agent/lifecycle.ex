@@ -218,8 +218,9 @@ defmodule Loopyard.ChatAgent.Lifecycle do
     # sidebar until their session comes up and overwrites the ETS row
     # with a fully-populated summary.
     workspace_id =
-      Keyword.get(opts, :workspace_id) ||
-        Loopyard.Workspace.workspace_id(working_dir)
+      if Keyword.get(opts, :scope) == :system,
+        do: nil,
+        else: Keyword.get(opts, :workspace_id) || Loopyard.Workspace.workspace_id(working_dir)
 
     stub = %Loopyard.ChatAgent{
       id: id,

@@ -5,7 +5,7 @@ defmodule LoopyardWeb.OperatorLive do
   no workspace/project, so it can't render through the workspace view — it gets
   its own focused screen:
   a header + the shared `chat_panel`. Created on first visit
-  (`Loopyard.Operator.ensure_agent/0`).
+  (`Loopyard.Agents.ensure_default/0`).
 
   **Same rendering mechanisms as the workspace chat.** We deliberately reuse the
   extracted handlers (`AgentEvents.handle_message/handle_text_delta/
@@ -22,7 +22,7 @@ defmodule LoopyardWeb.OperatorLive do
   """
   use LoopyardWeb, :live_view
 
-  alias Loopyard.{ChatAgent, Operator, StreamBuffer}
+  alias Loopyard.{Agents, ChatAgent, StreamBuffer}
   alias Loopyard.Events
   alias LoopyardWeb.Live.WorkspaceLive.AgentEvents
   alias LoopyardWeb.Components.AppShell
@@ -59,7 +59,7 @@ defmodule LoopyardWeb.OperatorLive do
     # alive → agent_id/0 is a registry check. Cold path: render the stub shell
     # now, boot in start_async, wire up when it lands (harness-status shows
     # "Starting" meanwhile).
-    agent_id = Operator.agent_id()
+    agent_id = Agents.default_id()
 
     if connected?(socket) do
       if agent_id, do: Events.ChatAgentMessage.subscribe(agent_id)
@@ -84,7 +84,10 @@ defmodule LoopyardWeb.OperatorLive do
       |> assign(:agent_id, agent_id)
       # Chat attachments: the operator keeps them in its workstation container.
       |> ComposerAttachments.allow()
-      |> assign(:attachment_target, Loopyard.Operator.attachment_target())
+      |> assign(
+        :attachment_target,
+        Agents.attachment_target(agent_id) || Agents.default_attachment_target()
+      )
       # The shared chat handlers key everything off :selected_id — the operator's
       # single agent IS the selection.
       |> assign(:selected_id, agent_id)
@@ -122,7 +125,7 @@ defmodule LoopyardWeb.OperatorLive do
     socket =
       if connected?(socket) and is_nil(agent_id) do
         Phoenix.LiveView.start_async(socket, :ensure_operator, fn ->
-          Operator.ensure_agent()
+          Agents.ensure_default()
         end)
       else
         socket

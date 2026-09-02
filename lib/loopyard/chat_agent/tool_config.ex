@@ -129,7 +129,10 @@ defmodule Loopyard.ChatAgent.ToolConfig do
   its workstation container). The operator runs in-container too, so it reaches
   these over the same bridge, scoped by an `:operator` token.
   """
-  def acp_operator_tools, do: Loopyard.Tools.ControlPlane.__tool_server__().tools
+  def acp_system_tools, do: Loopyard.Tools.ControlPlane.__tool_server__().tools
+
+  @doc false
+  def acp_operator_tools, do: acp_system_tools()
 
   @doc "The in-process toolkits a template's agent gets."
   @spec tools_for(Loopyard.Agents.Template.t()) :: [module()]
@@ -137,12 +140,10 @@ defmodule Loopyard.ChatAgent.ToolConfig do
   def tools_for(%Loopyard.Agents.Template{}), do: default_tools()
 
   @doc """
-  The MCP bridge scope a template's tools are served under. The bridge still
-  names the system scope `:operator` (token claims, router) — this is the one
-  place that mapping lives until the bridge is renamed.
+  The MCP bridge scope a template's tools are served under.
   """
-  @spec bridge_scope(Loopyard.Agents.Template.t()) :: :workspace | :operator
-  def bridge_scope(%Loopyard.Agents.Template{tools: :system}), do: :operator
+  @spec bridge_scope(Loopyard.Agents.Template.t()) :: :workspace | :system
+  def bridge_scope(%Loopyard.Agents.Template{tools: :system}), do: :system
   def bridge_scope(%Loopyard.Agents.Template{}), do: :workspace
 
   @doc """

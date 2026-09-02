@@ -78,6 +78,8 @@ config :loopyard, operator_digest_enabled?: false
 # The inbox store keeps no log in tests: items would replay across runs
 # (stale agents, colliding ids) and pollute every deck test.
 config :loopyard, notifications_log?: false
+# Booting a system agent "ensures" its workstation container; no Docker in tests.
+config :loopyard, workstation_container: Loopyard.Test.FakeWorkstationContainer
 
 # Harness memory monitor runs `docker stats` sweeps + restarts bloated agents —
 # meaningless (and Docker-dependent) in tests. :ignore so no child even starts.

@@ -61,11 +61,6 @@ defmodule Loopyard.Application do
       {Registry, keys: :unique, name: Loopyard.Workspace.Setup.Registry},
       {DynamicSupervisor, name: Loopyard.TerminalSupervisor, strategy: :one_for_one},
       {Task.Supervisor, name: Loopyard.TaskSupervisor},
-      # Global home for agents NOT scoped to a workspace (e.g. the Workstation
-      # agent). Workspace agents live under their WorkspaceGroup's
-      # AgentSupervisor; ChatAgent.do_start_agent falls back here when
-      # workspace_id is nil.
-      {DynamicSupervisor, name: Loopyard.AgentSupervisor, strategy: :one_for_one},
       Loopyard.WorkspaceSupervisor,
       # System agents' groups (one per workstation identity), started on demand.
       Loopyard.Agents.SystemSupervisor,
@@ -305,6 +300,16 @@ defmodule Loopyard.Application do
           restore_workspace_agents(ws, acc)
         end
       end)
+
+    # System agents (the operator and its peers), per workstation identity —
+    # the same replay-into-ETS, so they're visible at once and wake on demand.
+    system_count =
+      Loopyard.Workstation.list()
+      |> Enum.map(& &1.id)
+      |> Enum.map(&Loopyard.Agents.restore/1)
+      |> Enum.sum()
+
+    count = count + system_count
 
     if count > 0 do
       Logger.info("[Loopyard] Restored #{count} agent(s) from logs on boot")

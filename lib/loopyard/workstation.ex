@@ -147,11 +147,11 @@ defmodule Loopyard.Workstation do
   """
   @spec reload_agents(String.t()) :: :ok
   def reload_agents(id) when is_binary(id) do
-    operator_id = Loopyard.Operator.agent_id(id)
+    system_ids = Loopyard.Agents.system(id) |> MapSet.new(& &1.id)
 
     Loopyard.ChatAgent.list_agents()
     |> Enum.filter(fn a ->
-      a.id == operator_id or
+      MapSet.member?(system_ids, a.id) or
         (is_binary(a[:workspace_id]) and agent_workstation(a[:workspace_id]) == id)
     end)
     |> Enum.each(fn a ->
@@ -186,7 +186,13 @@ defmodule Loopyard.Workstation do
     :ok
   end
 
-  defp revive(_), do: :ok
+  defp revive(%{id: agent_id}) do
+    Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
+      _ = Loopyard.Agents.ensure_running(agent_id)
+    end)
+
+    :ok
+  end
 
   # workstation_id/1 raises on unknown/malformed ids; never let that abort a reload.
   defp agent_workstation(ws_id) do

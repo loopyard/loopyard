@@ -59,7 +59,7 @@ defmodule LoopyardWeb.NotificationsLive do
         _ -> nil
       end
 
-    operator_id = Loopyard.Operator.agent_id()
+    operator_id = Loopyard.Agents.default_id()
 
     {:ok,
      socket
@@ -364,10 +364,17 @@ defmodule LoopyardWeb.NotificationsLive do
 
   defp parse_ref(_), do: :error
 
-  defp ensure_operator(op) when is_binary(op), do: op
+  defp ensure_operator(op) when is_binary(op) do
+    _ = Loopyard.Agents.ensure_running(op)
+    op
+  rescue
+    _ -> op
+  catch
+    _, _ -> op
+  end
 
   defp ensure_operator(nil) do
-    {:ok, %{agent_id: id}} = Loopyard.Operator.ensure_agent()
+    {:ok, %{agent_id: id}} = Loopyard.Agents.ensure_default()
     id
   rescue
     _ -> nil
