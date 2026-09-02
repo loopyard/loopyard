@@ -98,7 +98,15 @@ defmodule LoopyardWeb.Components.FocusedView do
         </div>
       </div>
 
-      <div class="flex-1 overflow-y-auto">
+      <%!-- No overflow here, on purpose. This shell is min-h-screen, so the
+           column GROWS and the DOCUMENT scrolls; an `overflow-y-auto` on this
+           wrapper never engaged as a scroller — but it still made itself the
+           scrolling ancestor for every `sticky` inside, so a pinned band
+           inside the column tracked the wrapper (which moves with the page)
+           instead of the viewport: measured at y=253 near the page end
+           instead of under the bar. Same trap as the deck's snap, which
+           lives on `html` for the same reason. --%>
+      <div class="flex-1">
         <div class="mx-auto w-full max-w-2xl px-4 md:px-6 py-6 md:py-10">
           {render_slot(@subject)}
           {render_slot(@inner_block)}
