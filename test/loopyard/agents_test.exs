@@ -93,6 +93,33 @@ defmodule Loopyard.AgentsTest do
     assert Agents.restore(identity) == 1
   end
 
+  test "restore_all/0 replays every identity the way the application boots them",
+       %{identity: identity} do
+    now = DateTime.utc_now()
+
+    AgentLog.append(
+      {:agent, "ra-#{identity}",
+       %{
+         id: "ra-#{identity}",
+         name: "Operator",
+         working_dir: Workstation.dir(identity),
+         workspace_id: nil,
+         container: "loopyard-ws-#{identity}",
+         workstation_identity: identity,
+         started_at: now,
+         status: :idle
+       }},
+      log_path: Agents.log_path(identity),
+      version: 1
+    )
+
+    # Workstation.list/0 yields identity strings, not maps — the shape that
+    # once crashed the boot restore.
+    assert Enum.all?(Workstation.list(), &is_binary/1)
+    assert Agents.restore_all() >= 1
+    assert %{scope: :system, workstation_identity: ^identity} = Agents.get("ra-#{identity}")
+  end
+
   @tag timeout: 60_000
   test "a fresh identity gets an Operator stamped from the system template, booted by the saga",
        %{identity: identity} do

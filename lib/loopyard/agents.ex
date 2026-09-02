@@ -243,6 +243,18 @@ defmodule Loopyard.Agents do
   end
 
   @doc """
+  Boot-time restore for EVERY workstation identity — what the application
+  runs after the workspaces. `Workstation.list/0` yields identity STRINGS;
+  the first cut mapped `& &1.id` over it and the whole system-agent restore
+  died on "expected a map" — the operator came back amnesic under a stale
+  marker id. Returns the total restored.
+  """
+  @spec restore_all() :: non_neg_integer()
+  def restore_all do
+    Workstation.list() |> Enum.map(&restore/1) |> Enum.sum()
+  end
+
+  @doc """
   Carry the pre-registry operator across, once and idempotently:
   `operator.json` → `agents.json` (the default id), `operator-agent.log` →
   `agents.log` (same ETF format — id, transcript, native session id and

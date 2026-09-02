@@ -303,11 +303,7 @@ defmodule Loopyard.Application do
 
     # System agents (the operator and its peers), per workstation identity —
     # the same replay-into-ETS, so they're visible at once and wake on demand.
-    system_count =
-      Loopyard.Workstation.list()
-      |> Enum.map(& &1.id)
-      |> Enum.map(&Loopyard.Agents.restore/1)
-      |> Enum.sum()
+    system_count = Loopyard.Agents.restore_all()
 
     count = count + system_count
 
