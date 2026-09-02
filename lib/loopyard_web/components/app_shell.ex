@@ -14,6 +14,15 @@ defmodule LoopyardWeb.Components.AppShell do
 
   attr :title, :string, required: true, doc: "the current crumb, e.g. \"Agents\""
   attr :mode, :atom, required: true, doc: "where we are, for the mode nav"
+
+  attr :crumbs, :list,
+    default: nil,
+    doc: """
+    A deeper trail than brand › title, e.g. Notifications › Past decisions.
+    On a phone the back arrow goes to the crumb before the last — so a
+    sub-view of a root returns to the root, not home. nil = brand › title.
+    """
+
   attr :mode_id, :string, required: true, doc: "unique mode-nav placement id"
   attr :rest, :global, doc: "id / phx-hook for the page root (the chat's ScrollBottom)"
   slot :inner_block, required: true
@@ -31,7 +40,7 @@ defmodule LoopyardWeb.Components.AppShell do
       {@rest}
     >
       <Nav.bar height="h-14" gap="gap-3">
-        <.breadcrumbs crumbs={[{"Loopyard", "/"}, {@title, nil}]} />
+        <.breadcrumbs crumbs={@crumbs || [{"Loopyard", "/"}, {@title, nil}]} />
         <:actions>
           <LoopyardWeb.Components.Common.mode_nav id={@mode_id} active={@mode} />
         </:actions>

@@ -467,22 +467,18 @@ defmodule LoopyardWeb.NotificationsLive do
     ~H"""
     <%!-- The installed app's icon badge: everything open on the inbox. --%>
     <div id="app-badge" phx-hook="AppBadge" data-count={@badge_count} class="hidden"></div>
-    <AppShell.shell title="Notifications" mode={:notifications} mode_id="mode-notifications">
+    <%!-- PAST decisions is the same deck with a different source. The trail says
+    so (Notifications › Past decisions; a phone's back arrow returns to the
+    pending deck) — a second bar under the first was one bar too many. --%>
+    <AppShell.shell
+      title="Notifications"
+      crumbs={
+        @history? && [{"Loopyard", "/"}, {"Notifications", "/notifications"}, {"Past decisions", nil}]
+      }
+      mode={:notifications}
+      mode_id="mode-notifications"
+    >
       <div class="flex-1 min-w-0 min-h-0 flex flex-col">
-        <%!-- PAST decisions is the same deck with a different source; one quiet
-      line says so, and the way back to the pending ones. --%>
-        <div
-          :if={@history?}
-          class="flex-none flex items-center gap-3 px-4 md:px-6 min-h-11 text-meta text-zinc-500 dark:text-zinc-400 border-b border-zinc-200 dark:border-zinc-800"
-        >
-          <span class="font-medium text-zinc-700 dark:text-zinc-200">Past decisions</span>
-          <.link
-            navigate="/notifications"
-            class="ml-auto text-violet-600 dark:text-violet-400 hover:underline"
-          >
-            ← Back to pending
-          </.link>
-        </div>
         <%!-- THE DECK: a horizontal scroll-snap carousel, one decision per slide,
       swiped with the browser's own scrolling (no JS gestures — nothing that
       competes with iOS back). `overscroll-x-contain` stops the rubber band

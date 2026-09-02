@@ -74,7 +74,7 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
         phx-hook="StickyShadow"
         class="isolate overscroll-y-contain flex-1 min-h-0 overflow-y-auto"
       >
-        <div class="mx-auto w-full max-w-2xl px-4 md:px-6 pt-5">
+        <div class="mx-auto w-full max-w-2xl px-4 md:px-6 pt-6">
           <div id={"top-" <> @card.dom_id}></div>
           <%!-- One-shot: mounts only while this slide is the one that just
         settled; focusing the next slide scrolls the deck to it. --%>
@@ -91,9 +91,9 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
           <%!-- THE BYLINE. Who's asking, wearing their own mark: the operator is the
         trefoil (the brand mark is its face); a workspace agent is its
         project · workspace identity, then its name. Age in words. Position
-        as a row of dots — the swipe affordance you can read at a glance —
-        while the deck is short enough; "n of N" past that. --%>
-          <div class="flex items-center gap-2 min-w-0 mb-1 text-lead text-zinc-500 dark:text-zinc-400">
+        as "n of N" — a row of dots was tried and read as noise; the number
+        is what you actually want to know. --%>
+          <div class="flex items-center gap-2 min-w-0 mb-3 text-lead text-zinc-500 dark:text-zinc-400">
             <span
               :if={@system_source?}
               class={[
@@ -132,21 +132,7 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
               >
                 ‹
               </a>
-              <span
-                :if={@total <= 12}
-                class="inline-flex items-center gap-1"
-                aria-label={"#{@index} of #{@total}"}
-              >
-                <span
-                  :for={i <- 1..@total}
-                  class={[
-                    "block rounded-full",
-                    (i == @index && "w-2 h-2 bg-orange-500") ||
-                      "w-1.5 h-1.5 bg-zinc-300 dark:bg-zinc-600"
-                  ]}
-                ></span>
-              </span>
-              <span :if={@total > 12}>{@index} of {@total}</span>
+              <span>{@index} of {@total}</span>
               <a
                 href={(@next && "#slide-" <> @next.dom_id) || "#slide-end"}
                 aria-label="Next decision"
