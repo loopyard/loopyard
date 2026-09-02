@@ -506,11 +506,13 @@ defmodule LoopyardWeb.ReviewLive do
           </a>
         </div>
 
-        <%!-- THE DISCUSSION. At least a screen tall, so the card can ALWAYS be
-        scrolled away and the band above collapse; an empty chat area with
-        the composer at its foot is what a fresh thread should look like.
-        Prompt bands are NOT sticky here — the slide has its own chrome. --%>
-        <div id={"thread-" <> @card.dom_id} class="min-h-screen scroll-mt-24">
+        <%!-- THE DISCUSSION. It grows with its content and no further: a slide
+        with no thread scrolls to the bottom of the card and stops (a screen
+        of empty space under Dismiss read as broken). The collapsed band
+        above only comes into play once a real thread is long enough to
+        scroll the card away. Prompt bands are NOT sticky here — the slide
+        has its own chrome. --%>
+        <div id={"thread-" <> @card.dom_id} class="scroll-mt-24">
           <p :if={@blocked?} class="px-1 py-3 text-body text-zinc-500 dark:text-zinc-400">
             This is the operator's own question, and it's waiting on your answer
             before it can do anything else — including discuss it. Answer it
