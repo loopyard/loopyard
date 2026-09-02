@@ -314,29 +314,27 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
               [
                 StreamCard.action_class(variant: :primary),
                 "w-full sm:w-1/2 order-first",
-                if(draft_count(@msg, @q) > 0,
-                  do: "",
-                  # Lights up the INSTANT you pick, with no server round-trip.
-                  # draft_count is a server assign and a radio click is purely
-                  # client-side, so the commit button sat dead grey after
-                  # selecting an option — it only woke on submit, which is
-                  # backwards. `group-has-[:checked]` covers the options and the
-                  # existing data-qother rule covers free text.
-                  else:
-                    "!bg-zinc-200 !text-zinc-500 dark:!bg-zinc-800 dark:!text-zinc-400 shadow-none " <>
-                      "group-has-[:checked]/qform:!bg-orange-600 " <>
-                      "group-has-[:checked]/qform:!text-white " <>
-                      "group-has-[[data-qother]:not(:placeholder-shown)]/qform:!bg-orange-600 " <>
-                      "group-has-[[data-qother]:not(:placeholder-shown)]/qform:!text-white " <>
-                      "group-has-[:checked]/qform:bg-orange-600 " <>
-                      "group-has-[:checked]/qform:text-white " <>
-                      "group-has-[:checked]/qform:shadow-md " <>
-                      "group-has-[:checked]/qform:shadow-orange-600/30 " <>
-                      "group-has-[[data-qother]:not(:placeholder-shown)]/qform:bg-orange-600 " <>
-                      "group-has-[[data-qother]:not(:placeholder-shown)]/qform:text-white " <>
-                      "group-has-[[data-qother]:not(:placeholder-shown)]/qform:shadow-md " <>
-                      "group-has-[[data-qother]:not(:placeholder-shown)]/qform:shadow-orange-600/30"
-                )
+                # The button's colour follows the FORM's own state, always:
+                # grey until something is checked (or typed), orange the
+                # instant it is — `group-has-[:checked]` and the data-qother
+                # rule, no server round-trip. It used to render plain orange
+                # whenever the SERVER held a draft, so a tap-to-deselect (a
+                # client-side uncheck) left it lit until the clear landed.
+                # A server draft still lights it, because the render marks
+                # that option `checked`.
+                "!bg-zinc-200 !text-zinc-500 dark:!bg-zinc-800 dark:!text-zinc-400 shadow-none " <>
+                  "group-has-[:checked]/qform:!bg-orange-600 " <>
+                  "group-has-[:checked]/qform:!text-white " <>
+                  "group-has-[[data-qother]:not(:placeholder-shown)]/qform:!bg-orange-600 " <>
+                  "group-has-[[data-qother]:not(:placeholder-shown)]/qform:!text-white " <>
+                  "group-has-[:checked]/qform:bg-orange-600 " <>
+                  "group-has-[:checked]/qform:text-white " <>
+                  "group-has-[:checked]/qform:shadow-md " <>
+                  "group-has-[:checked]/qform:shadow-orange-600/30 " <>
+                  "group-has-[[data-qother]:not(:placeholder-shown)]/qform:bg-orange-600 " <>
+                  "group-has-[[data-qother]:not(:placeholder-shown)]/qform:text-white " <>
+                  "group-has-[[data-qother]:not(:placeholder-shown)]/qform:shadow-md " <>
+                  "group-has-[[data-qother]:not(:placeholder-shown)]/qform:shadow-orange-600/30"
               ]
             }
           >
