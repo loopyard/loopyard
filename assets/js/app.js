@@ -864,11 +864,21 @@ Hooks.ChatAttachments = {
 //   guard prevents duplicate listeners (double-send, double-resize).
 Hooks.ChatForm = {
   mounted() {
-    const ta = this.el.querySelector("#chat-input")
+    // Scoped to THIS form, never a page-wide id: the decisions deck mounts one
+    // composer per slide (each talks about its own decision), so ids can't be
+    // the contract. `data-re` on the form names the decision a send is about
+    // and rides along in the payload; it also keys the draft so slides don't
+    // share one.
+    const ta = this.el.querySelector("textarea[name=message]")
     const btn = this.el.querySelector("button[type=submit]")
     if (!ta || ta.dataset.wired) return
     ta.dataset.wired = "1"
     let sending = false
+    const re = this.el.dataset.re || ""
+    const scope = location.pathname + (re ? "#" + re : "")
+    const statusEl = () =>
+      (this.el.parentElement && this.el.parentElement.querySelector("[data-send-status]")) ||
+      document.getElementById("send-status")
 
     // ATTACHMENTS — three ways in, ONE LiveView upload ("attachments"):
     //   paperclip → clicks the LV file input in the #chat-attachments tray
@@ -901,7 +911,7 @@ Hooks.ChatForm = {
     // rebuilds the DOM from scratch and would wipe it. So we mirror every
     // keystroke into localStorage (keyed per-agent via the path) and restore it
     // on mount. Cleared only on a confirmed send.
-    const draftKey = "loopyard:draft:" + location.pathname
+    const draftKey = "loopyard:draft:" + scope
     // A draft carries a TIMESTAMP and only restores inside a freshness window.
     // Without one it lived forever: a message typed days ago whose send was
     // never confirmed came back into the box on a later visit, and the next
@@ -957,7 +967,7 @@ Hooks.ChatForm = {
     // you were in the box within the last few seconds, so reopening the tab later
     // never steals focus (or pops the mobile keyboard) when you didn't ask. Blur
     // clears it, so clicking away means "leave me out of it."
-    const focusKey = "loopyard:focus:" + location.pathname
+    const focusKey = "loopyard:focus:" + scope
     const FOCUS_TTL = 15000
     const saveFocus = () => {
       try { localStorage.setItem(focusKey, JSON.stringify({ pos: ta.selectionStart, t: Date.now() })) } catch (_) {}
@@ -1041,7 +1051,7 @@ Hooks.ChatForm = {
         if (echo) echo.classList.add("hidden")
       }
 
-      const status = document.getElementById("send-status")
+      const status = statusEl()
       const setStatus = (text2, tone) => {
         if (!status) return
         status.textContent = text2
@@ -1081,7 +1091,8 @@ Hooks.ChatForm = {
       const timer = setTimeout(() =>
         settle(false, "⚠ Couldn't reach the server — your text is safe; press Send to retry."),
       25000)
-      this.pushEvent("send_message", { message: text }, (reply) => {
+      const payload = re ? { message: text, re } : { message: text }
+      this.pushEvent("send_message", payload, (reply) => {
         clearTimeout(timer)
         if (reply && reply.ok) settle(true)
         else settle(false, (reply && reply.note) || "⚠ Send didn't land — your text is kept; try again.")
@@ -1115,7 +1126,7 @@ Hooks.ChatForm = {
 
     // Auto-resize textarea + clear any stale "send failed" notice as you edit
     ta.addEventListener("input", () => {
-      const status = document.getElementById("send-status")
+      const status = statusEl()
       if (status && !status.classList.contains("hidden")) status.classList.add("hidden")
       saveDraft()
       updateSend()

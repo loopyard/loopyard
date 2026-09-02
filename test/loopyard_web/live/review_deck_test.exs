@@ -70,44 +70,48 @@ defmodule LoopyardWeb.ReviewDeckTest do
            "the deck exists so you can see the whole backlog without navigating"
   end
 
-  test "each decision is its own snap section", %{conn: conn} do
+  test "each decision is its own slide, snapping into place", %{conn: conn} do
     seed_agent("Alpha", [pending_question("m-alpha", "First decision?")])
     seed_agent("Beta", [pending_question("m-beta", "Second decision?")])
 
     {:ok, view, _html} = live(conn, "/decisions")
     html = render(view)
 
-    sections = Regex.scan(~r/<section[^>]*id="decision-[^"]+"/, html)
+    slides = Regex.scan(~r/<section[^>]*id="slide-[^"]+"/, html)
 
-    assert length(sections) >= 2,
-           "each decision needs its own section to snap to; found #{length(sections)}"
+    assert length(slides) >= 2,
+           "each decision needs its own slide to swipe to; found #{length(slides)}"
 
     assert html =~ "snap-start",
-           "sections snap their TOP to the viewport so you land on a question's first line"
+           "slides snap their leading edge into place — one decision fills the screen"
   end
 
-  test "the scroller is marked as a snap deck", %{conn: conn} do
+  test "the deck is a horizontal scroll-snap carousel, no JS gestures", %{conn: conn} do
     seed_agent("Alpha", [pending_question("m-alpha", "First decision?")])
 
     {:ok, _view, html} = live(conn, "/decisions")
 
-    # The snap lives on `html` via `html:has([data-snap-deck])` — the shell is
-    # min-h-screen, so the DOCUMENT scrolls and snap set on the inner column
-    # would apply to no scroll container at all.
-    assert html =~ "data-snap-deck",
-           "without this marker the CSS has nothing to key the snap container off"
+    # Swipe left/right is the browser's own horizontal scrolling with CSS snap —
+    # nothing that competes with the iOS back gesture. The carousel is the
+    # scroll container itself (flex + overflow-x), not the document.
+    assert html =~ ~r/id="decisions-deck"[^>]*class="[^"]*snap-x[^"]*snap-mandatory/,
+           "the deck must be an x-axis snap scroller"
   end
 
-  test "a permalink is still ONE decision", %{conn: conn} do
+  test "a permalink opens the deck AT that decision", %{conn: conn} do
     aid = seed_agent("Alpha", [pending_question("m-alpha", "First decision?")])
     seed_agent("Beta", [pending_question("m-beta", "Second decision?")])
 
     {:ok, _view, html} = live(conn, "/decisions/#{aid}/m-alpha")
 
+    # The whole deck is there (swipe onward from the one you were sent to)…
     assert html =~ "First decision?"
+    assert html =~ "Second decision?"
 
-    refute html =~ "Second decision?",
-           "a permalink names one decision — it's a mini app, not the backlog"
+    # …and the named slide takes focus on mount, which scrolls the carousel to
+    # it natively — no scroll JS.
+    assert html =~ ~r/<section[^>]*id="slide-#{aid}-m-alpha-[^"]*"[^>]*phx-mounted=/,
+           "the permalinked slide must be the one focused on mount"
   end
 
   test "answering does not remove the decision from the page", %{conn: conn} do
