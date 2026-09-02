@@ -570,6 +570,24 @@ Hooks.PushBell = {
 Hooks.QuestionOptions = {
   mounted() {
     this.pending = null
+    // Tap a selected option again to DESELECT it. A radio can't be unchecked
+    // by clicking, so a mis-tap could only be undone with Dismiss. On the
+    // label's click — which fires BEFORE the browser toggles the radio — if
+    // it's already checked, cancel the toggle, uncheck it ourselves, and tell
+    // the server the draft is empty so every viewer's rows deselect too.
+    this.el.addEventListener("click", (e) => {
+      const label = e.target.closest("label.q-option")
+      const input = label && label.querySelector("input[type=radio]")
+      if (!input || !input.checked) return
+      e.preventDefault()
+      input.checked = false
+      this.checked = null
+      input.dispatchEvent(new Event("input", { bubbles: true }))
+      this.pushEvent("draft_question_option", {
+        question_id: this.el.querySelector("input[name=question_id]").value,
+        q: this.el.querySelector("input[name=q]").value,
+      })
+    })
     // "Dismiss" with an answer selected CLEARS it. That button is type=reset,
     // but a native reset only restores the server-rendered defaults — which
     // still say "checked" at that instant — and `updated` below deliberately
