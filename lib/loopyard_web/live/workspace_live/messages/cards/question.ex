@@ -266,7 +266,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
                 StreamCard.action_class(variant: :primary)
               ]}
             >
-              Confirm dismiss — the agent moves on without an answer
+              Confirm
             </button>
             <.link
               :if={!@q[:multi] && @chat_path}
