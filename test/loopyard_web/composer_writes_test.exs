@@ -38,7 +38,7 @@ defmodule LoopyardWeb.ComposerWritesTest do
     # The tag {text} sits inside is the last one opened before it.
     opener = before_text |> String.split("<") |> List.last()
 
-    assert String.starts_with?(opener, "p "),
+    assert Regex.match?(~r/^p[\s>]/, opener),
            "the queued message's text renders inside <#{String.slice(opener, 0, 12)}…> — " <>
              "it must be a <p>. A control over it dequeues the message on any tap " <>
              "meant to read it."
