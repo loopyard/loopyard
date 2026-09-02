@@ -106,22 +106,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
       <%!-- Three zones, same model as desktop (see Breadcrumbs.trail/1): back
     button left, the CURRENT thing centred, actions right. Phones drop the
     logo and the ancestor crumbs entirely — a back button is the one
-    affordance that fits, and the path is desktop chrome. A grid (not flex)
-    so the centre is centred against the VIEWPORT, not against whatever the
-    side zones happen to weigh; otherwise the title drifts as the actions
-    change (a port chip appearing would shove it left). --%>
-      <Nav.bar height="h-14" pad="px-2" gap="gap-1.5" class="relative">
+    affordance that fits, and the path is desktop chrome. --%>
+      <Nav.bar height="h-14" pad="px-2" gap="gap-1.5">
         <Nav.back_button navigate="/workspaces" label="Back to workspaces" />
-        <%!-- Absolutely centred against the BAR, not against the space left over
-    between the back button and the actions. Flex centring drifts: the port
-    chip appears only when a port is open, and the title would visibly shift
-    when it does. max-w keeps it clear of both side zones on a narrow phone;
-    pointer-events-none on the wrapper so the (invisible) full-width box
-    can't swallow taps meant for the actions. --%>
-        <nav
-          class="absolute inset-x-0 flex justify-center pointer-events-none"
-          aria-label="Location"
-        >
+        <%!-- Centred in the space LEFT between the back button and the actions,
+    in flow — the same `auto 1fr auto` anatomy AppHeader uses on phones. It
+    used to be absolutely centred against the whole bar with a hand-picked
+    max-w, which can't see the actions zone: the moment a port chip joined
+    the mode control, the two boxes overlapped and ":4006" ran into the
+    workspace name. In flow, the title truncates instead of colliding; the
+    price is a small shift when a chip appears, which is the bar every other
+    phone header here already pays. --%>
+        <nav class="flex-1 min-w-0 flex justify-center" aria-label="Location">
           <%!-- The project / workspace PAIR is the current thing here, not the
     workspace alone: they're always shown together and the switcher moves
     between them as a unit, so splitting them across zones would break the
@@ -134,7 +130,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
             aria-controls="nav-switcher"
             aria-haspopup="dialog"
             aria-label={"Switch workspace — currently #{@project && @project.name} #{@ws_name}"}
-            class="focus-ring pointer-events-auto max-w-[70%] min-w-0 inline-flex items-center gap-1 min-h-11 px-1 rounded-sm text-lead"
+            class="focus-ring min-w-0 inline-flex items-center gap-1 min-h-11 px-1 rounded-sm text-lead"
           >
             <LoopyardWeb.Components.Common.workspace_identity
               project={(@project && @project.name) || @ws_name}
@@ -144,7 +140,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
             />
             <Nav.chevron_down class="w-4 h-4 flex-none opacity-60 text-zinc-500 dark:text-zinc-400" />
           </button>
-          <div :if={!@can_switch} class="pointer-events-auto max-w-[70%] min-w-0">
+          <div :if={!@can_switch} class="min-w-0">
             <LoopyardWeb.Components.Common.workspace_identity
               project={(@project && @project.name) || @ws_name}
               workspace={@project && @ws_name}
