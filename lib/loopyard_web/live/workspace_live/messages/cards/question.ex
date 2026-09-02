@@ -234,9 +234,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
             <%!-- DISMISS does double duty, and which duty is decided by CSS from
             the form's own state (`group-has-[:checked]`, the Other box's
             placeholder), never by a round-trip:
-              * an answer is selected → "Dismiss" CLEARS it: a native form
-                reset (radios + the Other box) plus the draft-clear event so
-                every viewer's rows deselect too;
+              * an answer is selected → "Dismiss" CLEARS it (a native form
+                reset plus the draft-clear event, so every viewer's rows
+                deselect and Answer dims) AND ARMS in the same tap — the
+                orange "Dismiss decision" is already there for the second tap;
               * nothing selected → "Dismiss" ARMS: it swaps for the orange
                 "Dismiss decision", which does it; any other tap disarms.
             Arm/disarm toggle a class rather than inline display, so the
@@ -244,9 +245,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
             <button
               :if={!@q[:multi]}
               type="reset"
-              phx-click="draft_question_option"
-              phx-value-question_id={@msg.question_id}
-              phx-value-q={@q.id}
+              phx-click={
+                Phoenix.LiveView.JS.push("draft_question_option",
+                  value: %{question_id: @msg.question_id, q: @q.id}
+                )
+                |> Phoenix.LiveView.JS.add_class("hidden",
+                  to: "#dismiss-#{@msg[:id] || @msg.question_id}-#{@q.id}"
+                )
+                |> Phoenix.LiveView.JS.remove_class("hidden",
+                  to: "#confirm-dismiss-#{@msg[:id] || @msg.question_id}-#{@q.id}"
+                )
+                |> Phoenix.LiveView.JS.focus(
+                  to: "#confirm-dismiss-#{@msg[:id] || @msg.question_id}-#{@q.id}"
+                )
+              }
               class={[
                 "hidden group-has-[:checked]/qform:inline-flex",
                 "group-has-[[data-qother]:not(:placeholder-shown)]/qform:inline-flex",
