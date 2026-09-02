@@ -284,7 +284,12 @@ defmodule Loopyard.Harness.QuestionsTest do
 
       assert {:ok, %{"q0" => ["the new one"]}} = Task.await(newer, 2_000)
       assert Questions.pending?(older_qid), "the stale ask must not have taken the reply"
+
+      # Clean up: kill the stale waiter, then let the reaper drop its entry so
+      # the next test's wait_for_pending doesn't pick up our leftovers.
       Task.shutdown(older, :brutal_kill)
+      refute Questions.pending_for_agent?(agent)
+      refute Questions.pending?(older_qid)
     end
 
     test "answer_with_text/2 with nothing pending is a clean no-op" do
