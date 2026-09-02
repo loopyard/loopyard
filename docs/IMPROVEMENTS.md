@@ -16,6 +16,16 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 ## Robustness (handles edge cases gracefully)
 
+0. **Attachments as ACP image content blocks (fast path).** Today an attached
+   screenshot reaches the harness as a `📎 Attached: <path>` line and the
+   agent `Read`s it (one tool round-trip, harness-portable, durable in the
+   log). `claude-agent-acp` advertises `promptCapabilities.image`, so
+   `Harness.ACP.stream/2` could additionally send `{type: "image", data,
+   mimeType}` blocks for image attachments in the SAME prompt — the model
+   sees the pixels immediately, no Read. Keep the marker line (it's what
+   persists, replays, and works under Codex); the block is an optimization.
+   Needs `Harness.stream/2` to accept a structured prompt, not just a string.
+
 0000. **SystemSagasLive empty-state test is order-dependent (seen on CI, 2026-08-16).**
       `test/loopyard_web/live/system_sagas_live_test.exs:39` asserts
       "No sagas recorded yet" but another test's saga journal entry leaked

@@ -28,6 +28,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   import LoopyardWeb.Components.Icon
 
   alias Loopyard.Agent.ToolKind
+  alias LoopyardWeb.Live.WorkspaceLive.Messages.AttachmentChip
   alias LoopyardWeb.Components.Ansi
 
   alias LoopyardWeb.Components.ToolSummary
@@ -96,6 +97,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     # callers (tests, build-row reuse) working without passing them.
     assigns = assign_new(assigns, :user_label, fn -> "You" end)
     assigns = assign_new(assigns, :active?, fn -> false end)
+
+    # Attachments ride in the content as marker lines (Loopyard.Attachments);
+    # the band shows the human's words + thumbnails, never the raw lines.
+    {body, attachments} = Loopyard.Attachments.parse(assigns.msg.content)
+    assigns = assign(assigns, body: body, attachments: attachments)
 
     # The big "chapter-break" air belongs at human<->machine boundaries only.
     # Consecutive human messages (a flurry / queued batch) GROUP into one purple
@@ -183,8 +189,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         <div class="flex-1 min-w-0">
           <%!-- Clamp to a few lines: the prompt is a sticky HEADER, so a long
     paste must stay header-sized (full text via the ↗ link). --%>
-          <div class="markdown-body human-prompt text-zinc-800 dark:text-zinc-100 max-w-3xl line-clamp-3">
-            {Loopyard.Markdown.to_html(@msg.content)}
+          <div
+            :if={@body != ""}
+            class="markdown-body human-prompt text-zinc-800 dark:text-zinc-100 max-w-3xl line-clamp-3"
+          >
+            {Loopyard.Markdown.to_html(@body)}
+          </div>
+          <div :if={@attachments != []} class={["flex flex-wrap gap-2", @body != "" && "mt-2"]}>
+            <AttachmentChip.chip
+              :for={att <- @attachments}
+              att={att}
+              url={Loopyard.Attachments.url(assigns[:workspace_id], att)}
+            />
           </div>
         </div>
         <div class="flex items-center gap-1 flex-none opacity-100 md:opacity-0 md:group-hover/msg:opacity-100 transition-opacity">

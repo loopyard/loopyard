@@ -86,6 +86,8 @@ defmodule Loopyard.ChatAgent.Prompt do
 
     Long command output is truncated — you'll see the last ~80 lines. The full output is visible to the user in the chat.
 
+    Attachments: files the user attaches (screenshots, logs) arrive as `📎 Attached: <path>` lines — open the path with your file-reading tool (images render for you) and look before answering.
+
     File operations — use the dedicated MCP tools, not shell commands:
     - `file_info` before reading unfamiliar files — tells you line count so you can decide: small (<100 lines) → read whole thing, large → use line range or grep first
     - `read_file` (with start_line/end_line) or `read_files` instead of `cat` — avoids dumping huge files into context

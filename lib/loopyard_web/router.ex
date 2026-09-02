@@ -158,6 +158,12 @@ defmodule LoopyardWeb.Router do
     get "/messages/:agent_id/:msg_id/raw", OutputController, :show
 
     get "/raw/:volume_name/*path", RawFileController, :show
+    # A chat attachment (screenshot etc.) read straight out of the workspace's
+    # code volume, served with its real content type so <img> can show it.
+    get "/projects/:project_id/workspaces/:workspace_id/attachments/:name",
+        AttachmentController,
+        :show
+
     get "/launch/:secret", LaunchController, :launch
   end
 
