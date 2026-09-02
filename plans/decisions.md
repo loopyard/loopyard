@@ -382,3 +382,39 @@ spawned until the first message is sent.
    `answer_decision`. No reframe yet.
 4. **Reframe / `superseded`** — the second write.
 5. **Swipe** — the gesture over the existing one-per-screen model.
+
+## Sep 2 — what shipped, and Brad's follow-ups
+
+**Shipped (commit "Decisions: a deck at /decisions…"):** revised-sequencing
+step 1 plus the thread. `/decisions` deck newest-first with the one-line
+source; `/decisions/:agent/:msg` with the pinned band + thread + composer;
+the phone's Decisions tab is a link to the deck (the back bug is gone by
+construction); DECISIONS vocabulary; `/review*` kept as aliases.
+
+**No JS swipe, ever.** A horizontal swipe fights the browser's back gesture on
+iOS. The deck's vertical scroll with CSS proximity snap IS the flip; that
+also removes "swipe" from the sequencing above.
+
+**The thread is answered by the operator in v1.** Tagged to the decision via
+`ChatAgent.Thread` (marker in the text → `re:` on user + reply). Debt worth
+naming: the marker rides in the text because `pending_sends` entries are bare
+strings across eleven modules; typing the queue is the proper fix if a second
+kind of message metadata ever appears. The dedicated decision agent (§5)
+stays the upgrade if the operator's context gets crowded.
+
+**Naming: the operator is the chief of staff.** Brad: "operator is such a
+weird name … chief of staff" (manager / supervisor rejected). Decision
+pending on the SHORT label — proposal: persona "Chief of staff" in copy,
+nav label "Staff", routes/modules stay `/operator` / `Loopyard.Operator`
+until the copy has settled.
+
+**Retraction is a chief-of-staff power.** A decision must be retractable:
+- **by evidence, on its own** — the source agent is gone, its workspace was
+  deleted or merged, or the agent was recycled and moved past the ask (the
+  §2 moot signals). Visible receipt on the card (`retracted`, with why),
+  reversible from `/decisions/history`.
+- **by judgment, as a proposal** — "these 9 look dead, clear them?", one tap.
+- **never by a timer alone.** No TTL. Age is shown, newest first, and
+  anything past 7 days sinks into an "Older" group below the live ones.
+This is a new `retract_decision` operator tool plus a `:retracted` card
+status — the same shape as `superseded` in §4, so build them together.
