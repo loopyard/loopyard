@@ -441,11 +441,11 @@ selections to the agent (`deliver_late_answer`).
 **Three surfaces, three jobs:** the chat shows cards inline as they happen; the
 operator rail LISTS what's waiting (flame mini-rows nested under each
 workspace's "In motion" row, capped at 3 + "+N more"; the operator's own asks
-lead the rail); the **Reviewer** (`/review`, `ReviewLive`) clears the backlog —
+lead the rail); the **Decisions deck** (`/decisions`, `ReviewLive`) clears the backlog —
 ONE decision per slide (a multi-question ask fans out per question),
 prev/next, answer → settled beat → auto-advance. Resource URLs only:
-`/review`, `/review/:agent_id/:msg_id`,
-`/projects/:project_id/workspaces/:workspace_id/review`. Approvals decide through the ONE shared
+`/decisions`, `/decisions/:agent_id/:msg_id` (one decision + its discussion thread; `/review*` aliases kept),
+`/projects/:project_id/workspaces/:workspace_id/decisions`. Approvals decide through the ONE shared
 `LoopyardWeb.Live.ApprovalActions` (both models: blocking waiter or durable
 queued card). `Cards.question_block/1` is the per-question atom shared by the
 chat card and the Reviewer.
@@ -607,9 +607,10 @@ Two ways in:
 | `PortExposer` | Per-port TCP proxy GenServer (loopback ↔ network toggle) |
 | `PortStore` | JSON persistence for port assignments (`ports.json`) |
 | `Tools.Container` | MCP toolkit — one file per tool (incl. propose_fork/integrate/delete/rename, ask_user, request_secret, recall_conversation) |
-| `Loopyard.Attention` | The durable "waiting on the human" line (cards ∪ broker) feeding rail/Reviewer/dashboard |
+| `Loopyard.Attention` | The durable "waiting on the human" line (cards ∪ broker) feeding rail/decisions/dashboard |
+| `ChatAgent.Thread` | Decision threads: the `[[re:agent:msg]]` marker → `re:` on user + reply, so talk ABOUT a card lands on the card |
 | `Loopyard.CardText` | Cards → paste-ready markdown (share/raw) |
-| `LoopyardWeb.ReviewLive` | `/review` — one-decision-per-slide Reviewer |
+| `LoopyardWeb.ReviewLive` | `/decisions` — the decisions deck (newest first) + `/decisions/:agent/:msg` (one decision, pinned, with its operator thread) |
 | `LoopyardWeb.Components.FocusedView` | Full-screen focused-view shell (subject header + slide column) |
 | `LoopyardWeb.Components.StreamCard` | Mini-app card anatomy (band + header) |
 | `LoopyardWeb.Live.ApprovalActions` | The ONE Approve/Deny (blocking + queued models) |

@@ -646,89 +646,95 @@ defmodule LoopyardWeb.ReviewLive do
       )
 
     ~H"""
-    <div id="decision-thread" class="mt-8">
-      <div class="sticky top-14 z-10 -mx-4 md:-mx-6 px-4 md:px-6 py-2 flex items-center gap-3 bg-brand-paper dark:bg-brand-ink border-y border-zinc-200 dark:border-zinc-800">
-        <p class="min-w-0 flex-1 line-clamp-2 text-body text-zinc-600 dark:text-zinc-300">
-          {@prompt}
-        </p>
-        <a
-          href={"#decision-" <> @card.dom_id}
-          class="focus-ring flex-none inline-flex items-center min-h-11 md:min-h-9 px-3 rounded-sm text-meta font-semibold text-orange-700 dark:text-orange-400 hover:bg-orange-500/10"
-        >
-          Answer ↑
-        </a>
+    <%!-- Three SIBLINGS of the card in the reading column — not a wrapper. A
+    sticky element pins only while its containing block is on screen, so a
+    band wrapped together with a short thread unpinned as soon as that
+    wrapper's bottom scrolled up (measured: band at y=253 near the page end).
+    As a direct child of the column it pins until the page itself ends. --%>
+    <div
+      id="decision-band"
+      class="sticky top-14 z-10 mt-8 -mx-4 md:-mx-6 px-4 md:px-6 py-2 flex items-center gap-3 bg-brand-paper dark:bg-brand-ink border-y border-zinc-200 dark:border-zinc-800"
+    >
+      <p class="min-w-0 flex-1 line-clamp-2 text-body text-zinc-600 dark:text-zinc-300">
+        {@prompt}
+      </p>
+      <a
+        href={"#decision-" <> @card.dom_id}
+        class="focus-ring flex-none inline-flex items-center min-h-11 md:min-h-9 px-3 rounded-sm text-meta font-semibold text-orange-700 dark:text-orange-400 hover:bg-orange-500/10"
+      >
+        Answer ↑
+      </a>
+    </div>
+
+    <div id="decision-thread" class="pt-4">
+      <div class="section-label px-1 pb-1">About this decision</div>
+
+      <p
+        :if={@thread == [] and !@blocked?}
+        class="px-1 py-2 text-body text-zinc-500 dark:text-zinc-400"
+      >
+        Ask the operator anything about this — what an option changes, what led
+        here, what it would look in the code for. The decision stays put.
+      </p>
+
+      <p :if={@blocked?} class="px-1 py-2 text-body text-zinc-500 dark:text-zinc-400">
+        This is the operator's own question, and it's waiting on your answer
+        before it can do anything else — including discuss it. Answer it above,
+        or ask in a moment: anything you send now is queued until it's free.
+      </p>
+
+      <div :for={{msg, idx} <- Enum.with_index(@thread)} :key={msg[:id] || idx}>
+        <Messages.chat_msg
+          msg={msg}
+          idx={idx}
+          messages={@thread}
+          agent_id={@operator_id || "operator"}
+          host="localhost"
+          detail_level={:chat}
+          user_label={@user_label}
+        />
       </div>
 
-      <div class="pt-4">
-        <div class="section-label px-1 pb-1">About this decision</div>
-
-        <p
-          :if={@thread == [] and !@blocked?}
-          class="px-1 py-2 text-body text-zinc-500 dark:text-zinc-400"
-        >
-          Ask the operator anything about this — what an option changes, what led
-          here, what it would look in the code for. The decision stays put.
-        </p>
-
-        <p :if={@blocked?} class="px-1 py-2 text-body text-zinc-500 dark:text-zinc-400">
-          This is the operator's own question, and it's waiting on your answer
-          before it can do anything else — including discuss it. Answer it above,
-          or ask in a moment: anything you send now is queued until it's free.
-        </p>
-
-        <div :for={{msg, idx} <- Enum.with_index(@thread)} :key={msg[:id] || idx}>
-          <Messages.chat_msg
-            msg={msg}
-            idx={idx}
-            messages={@thread}
-            agent_id={@operator_id || "operator"}
-            host="localhost"
-            detail_level={:chat}
-            user_label={@user_label}
-          />
-        </div>
-
-        <div :if={@streaming != ""} class="px-1 py-2 text-lead whitespace-pre-wrap">
-          {@streaming}
-        </div>
-        <p
-          :if={@awaiting? and @streaming == "" and !@blocked?}
-          class="px-1 py-2 text-body text-zinc-400 dark:text-zinc-500"
-        >
-          Thinking…
-        </p>
+      <div :if={@streaming != ""} class="px-1 py-2 text-lead whitespace-pre-wrap">
+        {@streaming}
       </div>
+      <p
+        :if={@awaiting? and @streaming == "" and !@blocked?}
+        class="px-1 py-2 text-body text-zinc-400 dark:text-zinc-500"
+      >
+        Thinking…
+      </p>
+    </div>
 
-      <%!-- The composer, pinned to the bottom like every other chat. Same
+    <%!-- The composer, pinned to the bottom like every other chat. Same
       ChatForm hook (ack-gated clear, kept-on-failure) — the ids are its
       contract. --%>
-      <div class="sticky bottom-0 -mx-4 md:-mx-6 px-4 md:px-6 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-brand-paper dark:bg-brand-ink border-t border-zinc-200 dark:border-zinc-800">
-        <div id="chat-form-wrapper" phx-update="ignore">
-          <form
-            id="chat-form"
-            phx-submit="send_message"
-            phx-hook="ChatForm"
-            class="flex items-end gap-2"
+    <div class="sticky bottom-0 -mx-4 md:-mx-6 px-4 md:px-6 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-brand-paper dark:bg-brand-ink border-t border-zinc-200 dark:border-zinc-800">
+      <div id="chat-form-wrapper" phx-update="ignore">
+        <form
+          id="chat-form"
+          phx-submit="send_message"
+          phx-hook="ChatForm"
+          class="flex items-end gap-2"
+        >
+          <textarea
+            name="message"
+            id="chat-input"
+            rows="1"
+            placeholder="Ask about this decision…"
+            aria-label="Ask about this decision"
+            autocomplete="off"
+            class="focus-ring text-lead flex-1 bg-transparent border-0 rounded-sm px-1 py-2.5 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none focus:outline-none focus:ring-0"
+          ></textarea>
+          <button
+            type="submit"
+            aria-label="Send"
+            class="focus-ring flex-none flex items-center justify-center rounded-full w-11 h-11 md:w-10 md:h-10 mb-[5px] md:mb-1 text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
           >
-            <textarea
-              name="message"
-              id="chat-input"
-              rows="1"
-              placeholder="Ask about this decision…"
-              aria-label="Ask about this decision"
-              autocomplete="off"
-              class="focus-ring text-lead flex-1 bg-transparent border-0 rounded-sm px-1 py-2.5 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none focus:outline-none focus:ring-0"
-            ></textarea>
-            <button
-              type="submit"
-              aria-label="Send"
-              class="focus-ring flex-none flex items-center justify-center rounded-full w-11 h-11 md:w-10 md:h-10 mb-[5px] md:mb-1 text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
-            >
-              <LoopyardWeb.Components.Icon.icon name={:arrow_up} class="w-6 h-6" />
-            </button>
-          </form>
-          <p id="send-status" class="hidden mt-1.5 text-lead text-red-500 dark:text-red-400"></p>
-        </div>
+            <LoopyardWeb.Components.Icon.icon name={:arrow_up} class="w-6 h-6" />
+          </button>
+        </form>
+        <p id="send-status" class="hidden mt-1.5 text-lead text-red-500 dark:text-red-400"></p>
       </div>
     </div>
     """
