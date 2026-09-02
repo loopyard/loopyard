@@ -110,15 +110,18 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
               </span>
               <span :if={@card.slide.asked_at}>{@verb} {Deck.ago_words(@card.slide.asked_at)}</span>
             </span>
-            <span :if={!@system_source?} class="min-w-0 flex items-center gap-1.5 truncate">
-              <Common.workspace_identity
-                project={@card.slide.project_name}
-                workspace={@card.slide.workspace_name}
-                state={(@pending? && ((@finished? && :done) || :needs_you)) || :asleep}
-                class="min-w-0"
-              />
+            <%!-- A workspace agent's byline is its state light and its name: the
+            card under it wears the project · workspace chip itself, and the
+            same chip twice, two lines apart, was the junk. --%>
+            <span :if={!@system_source?} class="min-w-0 flex items-center gap-2 truncate">
+              <span
+                class={[
+                  "flex-none w-2 h-2 rounded-full",
+                  Common.state_light((@pending? && ((@finished? && :done) || :needs_you)) || :asleep)
+                ]}
+                aria-hidden="true"
+              ></span>
               <span class="truncate">
-                ·
                 <span class="font-semibold text-zinc-800 dark:text-zinc-100">{@card.slide.agent_name}</span>
                 <span :if={@card.slide.asked_at}>{@verb} {Deck.ago_words(@card.slide.asked_at)}</span>
               </span>

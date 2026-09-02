@@ -53,8 +53,10 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
   end
 
   @doc """
-  PAST decisions: every question/approval/secret ever asked (recent tail per
-  agent), any status, newest first — one slide per CARD.
+  PAST decisions: every question/approval/secret already settled (answered,
+  timed out, retracted, dismissed — recent tail per agent), newest first —
+  one slide per CARD. A still-pending one belongs to the pending deck, not
+  to the past.
   """
   @spec history() :: [slide()]
   def history do
@@ -68,7 +70,8 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
     for %{id: aid} = st <- ChatAgent.list_agent_summaries(),
         not String.contains?(to_string(st[:name] || ""), "test"),
         msg <- st |> Map.get(:messages, []) |> Enum.take(-200),
-        msg[:role] in [:question, :approval, :secret_request] do
+        msg[:role] in [:question, :approval, :secret_request],
+        msg[:status] != :pending do
       ws = Map.get(ws_names, st[:workspace_id], %{})
 
       %{
