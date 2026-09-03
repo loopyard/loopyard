@@ -58,9 +58,8 @@ defmodule LoopyardWeb.Components.AppHeader do
       <div class="min-w-0 flex items-center justify-end gap-3">
         <.iex_indicator :if={@iex_session.level} session={@iex_session} />
         {render_slot(@inner_block)}
-        <%!-- The mode nav (Workspaces ⇄ Operator, System) — the ONE global
-             navigation, identical on every shell. --%>
-        <LoopyardWeb.Components.Common.mode_nav active={@mode} />
+        <%!-- The global nav — every root, always, identical on every shell. --%>
+        <LoopyardWeb.Components.Common.global_nav id="nav-app-header" active={@mode} />
       </div>
     </div>
     """

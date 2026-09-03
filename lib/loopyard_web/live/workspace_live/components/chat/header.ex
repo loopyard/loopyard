@@ -164,7 +164,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
           >
             :{@app_port.port} <span class="text-meta opacity-70">↗</span>
           </.link>
-          <LoopyardWeb.Components.Common.mode_nav id="mode-ws-mobile" active={:workspaces} />
+          <LoopyardWeb.Components.Common.global_nav id="nav-ws-mobile" active={:workspaces} />
         </:actions>
       </Nav.bar>
 

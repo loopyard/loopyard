@@ -1778,7 +1778,7 @@ defmodule LoopyardWeb.WorkspaceLive do
         </div>
 
         <div class="flex items-center justify-end min-w-0">
-          <LoopyardWeb.Components.Common.mode_nav id="mode-ws-desktop" active={:workspaces} />
+          <LoopyardWeb.Components.Common.global_nav id="nav-ws-desktop" active={:workspaces} />
         </div>
       </div>
 

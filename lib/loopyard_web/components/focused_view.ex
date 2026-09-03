@@ -14,7 +14,7 @@ defmodule LoopyardWeb.Components.FocusedView do
   """
   use Phoenix.Component
 
-  import LoopyardWeb.Components.Common, only: [mode_nav: 1]
+  import LoopyardWeb.Components.Common, only: [global_nav: 1]
 
   attr :label, :string, required: true, doc: "small uppercase kind label, e.g. \"Review\""
   attr :label_class, :string, default: "text-orange-700 dark:text-orange-400"
@@ -94,7 +94,7 @@ defmodule LoopyardWeb.Components.FocusedView do
 
         <div class="flex items-center justify-end min-w-0">
           {render_slot(@nav)}
-          <.mode_nav active={@mode} class="ml-2" />
+          <.global_nav id="nav-focused" active={@mode} class="ml-2" />
         </div>
       </div>
 

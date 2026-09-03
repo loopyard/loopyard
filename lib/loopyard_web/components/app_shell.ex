@@ -42,7 +42,7 @@ defmodule LoopyardWeb.Components.AppShell do
       <Nav.bar height="h-14" gap="gap-3">
         <.breadcrumbs crumbs={@crumbs || [{"Loopyard", "/"}, {@title, nil}]} />
         <:actions>
-          <LoopyardWeb.Components.Common.mode_nav id={@mode_id} active={@mode} />
+          <LoopyardWeb.Components.Common.global_nav id={@mode_id} active={@mode} />
         </:actions>
       </Nav.bar>
 

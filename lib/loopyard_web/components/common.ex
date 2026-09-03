@@ -533,44 +533,47 @@ defmodule LoopyardWeb.Components.Common do
   end
 
   @doc """
-  The ROOT NAV — the three places Loopyard is: Workspaces (the work),
+  THE GLOBAL NAV — the three places Loopyard is: Workspaces (the work),
   Agents (every agent, flat, whatever its scope), Notifications (the team's
-  inbox). Three peers; the one you're on is not shown. The home dashboard
-  (setup, System) sits behind the brand crumb.
+  inbox). All three are always here; the one you're on is lit. The home
+  dashboard (setup, System) sits behind the brand crumb.
 
   This used to be an "altitude" control that always pointed away from you —
-  UP to a single Operator above the workspaces, DOWN to the work from it.
-  That premise ended when the operator became one row in Agents
-  (plans/notifications-and-agents.md §4); a row of peers is now honest.
+  UP to a single Operator above the workspaces, DOWN to the work from it — and
+  then a switcher that HID whichever root you were on. Both premises are gone:
+  there are three roots and more coming, and a nav that hides where you are
+  leaves you guessing what the app contains. So it is a GLOBAL NAV: every root
+  is always here, the one you're on is lit and inert.
 
-  Pass a UNIQUE `id` per placement to get the sound pill and the ambient-state
-  indicator (the Agents mark tints while the bed is playing). Two placements
-  on one page (the desktop bar and the phone header) need two ids.
+  The soundtrack rides in it, which is why `id` is REQUIRED — the pill and the
+  ambient indicator are hook-driven and need a unique id per placement. It was
+  optional once, and every placement that forgot it silently lost the music.
+  Two placements on one page (a desktop bar and a phone header) need two ids.
   """
   attr :active, :atom,
     default: nil,
     values: [nil, :workspaces, :agents, :operator, :notifications, :system]
 
-  attr :id, :string, default: nil
+  attr :id, :string, required: true
   attr :class, :string, default: nil
 
-  def mode_nav(assigns) do
+  def global_nav(assigns) do
     # A system agent's page (`:operator`, the old name) is under Agents.
     assigns =
       assign(assigns, :here, if(assigns.active == :operator, do: :agents, else: assigns.active))
 
     ~H"""
-    <nav class={["flex items-center", @class]} aria-label="Mode">
+    <nav class={["flex items-center", @class]} aria-label="Global">
       <%!-- The soundtrack rides in EVERY bar — play/pause (and on desktop the
       track + volume) reachable from anywhere, so the bed is the app's
       soundtrack, not a page you visit. Keyed off the placement id. --%>
-      <LoopyardWeb.Components.Sound.pill :if={@id} id={@id <> "-sound"} class="mr-1" />
+      <LoopyardWeb.Components.Sound.pill id={@id <> "-sound"} class="mr-1" />
       <.link
-        :if={@here != :workspaces}
         navigate="/workspaces"
         aria-label="Workspaces"
+        aria-current={@here == :workspaces && "page"}
         title="Workspaces — the work"
-        class={mode_btn(false)}
+        class={mode_btn(@here == :workspaces)}
       >
         <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5" aria-hidden="true">
           <path d="M3 3.5A1.5 1.5 0 0 1 4.5 2h3A1.5 1.5 0 0 1 9 3.5v3A1.5 1.5 0 0 1 7.5 8h-3A1.5 1.5 0 0 1 3 6.5v-3ZM3 13.5A1.5 1.5 0 0 1 4.5 12h3A1.5 1.5 0 0 1 9 13.5v3A1.5 1.5 0 0 1 7.5 18h-3A1.5 1.5 0 0 1 3 16.5v-3ZM11 3.5A1.5 1.5 0 0 1 12.5 2h3A1.5 1.5 0 0 1 17 3.5v3A1.5 1.5 0 0 1 15.5 8h-3A1.5 1.5 0 0 1 11 6.5v-3ZM11 13.5a1.5 1.5 0 0 1 1.5-1.5h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3a1.5 1.5 0 0 1-1.5-1.5v-3Z" />
@@ -580,13 +583,13 @@ defmodule LoopyardWeb.Components.Common do
       doubles as the "is the bed playing" indicator: SoundIcon mirrors engine
       state onto the two data-sound-icon elements. --%>
       <.link
-        :if={@here != :agents}
         navigate="/agents"
         id={@id}
-        phx-hook={@id && "SoundIcon"}
+        phx-hook="SoundIcon"
         aria-label="Agents"
+        aria-current={@here == :agents && "page"}
         title="Agents — every agent, whatever its scope"
-        class={mode_btn(false)}
+        class={mode_btn(@here == :agents)}
       >
         <span data-sound-icon="off"><Brand.mark class="w-5 h-5" /></span>
         <span data-sound-icon="on" class="hidden text-violet-500 dark:text-violet-400">
@@ -594,11 +597,11 @@ defmodule LoopyardWeb.Components.Common do
         </span>
       </.link>
       <.link
-        :if={@here != :notifications}
         navigate="/notifications"
         aria-label="Notifications"
+        aria-current={@here == :notifications && "page"}
         title="Notifications — what's waiting on a human, across every workspace"
-        class={mode_btn(false)}
+        class={mode_btn(@here == :notifications)}
       >
         <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5" aria-hidden="true">
           <path
@@ -611,6 +614,12 @@ defmodule LoopyardWeb.Components.Common do
     </nav>
     """
   end
+
+  # Where you ARE is lit and inert-looking; the others are quiet targets. Full
+  # class strings, no interpolation, so Tailwind keeps them.
+  defp mode_btn(true),
+    do:
+      "flex-none inline-flex items-center justify-center w-11 h-11 md:w-9 md:h-9 rounded-sm bg-violet-100 dark:bg-violet-500/15 text-violet-600 dark:text-violet-400"
 
   defp mode_btn(_),
     do:
