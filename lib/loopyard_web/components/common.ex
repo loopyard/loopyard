@@ -496,6 +496,7 @@ defmodule LoopyardWeb.Components.Common do
   """
   attr :breadcrumbs, :list, required: true
   attr :iex_session, :map, required: true
+  attr :up, :boolean, default: true, doc: "false on the root — nothing is above it"
   attr :max_width, :atom, default: :lg, values: [:sm, :md, :lg, :xl]
   attr :flash, :map, default: %{}
   attr :mode, :atom, default: nil
@@ -517,6 +518,7 @@ defmodule LoopyardWeb.Components.Common do
     <div class="min-h-screen bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x safe-area-top">
       <.header
         breadcrumbs={@breadcrumbs}
+        up={@up}
         iex_session={@iex_session}
         mode={@mode}
         host_exposed={Loopyard.Bind.exposed?()}

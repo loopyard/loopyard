@@ -15,6 +15,7 @@ defmodule LoopyardWeb.Components.AppHeader do
   * `:inner_block` — optional slot for extra header content (buttons, etc.)
   """
   attr :breadcrumbs, :list, default: []
+  attr :up, :boolean, default: true, doc: "false on the root — nothing is above it"
   attr :iex_session, :map, default: %{level: nil}
   # Which IA mode this page belongs to (highlights in the mode nav) — see
   # plans/archive/ia-two-modes.md. nil = a page outside the three roots.
@@ -43,7 +44,7 @@ defmodule LoopyardWeb.Components.AppHeader do
     <div class="app-bar flex-none grid grid-cols-[auto_1fr_auto] sm:grid-cols-[1fr_auto_1fr] items-center gap-3 h-14 px-4 md:px-5 border-b border-zinc-200 dark:border-zinc-700/80">
       <div class="min-w-0 flex items-center gap-3">
         {render_slot(@back)}
-        <LoopyardWeb.Components.Breadcrumbs.trail crumbs={@breadcrumbs} />
+        <LoopyardWeb.Components.Breadcrumbs.trail crumbs={@breadcrumbs} back={@up} />
       </div>
 
       <%!-- Centred from sm: up. On a 390px phone there is not room to centre a

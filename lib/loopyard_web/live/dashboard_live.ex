@@ -290,6 +290,7 @@ defmodule LoopyardWeb.DashboardLive do
          where the brand sits on every other screen — was empty. --%>
     <.page_shell
       breadcrumbs={[{"Loopyard", "/"}, {"Home", nil}]}
+      up={false}
       iex_session={@iex_session}
       max_width={:xl}
       flash={@flash}

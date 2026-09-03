@@ -32,6 +32,12 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
   attr :crumbs, :list, required: true
   attr :class, :string, default: ""
 
+  attr :back, :boolean,
+    default: true,
+    doc:
+      "false where there is nothing above this page — the root's phone " <>
+        "header pointed its back arrow at the page you were already on."
+
   attr :include_current, :boolean,
     default: false,
     doc: """
@@ -50,7 +56,13 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
       )
 
     ~H"""
-    <.breadcrumbs :if={@crumbs != []} crumbs={@crumbs} class={@class} mobile={:back} />
+    <.breadcrumbs
+      :if={@crumbs != []}
+      crumbs={@crumbs}
+      class={@class}
+      back={@back}
+      mobile={:back}
+    />
     """
   end
 
@@ -89,6 +101,7 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
 
   attr :crumbs, :list, required: true
   attr :class, :string, default: ""
+  attr :back, :boolean, default: true
 
   attr :mobile, :atom,
     default: :current,
@@ -112,7 +125,7 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
     # A link to the parent rather than history.back(): a pasted deep link has
     # no history to return to, and browser-back would leave the app entirely.
     parent_path =
-      case {assigns.mobile, Enum.reverse(assigns.crumbs)} do
+      case {assigns.back && assigns.mobile, Enum.reverse(assigns.crumbs)} do
         {:back, [{_label, path} | _]} when is_binary(path) -> path
         {:back, _} -> nil
         {_, [_current, {_label, path} | _]} when is_binary(path) -> path
