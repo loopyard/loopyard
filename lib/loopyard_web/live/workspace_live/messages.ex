@@ -459,13 +459,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       # Meta notes (compaction, CLI crash/restart, context refresh) are
       # house-keeping, not conversation — keep them a quiet aside: tiny, muted
       # italic, no bullet, so you can SEE them happen without them competing with
-      # what the agent actually said. (Comment lives here, NOT as a leading HEEX
-      # comment inside ~H — that would make this a non-single-static root and
-      # crash the stateful MessageRowComponent.)
+      # what the agent actually said.
+      #
+      # The BLOCK is centred, the TEXT is not. An inline-block shrinks to its
+      # content, so a five-word note sits centred; a long one grows to the
+      # measure and reads left-aligned like everything else. Centring the text
+      # itself gave three ragged centred lines nobody could scan.
+      # (Comment lives here, NOT as a leading HEEX comment inside ~H — that
+      # would make this a non-single-static root and crash the stateful
+      # MessageRowComponent.)
       ~H"""
       <div class="py-1.5 text-center text-zinc-400/70 dark:text-zinc-600">
         <span
-          class="text-lead italic leading-relaxed"
+          class="inline-block max-w-full text-left text-lead italic leading-relaxed"
           id={"system-msg-#{@msg[:id] || hash_content(@msg.content)}"}
         >
           {@msg.content}
