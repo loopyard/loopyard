@@ -86,6 +86,8 @@ defmodule LoopyardWeb.DashboardLive do
     |> assign(:digest, safe(&finished_items/0, []))
     |> assign(:health_map, safe(&Loopyard.Health.overall/0, %{}))
     |> assign(:connections, safe(fn -> connections(socket.assigns.host) end, []))
+    |> assign(:ports, safe(&port_rows/0, []))
+    |> assign(:secret_count, safe(fn -> length(Loopyard.Secrets.list()) end, 0))
     |> then(&assign(&1, :first_run_step, first_run_step(&1.assigns)))
   end
 
@@ -481,87 +483,130 @@ defmodule LoopyardWeb.DashboardLive do
                   (@health == :down && :down) || :calm
               }
             >
-              {system_line(@health, @first_run_step)}
-              <:detail>
-                {(@remote_exposed && "Reachable on #{@host}") || "Private to this machine"} · bound to {@bind}
-              </:detail>
+              {(@remote_exposed && "Reachable on #{@host}") || "Private to this machine"}
+              <:detail>{system_line(@health, @first_run_step)} · bound to {@bind}</:detail>
             </.gauge>
-            <div class="relative z-10 mt-4 space-y-1">
-              <.link
-                navigate="/system"
-                class="flex items-center gap-2 -mx-2 px-2 py-3 md:py-1.5 text-body text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
-              >
-                Health
-              </.link>
-              <.link
-                navigate="/system/ports"
-                class="flex items-center gap-2 -mx-2 px-2 py-3 md:py-1.5 text-body text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
-              >
-                Ports
-              </.link>
-              <.link
-                navigate="/system/secrets"
-                class="flex items-center gap-2 -mx-2 px-2 py-3 md:py-1.5 text-body text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
-              >
-                Secrets
-              </.link>
-              <%!-- Each service, with its state, each row its OWN link to the
-                   page that fixes it. A count alone would tell you something
-                   is missing without telling you WHICH — the whole failure was
-                   not knowing GitHub was the unset one. The heading is the link
-                   to all of them, so this is ONE thing on the card rather than
-                   a nav row and a list that both say "Connections". --%>
+            <%!-- SYSTEM IS THE HOST AND THE SERVER — nothing else. It used to
+                 be a drawer: a "3 subsystems healthy" summary sitting directly
+                 above the three subsystem rows that said the same thing, then
+                 bare Health / Ports / Secrets links, then the workstation's
+                 credentials. Ports and Secrets are their own panels now, and
+                 credentials belong to a workstation, not to the host. --%>
+            <div :if={@health_map != %{}} class="relative z-10 mt-4">
               <div
-                :if={@connections != []}
-                class="pt-3 mt-2 border-t border-zinc-200/70 dark:border-zinc-800"
+                :for={{comp, status} <- Enum.sort_by(@health_map, &elem(&1, 0))}
+                class="flex items-center gap-2 text-body py-1 md:py-0.5"
               >
-                <.link
-                  navigate={"/workstations/#{@workstation}"}
-                  class="flex items-center gap-2 text-body text-zinc-400 dark:text-zinc-500 mb-1 -mx-2 px-2 py-1 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
-                >
-                  Connections
-                  <span :if={Enum.any?(@connections, &(!&1.connected?))} class="ml-auto">
-                    {Enum.count(@connections, & &1.connected?)}/{length(@connections)}
-                  </span>
-                </.link>
-                <.link
-                  :for={c <- @connections}
-                  navigate={c.path}
-                  class="flex items-center gap-2 text-body -mx-2 px-2 py-2.5 md:py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
-                >
-                  <span class={[
-                    "w-1.5 h-1.5 rounded-full flex-none",
-                    (c.connected? && "bg-emerald-500") || "bg-zinc-300 dark:bg-zinc-600"
-                  ]}></span>
-                  <span class="text-zinc-600 dark:text-zinc-400">{c.label}</span>
-                  <span class="ml-auto text-zinc-400 dark:text-zinc-500 truncate">
-                    {(c.connected? && "Connected") || "Not connected"}
-                  </span>
-                </.link>
+                <span class={["w-1.5 h-1.5 rounded-full flex-none", health_dot(status)]}></span>
+                <span class="text-zinc-600 dark:text-zinc-400">
+                  {comp |> to_string() |> String.replace("_", " ")}
+                </span>
+                <span class="ml-auto text-zinc-400 dark:text-zinc-500 truncate">
+                  {health_word(status)}
+                </span>
               </div>
+            </div>
+          </.dash_card>
 
-              <%!-- Per-component health. "All 3 subsystems healthy" is a summary
-                   of exactly this; showing the components themselves is what
-                   makes the card worth looking at when one of them ISN'T
-                   healthy — you can see WHICH without navigating. --%>
-              <div
-                :if={@health_map != %{}}
-                class="hidden md:block pt-3 mt-2 border-t border-zinc-200/70 dark:border-zinc-800"
+          <%!-- ── PORTS ──────────────────────────────────────────────────── --%>
+          <.dash_card title="Ports" navigate="/system/ports">
+            <:icon>
+              <svg
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                class="w-5 h-5 text-zinc-500 dark:text-zinc-400"
+                aria-hidden="true"
               >
-                <p class="text-body text-zinc-400 dark:text-zinc-500 mb-1">Subsystems</p>
-                <div
-                  :for={{comp, status} <- Enum.sort_by(@health_map, &elem(&1, 0))}
-                  class="flex items-center gap-2 text-body py-0.5"
-                >
-                  <span class={["w-1.5 h-1.5 rounded-full flex-none", health_dot(status)]}></span>
-                  <span class="text-zinc-600 dark:text-zinc-400">
-                    {comp |> to_string() |> String.replace("_", " ")}
-                  </span>
-                  <span class="ml-auto text-zinc-400 dark:text-zinc-500 truncate">
-                    {health_word(status)}
-                  </span>
-                </div>
-              </div>
+                <path d="M10 1a1 1 0 0 1 1 1v4.28a2 2 0 0 1 1 1.72v1a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V8a2 2 0 0 1 1-1.72V2a1 1 0 0 1 1-1ZM4 11a1 1 0 0 1 1 1v2a3 3 0 0 0 3 3h4a3 3 0 0 0 3-3v-2a1 1 0 1 1 2 0v2a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5v-2a1 1 0 0 1 1-1Z" />
+              </svg>
+            </:icon>
+            <.gauge navigate="/system/ports" tone={(@ports == [] && :calm) || :ok}>
+              {ports_line(@ports)}
+              <:detail>Only exposed ports are reachable from another machine</:detail>
+            </.gauge>
+            <div :if={@ports != []} class="relative z-10 mt-4">
+              <.link
+                :for={p <- Enum.take(@ports, 4)}
+                navigate="/system/ports"
+                class="flex items-center gap-2 text-body -mx-2 px-2 py-2 md:py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+              >
+                <span class={[
+                  "w-1.5 h-1.5 rounded-full flex-none",
+                  (p.exposed && "bg-emerald-500") || "bg-zinc-300 dark:bg-zinc-600"
+                ]}></span>
+                <span class="text-zinc-600 dark:text-zinc-400 truncate">{p.label}</span>
+                <span class="ml-auto font-mono text-meta text-zinc-400 dark:text-zinc-500">
+                  :{p.host_port}
+                </span>
+              </.link>
+            </div>
+          </.dash_card>
+
+          <%!-- ── SECRETS ────────────────────────────────────────────────── --%>
+          <.dash_card title="Secrets" navigate="/system/secrets">
+            <:icon>
+              <svg
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                class="w-5 h-5 text-zinc-500 dark:text-zinc-400"
+                aria-hidden="true"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M10 1a4.5 4.5 0 0 0-4.5 4.5V8H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-.5V5.5A4.5 4.5 0 0 0 10 1Zm2.5 7V5.5a2.5 2.5 0 1 0-5 0V8h5Z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+            </:icon>
+            <.gauge navigate="/system/secrets" tone={:calm}>
+              {secrets_line(@secret_count)}
+              <:detail>Values are never shown in chat — agents read them by key</:detail>
+            </.gauge>
+          </.dash_card>
+
+          <%!-- ── WORKSTATION ────────────────────────────────────────────── --%>
+          <%!-- Credentials are a WORKSTATION's, not the host's: your gh, your
+               Stripe CLI, your Bitbucket. They sat on the System card only
+               because the pages that own them had no other way in — this card
+               is that way in, and the anchor for per-person workstations when
+               this goes multiplayer. --%>
+          <.dash_card title="Workstation" navigate={"/workstations/#{@workstation}"}>
+            <:icon>
+              <svg
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                class="w-5 h-5 text-zinc-500 dark:text-zinc-400"
+                aria-hidden="true"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M2 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-4.586l.293 1.293A1 1 0 0 1 11 16H9a1 1 0 0 1-.707-1.707L8.586 14H4a2 2 0 0 1-2-2V5Zm2 0v7h12V5H4Z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+            </:icon>
+            <.gauge
+              navigate={"/workstations/#{@workstation}"}
+              tone={(Enum.all?(@connections, & &1.connected?) && :ok) || :caution}
+            >
+              {connections_line(@connections)}
+              <:detail>{@workstation} · the credentials agents here run with</:detail>
+            </.gauge>
+            <div :if={@connections != []} class="relative z-10 mt-4">
+              <.link
+                :for={c <- @connections}
+                navigate={c.path}
+                class="flex items-center gap-2 text-body -mx-2 px-2 py-2 md:py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+              >
+                <span class={[
+                  "w-1.5 h-1.5 rounded-full flex-none",
+                  (c.connected? && "bg-emerald-500") || "bg-zinc-300 dark:bg-zinc-600"
+                ]}></span>
+                <span class="text-zinc-600 dark:text-zinc-400">{c.label}</span>
+                <span class="ml-auto text-zinc-400 dark:text-zinc-500 truncate">
+                  {(c.connected? && "Connected") || "Not connected"}
+                </span>
+              </.link>
             </div>
           </.dash_card>
         </div>
@@ -572,12 +617,13 @@ defmodule LoopyardWeb.DashboardLive do
 
   # Which outside services this workstation can actually authenticate to.
   #
-  # This is on the dashboard because the pages that OWN it (/workstations/:id)
-  # became unreachable: they're only linked from the first-run bands, which
-  # vanish the moment Claude is connected and a project exists. So the state of
-  # your credentials went invisible exactly once you were past setup — and the
-  # way you found out a token was missing was an agent failing mid-task with
-  # "no GitHub credentials in this sandbox".
+  # These belong to a WORKSTATION, not to the host, and they show on the
+  # dashboard because the pages that own them (/workstations/:id) were only
+  # linked from the first-run bands, which vanish the moment Claude is
+  # connected and a project exists. So the state of your credentials went
+  # invisible exactly once you were past setup — and the way you found out a
+  # token was missing was an agent failing mid-task with "no GitHub
+  # credentials in this sandbox".
   defp connections(_host) do
     id = Loopyard.Workstation.current()
 
@@ -588,6 +634,51 @@ defmodule LoopyardWeb.DashboardLive do
         connected?: Loopyard.Workstation.Env.set?(ig.key, id),
         path: "/workstations/#{id}/#{String.downcase(ig.label)}"
       }
+    end
+  end
+
+  # Every assigned port, exposed ones first — the registry's ETS table is the
+  # same source /system/ports reads.
+  defp port_rows do
+    :ets.tab2list(:port_registry)
+    |> Enum.map(fn {_, e} -> e end)
+    |> Enum.map(fn e ->
+      %{
+        host_port: e.host_port,
+        exposed: e.exposed,
+        label: "#{workspace_label(e.workspace_id)} · #{e.service}"
+      }
+    end)
+    |> Enum.sort_by(&{!&1.exposed, &1.host_port})
+  end
+
+  defp workspace_label(ws_id) do
+    case Loopyard.WorkspaceRegistry.get_workspace(ws_id) do
+      %{name: name} -> name
+      _ -> String.slice(to_string(ws_id), 0, 8)
+    end
+  rescue
+    _ -> to_string(ws_id)
+  end
+
+  defp ports_line([]), do: "No ports assigned"
+
+  defp ports_line(ports) do
+    case Enum.count(ports, & &1.exposed) do
+      0 -> "#{length(ports)} #{plural(length(ports), "port")} · none exposed"
+      n -> "#{n} of #{length(ports)} #{plural(length(ports), "port")} exposed"
+    end
+  end
+
+  defp secrets_line(0), do: "No secrets stored"
+  defp secrets_line(n), do: "#{n} #{plural(n, "secret")} stored"
+
+  defp connections_line([]), do: "No integrations"
+
+  defp connections_line(cs) do
+    case Enum.count(cs, &(!&1.connected?)) do
+      0 -> "All #{length(cs)} connected"
+      n -> "#{n} not connected"
     end
   end
 
