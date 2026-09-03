@@ -27,7 +27,7 @@ defmodule LoopyardWeb.AgentLive do
   alias Loopyard.{Agents, ChatAgent, StreamBuffer}
   alias Loopyard.Events
   alias LoopyardWeb.Live.WorkspaceLive.AgentEvents
-  alias LoopyardWeb.Components.AppShell
+  alias LoopyardWeb.Components.{AppShell, Common}
   import LoopyardWeb.Live.WorkspaceLive.Components.Chat, only: [chat_panel: 1]
 
   alias LoopyardWeb.Live.WorkspaceLive.Attachments, as: ComposerAttachments
@@ -509,6 +509,31 @@ defmodule LoopyardWeb.AgentLive do
 
   def handle_info(_msg, socket), do: {:noreply, socket}
 
+  # The row under the bar: what it's doing, what it runs on, how full its
+  # window is. Facts only — the transcript carries the narrative.
+  defp status_line(agent) do
+    [
+      Common.status_word(agent_state(agent)),
+      Loopyard.Harness.Catalog.label(agent[:harness]),
+      agent[:model],
+      context_pct(agent[:context_utilization])
+    ]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join(" · ")
+  end
+
+  defp context_pct(u) when is_number(u) and u > 0.0, do: "#{round(u * 100)}% ctx"
+  defp context_pct(_), do: nil
+
+  defp agent_state(agent) do
+    case agent[:status] do
+      s when s in [:thinking, :backoff, :compacting, :booting, :starting, :restarting] -> :working
+      :auth_expired -> :broken
+      :idle -> :done
+      _ -> :asleep
+    end
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -519,6 +544,21 @@ defmodule LoopyardWeb.AgentLive do
       id="agent-page"
       phx-hook="ScrollBottom"
     >
+      <%!-- WHAT THIS AGENT IS DOING, always on screen. A workspace agent says
+      this in its sidebar; here there is no sidebar, so without this the only
+      statement of state was a line in the transcript that scrolls away. --%>
+      <:status>
+        <span
+          class={["flex-none w-2 h-2 rounded-full", Common.state_light(agent_state(@selected_agent))]}
+          aria-hidden="true"
+        ></span>
+        <span class="flex-none font-medium text-zinc-900 dark:text-zinc-50 truncate">
+          {@agent_name}
+        </span>
+        <span class="min-w-0 truncate text-meta text-zinc-500 dark:text-zinc-400">
+          {status_line(@selected_agent)}
+        </span>
+      </:status>
       <div class="flex-1 min-w-0 flex flex-col min-h-0">
         <.chat_panel
           messages={@messages}
