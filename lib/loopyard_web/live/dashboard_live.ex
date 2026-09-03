@@ -158,11 +158,6 @@ defmodule LoopyardWeb.DashboardLive do
   defp system_line(health, _step), do: health_line(health)
 
   # Health.component/1 returns :healthy | {:degraded, reason} | {:down, reason}.
-  defp health_dot(:healthy), do: "bg-emerald-500"
-  defp health_dot({:degraded, _}), do: "bg-amber-500"
-  defp health_dot({:down, _}), do: "bg-rose-500"
-  defp health_dot(_), do: "bg-zinc-400"
-
   defp health_word(:healthy), do: "ok"
   defp health_word({:degraded, _}), do: "degraded"
   defp health_word({:down, _}), do: "down"
@@ -459,7 +454,14 @@ defmodule LoopyardWeb.DashboardLive do
           </.dash_card>
 
           <%!-- ── SYSTEM ─────────────────────────────────────────────────── --%>
-          <.dash_card title="System" navigate="/system">
+          <%!-- ── CONFIGURATION ──────────────────────────────────────────
+               The host, its ports, its secrets and the workstation's
+               credentials are ONE kind of thing: settings you visit, not work
+               in motion. As four cards they made the page a jagged wall of
+               panels of unequal height and gave setup the same weight as the
+               three roots. One card, four rows, each with the one fact you'd
+               have opened it for. --%>
+          <.dash_card title="Configuration" navigate="/system">
             <:icon>
               <svg
                 viewBox="0 0 20 20"
@@ -469,7 +471,7 @@ defmodule LoopyardWeb.DashboardLive do
               >
                 <path
                   fill-rule="evenodd"
-                  d="M7.84 1.804A1 1 0 0 1 8.82 1h2.36a1 1 0 0 1 .98.804l.331 1.652a6.993 6.993 0 0 1 1.929 1.115l1.598-.54a1 1 0 0 1 1.186.447l1.18 2.044a1 1 0 0 1-.205 1.251l-1.267 1.113a7.047 7.047 0 0 1 0 2.228l1.267 1.113a1 1 0 0 1 .206 1.25l-1.18 2.045a1 1 0 0 1-1.187.447l-1.598-.54a6.993 6.993 0 0 1-1.929 1.115l-.33 1.652a1 1 0 0 1-.98.804H8.82a1 1 0 0 1-.98-.804l-.331-1.652a6.993 6.993 0 0 1-1.929-1.115l-1.598.54a1 1 0 0 1-1.186-.447l-1.18-2.044a1 1 0 0 1 .205-1.251l1.267-1.114a7.05 7.05 0 0 1 0-2.227L1.821 7.773a1 1 0 0 1-.206-1.25l1.18-2.045a1 1 0 0 1 1.187-.447l1.598.54A6.992 6.992 0 0 1 7.51 3.456l.33-1.652ZM10 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"
+                  d="M7.84 1.804A1 1 0 0 1 8.82 1h2.36a1 1 0 0 1 .98.804l.331 1.652a6.993 6.993 0 0 1 1.929 1.115l1.598-.54a1 1 0 0 1 1.186.447l1.18 2.044a1 1 0 0 1-.205 1.251l-1.267 1.113a7.047 7.047 0 0 1 0 2.228l1.267 1.113a1 1 0 0 1 .206 1.25l-1.18 2.045a1 1 0 0 1-1.187.447l-1.598-.54a6.993 6.993 0 0 1-1.929 1.115l-.33 1.652a1 1 0 0 1-.98.804H8.82a1 1 0 0 1-.98-.804l-.331-1.652a6.993 6.993 0 0 1-1.929-1.115l-1.598.54a1 1 0 0 1-1.186-.447l-1.18-2.044a1 1 0 0 1 .205-1.251l1.267-1.114a7.05 7.05 0 0 1 0-2.227L1.821 7.773a1 1 0 0 1-.206-1.25l1.18-2.045a1 1 0 0 1 1.187-.447l1.598.54A6.992 6.992 0 0 1 7.51 3.456l.33-1.652Z"
                   clip-rule="evenodd"
                 />
               </svg>
@@ -483,130 +485,24 @@ defmodule LoopyardWeb.DashboardLive do
                   (@health == :down && :down) || :calm
               }
             >
-              {(@remote_exposed && "Reachable on #{@host}") || "Private to this machine"}
-              <:detail>{system_line(@health, @first_run_step)} · bound to {@bind}</:detail>
+              {system_line(@health, @first_run_step)}
+              <:detail>
+                {(@remote_exposed && "Reachable on #{@host}") || "Private to this machine"} · bound to {@bind}
+              </:detail>
             </.gauge>
-            <%!-- SYSTEM IS THE HOST AND THE SERVER — nothing else. It used to
-                 be a drawer: a "3 subsystems healthy" summary sitting directly
-                 above the three subsystem rows that said the same thing, then
-                 bare Health / Ports / Secrets links, then the workstation's
-                 credentials. Ports and Secrets are their own panels now, and
-                 credentials belong to a workstation, not to the host. --%>
-            <div :if={@health_map != %{}} class="relative z-10 mt-4">
-              <div
-                :for={{comp, status} <- Enum.sort_by(@health_map, &elem(&1, 0))}
-                class="flex items-center gap-2 text-body py-1 md:py-0.5"
-              >
-                <span class={["w-1.5 h-1.5 rounded-full flex-none", health_dot(status)]}></span>
-                <span class="text-zinc-600 dark:text-zinc-400">
-                  {comp |> to_string() |> String.replace("_", " ")}
-                </span>
-                <span class="ml-auto text-zinc-400 dark:text-zinc-500 truncate">
-                  {health_word(status)}
-                </span>
-              </div>
-            </div>
-          </.dash_card>
-
-          <%!-- ── PORTS ──────────────────────────────────────────────────── --%>
-          <.dash_card title="Ports" navigate="/system/ports">
-            <:icon>
-              <svg
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                class="w-5 h-5 text-zinc-500 dark:text-zinc-400"
-                aria-hidden="true"
-              >
-                <path d="M10 1a1 1 0 0 1 1 1v4.28a2 2 0 0 1 1 1.72v1a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V8a2 2 0 0 1 1-1.72V2a1 1 0 0 1 1-1ZM4 11a1 1 0 0 1 1 1v2a3 3 0 0 0 3 3h4a3 3 0 0 0 3-3v-2a1 1 0 1 1 2 0v2a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5v-2a1 1 0 0 1 1-1Z" />
-              </svg>
-            </:icon>
-            <.gauge navigate="/system/ports" tone={(@ports == [] && :calm) || :ok}>
-              {ports_line(@ports)}
-              <:detail>Only exposed ports are reachable from another machine</:detail>
-            </.gauge>
-            <div :if={@ports != []} class="relative z-10 mt-4">
-              <.link
-                :for={p <- Enum.take(@ports, 4)}
-                navigate="/system/ports"
-                class="flex items-center gap-2 text-body -mx-2 px-2 py-2 md:py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
-              >
-                <span class={[
-                  "w-1.5 h-1.5 rounded-full flex-none",
-                  (p.exposed && "bg-emerald-500") || "bg-zinc-300 dark:bg-zinc-600"
-                ]}></span>
-                <span class="text-zinc-600 dark:text-zinc-400 truncate">{p.label}</span>
-                <span class="ml-auto font-mono text-meta text-zinc-400 dark:text-zinc-500">
-                  :{p.host_port}
-                </span>
-              </.link>
-            </div>
-          </.dash_card>
-
-          <%!-- ── SECRETS ────────────────────────────────────────────────── --%>
-          <.dash_card title="Secrets" navigate="/system/secrets">
-            <:icon>
-              <svg
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                class="w-5 h-5 text-zinc-500 dark:text-zinc-400"
-                aria-hidden="true"
-              >
-                <path
-                  fill-rule="evenodd"
-                  d="M10 1a4.5 4.5 0 0 0-4.5 4.5V8H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-.5V5.5A4.5 4.5 0 0 0 10 1Zm2.5 7V5.5a2.5 2.5 0 1 0-5 0V8h5Z"
-                  clip-rule="evenodd"
-                />
-              </svg>
-            </:icon>
-            <.gauge navigate="/system/secrets" tone={:calm}>
-              {secrets_line(@secret_count)}
-              <:detail>Values are never shown in chat — agents read them by key</:detail>
-            </.gauge>
-          </.dash_card>
-
-          <%!-- ── WORKSTATION ────────────────────────────────────────────── --%>
-          <%!-- Credentials are a WORKSTATION's, not the host's: your gh, your
-               Stripe CLI, your Bitbucket. They sat on the System card only
-               because the pages that own them had no other way in — this card
-               is that way in, and the anchor for per-person workstations when
-               this goes multiplayer. --%>
-          <.dash_card title="Workstation" navigate={"/workstations/#{@workstation}"}>
-            <:icon>
-              <svg
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                class="w-5 h-5 text-zinc-500 dark:text-zinc-400"
-                aria-hidden="true"
-              >
-                <path
-                  fill-rule="evenodd"
-                  d="M2 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-4.586l.293 1.293A1 1 0 0 1 11 16H9a1 1 0 0 1-.707-1.707L8.586 14H4a2 2 0 0 1-2-2V5Zm2 0v7h12V5H4Z"
-                  clip-rule="evenodd"
-                />
-              </svg>
-            </:icon>
-            <.gauge
-              navigate={"/workstations/#{@workstation}"}
-              tone={(Enum.any?(@connections, &(&1.required? and !&1.connected?)) && :caution) || :ok}
-            >
-              {connections_line(@connections)}
-              <:detail>{@workstation} · the credentials agents here run with</:detail>
-            </.gauge>
-            <div :if={@connections != []} class="relative z-10 mt-4">
-              <.link
-                :for={c <- @connections}
-                navigate={c.path}
-                class="flex items-center gap-2 text-body -mx-2 px-2 py-2 md:py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
-              >
-                <span class={[
-                  "w-1.5 h-1.5 rounded-full flex-none",
-                  (c.connected? && "bg-emerald-500") || "bg-zinc-300 dark:bg-zinc-600"
-                ]}></span>
-                <span class="text-zinc-600 dark:text-zinc-400">{c.label}</span>
-                <span class="ml-auto text-zinc-400 dark:text-zinc-500 truncate">
-                  {(c.connected? && "Connected") || "Not connected"}
-                </span>
-              </.link>
+            <div class="relative z-10 mt-4">
+              <.config_row navigate="/system" label="System" value={host_line(@health_map)} />
+              <.config_row navigate="/system/ports" label="Ports" value={ports_line(@ports)} />
+              <.config_row
+                navigate="/system/secrets"
+                label="Secrets"
+                value={secrets_line(@secret_count)}
+              />
+              <.config_row
+                navigate={"/workstations/#{@workstation}"}
+                label="Workstation"
+                value={connections_line(@connections)}
+              />
             </div>
           </.dash_card>
         </div>
@@ -635,6 +531,37 @@ defmodule LoopyardWeb.DashboardLive do
         connected?: Loopyard.Workstation.Env.set?(ig.key, id),
         path: "/workstations/#{id}/#{String.downcase(ig.label)}"
       }
+    end
+  end
+
+  attr :navigate, :string, required: true
+  attr :label, :string, required: true
+  attr :value, :string, required: true
+
+  # One setting: what it is, and the single fact you'd have opened it for.
+  defp config_row(assigns) do
+    ~H"""
+    <.link
+      navigate={@navigate}
+      class="flex items-center gap-3 -mx-2 px-2 py-2.5 md:py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+    >
+      <span class="flex-none text-body text-zinc-700 dark:text-zinc-300">{@label}</span>
+      <span class="ml-auto min-w-0 truncate text-meta text-zinc-500 dark:text-zinc-400">
+        {@value}
+      </span>
+    </.link>
+    """
+  end
+
+  defp host_line(health_map) when map_size(health_map) == 0, do: "—"
+
+  defp host_line(health_map) do
+    case Enum.reject(health_map, &(elem(&1, 1) == :healthy)) do
+      [] ->
+        "#{map_size(health_map)} subsystems ok"
+
+      bad ->
+        "#{name_list(Enum.map(bad, &(elem(&1, 0) |> to_string() |> String.replace("_", " "))))} #{health_word(bad |> List.first() |> elem(1))}"
     end
   end
 
