@@ -315,7 +315,12 @@ html:has([data-snap-deck]) {
 .markdown-body li::marker { color: rgba(139, 124, 255, 0.55); } /* accent bullets, quietly */
 .markdown-body li > ul, .markdown-body li > ol { margin: 0.35em 0; }
 .markdown-body code {
-  font-size: 1em;
+  /* Monospace READS bigger than the sans at the same px — taller x-height,
+     wider glyphs — so inline code at 1em looked a size up from the sentence
+     around it. 0.9em makes it match OPTICALLY. This is the one place an
+     em-relative size is right: the target is the neighbouring text, whatever
+     size that line is, not a step on the scale. */
+  font-size: 0.9em;
   padding: 0.15em 0.35em;
   border-radius: 0.125rem;
   background: rgba(0, 0, 0, 0.06);
