@@ -9,9 +9,15 @@ defmodule LoopyardWeb.AgentsLive.Row do
   the row, so the secondary fact was the loudest thing on it and every name
   started at a different x.
 
-  On the Agents root the rows are GROUPED by project · workspace, so a row
-  drops the where entirely — the group heading says it. The home card is
-  ungrouped (`compact`), so there the where rides along after the name.
+  This two-line row IS the agent atom, and it is deliberately not a workspace
+  row: a workspace reads as one quiet line of project · workspace, an agent as
+  a BOLD NAME with its status beneath. Wherever agents are listed they wear
+  this shape, so "a list of agents" is recognisable before you read a word.
+
+  Everything below the name is one muted line: where it lives, what it runs
+  on, what it's doing, how long ago. Uppercase group headings used to carry
+  the where; a row that states its own where needs no heading, and the list
+  stays flat — which is what the Agents root is for.
 
   `rows/1` shapes summaries into what the row renders (ETS + registries
   only, no GenServer calls — this runs on mount paths).
@@ -77,42 +83,50 @@ defmodule LoopyardWeb.AgentsLive.Row do
     <.link
       navigate={@row.path}
       class={[
-        "flex items-center gap-2.5 -mx-2 px-2 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors",
-        (@compact && "py-2 md:py-1.5") || "min-h-[3.25rem] sm:min-h-11 py-2"
+        "flex items-start gap-2.5 -mx-2 px-2 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors",
+        (@compact && "py-2") || "min-h-[3.25rem] py-2.5"
       ]}
     >
       <span
-        class={["flex-none w-2 h-2 rounded-full", Common.state_light(@row.state)]}
+        class={["flex-none mt-[0.4rem] w-2 h-2 rounded-full", Common.state_light(@row.state)]}
         aria-hidden="true"
       ></span>
-      <span class="min-w-0 flex-1 flex items-baseline gap-2">
-        <span class="flex-none max-w-[60%] truncate text-lead font-medium text-zinc-900 dark:text-zinc-50">
+      <span class="min-w-0 flex-1">
+        <span class="block truncate text-lead font-semibold text-zinc-900 dark:text-zinc-50">
           {@row.name}
         </span>
-        <span :if={@compact} class="min-w-0 truncate text-meta text-zinc-500 dark:text-zinc-400">
-          {@row.where}
-        </span>
-        <span
-          :if={!@compact && @row.loop}
-          class="hidden md:inline min-w-0 truncate text-meta text-zinc-400 dark:text-zinc-500"
-        >
-          {@row.loop}<span :if={@row.model}> · {@row.model}</span>
+        <span class="block truncate text-meta text-zinc-500 dark:text-zinc-400">
+          {meta_line(@row, @compact)}
         </span>
       </span>
-      <span class="flex-none inline-flex items-center gap-2 text-meta text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-        <span :if={@row.needs_you?} class="font-semibold text-orange-700 dark:text-orange-400">Needs you</span>
-        <span :if={!@row.needs_you?}>{@row.activity}</span>
-        <span :if={!@compact && @row.last_activity_at} class="hidden md:inline">· {ago(
-          @row.last_activity_at
-        )}</span>
+      <span
+        :if={@row.needs_you?}
+        class="flex-none text-meta font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-400 whitespace-nowrap"
+      >
+        Needs you
       </span>
     </.link>
     """
   end
 
+  # Everything under the name, in one muted line: where it lives, what it
+  # runs on (the root only — the home card has no room), what it's doing and
+  # when it last did something.
+  defp meta_line(row, compact?) do
+    [
+      row.where,
+      if(!compact? && row.loop,
+        do: Enum.join(Enum.reject([row.loop, row.model], &is_nil/1), " · ")
+      ),
+      if(row.needs_you?, do: nil, else: row.activity),
+      if(!compact?, do: ago(row.last_activity_at))
+    ]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join(" · ")
+  end
+
   # Where an agent lives, as ONE string: a system agent is "System", a
-  # workspace agent "project · workspace". Also the group heading on the
-  # Agents root, so a row and its group can never disagree.
+  # workspace agent "project · workspace".
   defp where(:system, _ws), do: "System"
 
   defp where(_scope, ws) do

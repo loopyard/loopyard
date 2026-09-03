@@ -38,12 +38,7 @@ defmodule LoopyardWeb.AgentsLive do
     waiting = Loopyard.Notifications.open(:decisions) |> MapSet.new(& &1.agent_id)
     rows = Agents.summaries() |> Row.rows(waiting)
 
-    groups =
-      rows
-      |> Enum.group_by(& &1.group)
-      |> Enum.sort_by(fn {group, _} -> if group == "System", do: {0, ""}, else: {1, group} end)
-
-    assign(socket, rows: rows, groups: groups, working: Row.working_count(rows))
+    assign(socket, rows: rows, working: Row.working_count(rows))
   end
 
   @impl true
@@ -134,12 +129,12 @@ defmodule LoopyardWeb.AgentsLive do
             No agents yet.
           </p>
 
-          <section :for={{group, rows} <- @groups} class="pt-4">
-            <div class="section-label px-2 pb-1">{group}</div>
-            <div class="space-y-px">
-              <Row.agent_row :for={row <- rows} row={row} />
-            </div>
-          </section>
+          <%!-- Flat, system agents first. Each row says where it lives, so the
+          uppercase project · workspace headings that used to break the list up
+          are gone with them. --%>
+          <div class="pt-2 divide-y divide-zinc-100 dark:divide-zinc-800/60">
+            <Row.agent_row :for={row <- @rows} row={row} />
+          </div>
         </div>
       </div>
     </AppShell.shell>
