@@ -283,9 +283,13 @@ defmodule LoopyardWeb.DashboardLive do
          navigating "/" -> "/workspaces" made the whole frame jump: the mark
          shrank into a breadcrumb and a header with the mode icons appeared out
          of nowhere. Chrome that moves when you navigate reads as instability.
-         Same shell, same gutters, same header; only the content changes. --%>
+         Same shell, same gutters, same header; only the content changes.
+
+         It names itself "Home" for the same reason: with an empty trail the
+         brand crumb WAS the current page, so it centred and the top-left —
+         where the brand sits on every other screen — was empty. --%>
     <.page_shell
-      breadcrumbs={[]}
+      breadcrumbs={[{"Loopyard", "/"}, {"Home", nil}]}
       iex_session={@iex_session}
       max_width={:xl}
       flash={@flash}
