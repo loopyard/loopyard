@@ -502,14 +502,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             </div>
           </div>
         </div>
-        <%!-- WAITING-ON-YOU band: when a question is pending, repeat it at the
-            composer (flame = blocked-on-a-human) so you always see the ask.
+        <%!-- WAITING-ON-YOU band: when a question is pending AND its card has
+            scrolled out of view, repeat it at the composer (flame =
+            blocked-on-a-human) so you always see the ask. While the card is on
+            screen the band hides itself — saying the same thing twice, one
+            above the other, is what read as noise.
             It is a LINK to the card — it used to say "use the buttons above"
             while being an inert div, so tapping it did nothing and the card
             it referred to was somewhere up the transcript. One line of ask,
             one obvious action. Full-bleed like the queue band. --%>
         <a
           :if={@pending_question}
+          id={"waiting-#{@pending_question[:id]}"}
+          phx-hook="RevealOffscreen"
+          data-watch={"#msg-#{@pending_question[:id]}"}
           href={"#msg-#{@pending_question[:id]}"}
           class="block w-full -mt-2 mb-2 px-3 md:px-6 py-2.5 bg-orange-50 dark:bg-orange-500/10 border-t border-b border-orange-200 dark:border-orange-500/25 hover:bg-orange-100 dark:hover:bg-orange-500/15 transition-colors"
         >
