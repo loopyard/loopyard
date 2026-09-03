@@ -160,9 +160,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
             target="_blank"
             rel="noopener"
             aria-label={"Open app on port #{@app_port.port}"}
-            class="focus-ring inline-flex items-center justify-center gap-0.5 h-11 px-2.5 rounded-sm font-mono text-body text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 active:bg-emerald-500/20 transition-colors flex-none"
+            class="focus-ring inline-flex items-center justify-center gap-0.5 h-11 px-2 sm:px-2.5 rounded-sm font-mono text-body text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 active:bg-emerald-500/20 transition-colors flex-none"
           >
-            :{@app_port.port} <span class="text-meta opacity-70">↗</span>
+            <%!-- The port NUMBER is desktop detail. On a phone the bar carries a
+            back arrow, the workspace title, this, and the global nav — with the
+            number in it the title was crushed to one letter. The arrow alone
+            still says "open the running app". --%>
+            <span class="hidden sm:inline">:{@app_port.port}</span>
+            <span class="text-meta opacity-70">↗</span>
           </.link>
           <LoopyardWeb.Components.Common.global_nav id="nav-ws-mobile" active={:workspaces} />
         </:actions>
