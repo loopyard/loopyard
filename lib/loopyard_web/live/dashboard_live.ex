@@ -587,7 +587,7 @@ defmodule LoopyardWeb.DashboardLive do
             </:icon>
             <.gauge
               navigate={"/workstations/#{@workstation}"}
-              tone={(Enum.all?(@connections, & &1.connected?) && :ok) || :caution}
+              tone={(Enum.any?(@connections, &(&1.required? and !&1.connected?)) && :caution) || :ok}
             >
               {connections_line(@connections)}
               <:detail>{@workstation} · the credentials agents here run with</:detail>
@@ -631,6 +631,7 @@ defmodule LoopyardWeb.DashboardLive do
       %{
         label: ig.label,
         key: ig.key,
+        required?: Map.get(ig, :required, false),
         connected?: Loopyard.Workstation.Env.set?(ig.key, id),
         path: "/workstations/#{id}/#{String.downcase(ig.label)}"
       }
@@ -673,17 +674,21 @@ defmodule LoopyardWeb.DashboardLive do
   defp secrets_line(0), do: "No secrets stored"
   defp secrets_line(n), do: "#{n} #{plural(n, "secret")} stored"
 
-  # NAME the ones that aren't connected. "1 not connected" begs the question it
-  # exists to answer — one WHAT? — and the answer ("Fly") is both shorter and
-  # the only part you can act on. Same rule as the decisions gauge below.
+  # NAME things, don't count them: "1 not connected" begs the question it exists
+  # to answer — one WHAT? And an integration you never set up is not a fault, so
+  # the gauge reports what this workstation CAN do and only raises its voice for
+  # a required one (no Claude, no agents). Fly missing is not news.
   defp connections_line([]), do: "No integrations"
 
   defp connections_line(cs) do
-    case Enum.filter(cs, &(!&1.connected?)) do
-      [] -> "Everything connected"
-      missing -> "#{name_list(Enum.map(missing, & &1.label))} not connected"
+    case Enum.filter(cs, &(&1.required? and !&1.connected?)) do
+      [] -> connected_line(Enum.filter(cs, & &1.connected?))
+      missing -> "#{name_list(Enum.map(missing, & &1.label))} not connected — agents can't run"
     end
   end
+
+  defp connected_line([]), do: "Nothing connected yet"
+  defp connected_line(cs), do: "#{name_list(Enum.map(cs, & &1.label))} connected"
 
   defp name_list([a]), do: a
   defp name_list([a, b]), do: "#{a} and #{b}"

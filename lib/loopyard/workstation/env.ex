@@ -31,10 +31,15 @@ defmodule Loopyard.Workstation.Env do
   #     that type the command into the console and take you to it. The terminal
   #     lives where we tell you to run things, instead of "go run this elsewhere."
   #   * setup     — :anywhere | :desktop (minting needs a same-machine browser).
+  #   * required  — true only where NOTHING works without it. An integration
+  #     you never set up is not a fault: Fly missing is "I don't deploy to Fly",
+  #     and a dashboard that calls that a problem trains you to ignore it.
+  #     Claude is the one that stops every agent dead.
   # (OAuth-redirect methods can slot in here later for services that support it.)
   @integrations [
     %{
       key: "GITHUB_TOKEN",
+      required: false,
       label: "GitHub",
       hint: "Log in once (device flow — phone-friendly), then import the token.",
       setup: :anywhere,
@@ -46,6 +51,7 @@ defmodule Loopyard.Workstation.Env do
     },
     %{
       key: "CLAUDE_CODE_OAUTH_TOKEN",
+      required: true,
       label: "Claude",
       hint: "claude setup-token  on your Mac — Claude's loopback auth is hostile to remote",
       setup: :desktop,
@@ -56,6 +62,7 @@ defmodule Loopyard.Workstation.Env do
     },
     %{
       key: "FLY_ACCESS_TOKEN",
+      required: false,
       label: "Fly",
       hint: "fly tokens create",
       setup: :anywhere,
