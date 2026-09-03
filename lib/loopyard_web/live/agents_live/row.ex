@@ -1,11 +1,17 @@
 defmodule LoopyardWeb.AgentsLive.Row do
   @moduledoc """
   One agent as a row — the shared shape for the Agents root and the home
-  card. The scope is the label: a system agent wears the brand mark and
-  "System"; a workspace agent its project · workspace identity. Then its
-  name, what it's on (loop · model), what it's doing, and a flame when a
-  decision of its is waiting on a human. The whole row is the link to its
-  chat.
+  card.
+
+  The NAME leads, at one left edge for every row. Where the agent lives is
+  secondary and muted after it; what it's doing sits opposite. The first cut
+  led with the project · workspace chip at full strength, truncated to 40% of
+  the row, so the secondary fact was the loudest thing on it and every name
+  started at a different x.
+
+  On the Agents root the rows are GROUPED by project · workspace, so a row
+  drops the where entirely — the group heading says it. The home card is
+  ungrouped (`compact`), so there the where rides along after the name.
 
   `rows/1` shapes summaries into what the row renders (ETS + registries
   only, no GenServer calls — this runs on mount paths).
@@ -20,8 +26,7 @@ defmodule LoopyardWeb.AgentsLive.Row do
           id: String.t(),
           name: String.t(),
           scope: :workspace | :system,
-          project: String.t() | nil,
-          workspace: String.t() | nil,
+          where: String.t(),
           state: atom(),
           status: atom(),
           needs_you?: boolean(),
@@ -50,8 +55,7 @@ defmodule LoopyardWeb.AgentsLive.Row do
         id: s.id,
         name: s[:name] || "Agent",
         scope: scope,
-        project: if(scope == :system, do: "System", else: ws[:project_name] || "Workspace"),
-        workspace: if(scope == :system, do: nil, else: ws[:workspace_name]),
+        where: where(scope, ws),
         state: state_for(s, needs_you?),
         status: s[:status],
         needs_you?: needs_you?,
@@ -60,12 +64,7 @@ defmodule LoopyardWeb.AgentsLive.Row do
         activity: Birdseye.agent_activity(s),
         last_activity_at: s[:last_activity_at],
         path: path_for(s, scope, ws),
-        group:
-          if(scope == :system,
-            do: "System",
-            else:
-              Enum.join(Enum.reject([ws[:project_name], ws[:workspace_name]], &is_nil/1), " · ")
-          )
+        group: where(scope, ws)
       }
     end)
   end
@@ -78,21 +77,24 @@ defmodule LoopyardWeb.AgentsLive.Row do
     <.link
       navigate={@row.path}
       class={[
-        "flex items-center gap-3 -mx-2 px-2 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors",
+        "flex items-center gap-2.5 -mx-2 px-2 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors",
         (@compact && "py-2 md:py-1.5") || "min-h-[3.25rem] sm:min-h-11 py-2"
       ]}
     >
-      <Common.workspace_identity
-        project={@row.project}
-        workspace={@row.workspace}
-        state={@row.state}
-        class="min-w-0 flex-none max-w-[40%]"
-      />
-      <span class="min-w-0 flex-1 flex items-baseline gap-2 truncate">
-        <span class="text-lead font-medium text-zinc-900 dark:text-zinc-50 truncate">{@row.name}</span>
+      <span
+        class={["flex-none w-2 h-2 rounded-full", Common.state_light(@row.state)]}
+        aria-hidden="true"
+      ></span>
+      <span class="min-w-0 flex-1 flex items-baseline gap-2">
+        <span class="flex-none max-w-[60%] truncate text-lead font-medium text-zinc-900 dark:text-zinc-50">
+          {@row.name}
+        </span>
+        <span :if={@compact} class="min-w-0 truncate text-meta text-zinc-500 dark:text-zinc-400">
+          {@row.where}
+        </span>
         <span
           :if={!@compact && @row.loop}
-          class="hidden md:inline text-meta text-zinc-400 dark:text-zinc-500 truncate"
+          class="hidden md:inline min-w-0 truncate text-meta text-zinc-400 dark:text-zinc-500"
         >
           {@row.loop}<span :if={@row.model}> · {@row.model}</span>
         </span>
@@ -106,6 +108,17 @@ defmodule LoopyardWeb.AgentsLive.Row do
       </span>
     </.link>
     """
+  end
+
+  # Where an agent lives, as ONE string: a system agent is "System", a
+  # workspace agent "project · workspace". Also the group heading on the
+  # Agents root, so a row and its group can never disagree.
+  defp where(:system, _ws), do: "System"
+
+  defp where(_scope, ws) do
+    [ws[:project_name] || "Workspace", ws[:workspace_name]]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" · ")
   end
 
   @doc "How many rows are working right now."
