@@ -673,14 +673,21 @@ defmodule LoopyardWeb.DashboardLive do
   defp secrets_line(0), do: "No secrets stored"
   defp secrets_line(n), do: "#{n} #{plural(n, "secret")} stored"
 
+  # NAME the ones that aren't connected. "1 not connected" begs the question it
+  # exists to answer — one WHAT? — and the answer ("Fly") is both shorter and
+  # the only part you can act on. Same rule as the decisions gauge below.
   defp connections_line([]), do: "No integrations"
 
   defp connections_line(cs) do
-    case Enum.count(cs, &(!&1.connected?)) do
-      0 -> "All #{length(cs)} connected"
-      n -> "#{n} not connected"
+    case Enum.filter(cs, &(!&1.connected?)) do
+      [] -> "Everything connected"
+      missing -> "#{name_list(Enum.map(missing, & &1.label))} not connected"
     end
   end
+
+  defp name_list([a]), do: a
+  defp name_list([a, b]), do: "#{a} and #{b}"
+  defp name_list([a, b | rest]), do: "#{a}, #{b} and #{length(rest)} more"
 
   # ── derived values ────────────────────────────────────────────────────────
 
