@@ -437,7 +437,6 @@ defmodule LoopyardWeb.NotificationsLive do
       operator_id={@operator_id}
       user_label={@user_label}
       vapid_key={@vapid_key}
-      badge_count={Loopyard.Notifications.count()}
     />
     """
   end
@@ -459,14 +458,11 @@ defmodule LoopyardWeb.NotificationsLive do
   attr :operator_id, :string, default: nil
   attr :user_label, :string, default: "You"
   attr :vapid_key, :string, default: nil
-  attr :badge_count, :integer, default: 0
 
   def notifications_deck(assigns) do
     assigns = assign(assigns, :total, length(assigns.cards))
 
     ~H"""
-    <%!-- The installed app's icon badge: everything open on the inbox. --%>
-    <div id="app-badge" phx-hook="AppBadge" data-count={@badge_count} class="hidden"></div>
     <%!-- PAST decisions is the same deck with a different source. The trail says
     so (Notifications › Past decisions; a phone's back arrow returns to the
     pending deck) — a second bar under the first was one bar too many. --%>

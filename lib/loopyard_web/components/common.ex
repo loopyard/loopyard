@@ -562,7 +562,9 @@ defmodule LoopyardWeb.Components.Common do
   def global_nav(assigns) do
     # A system agent's page (`:operator`, the old name) is under Agents.
     assigns =
-      assign(assigns, :here, if(assigns.active == :operator, do: :agents, else: assigns.active))
+      assigns
+      |> assign(:here, if(assigns.active == :operator, do: :agents, else: assigns.active))
+      |> assign(:waiting, waiting_count())
 
     ~H"""
     <nav class={["flex items-center", @class]} aria-label="Global">
@@ -598,13 +600,27 @@ defmodule LoopyardWeb.Components.Common do
           <Brand.mark class="w-5 h-5" />
         </span>
       </.link>
+      <%!-- The inbox wears its own count, and the SAME number drives the
+      installed app's icon badge (AppBadge hook) — from every page, not just
+      /notifications, because the badge is how you know to come back at all.
+      Reading it here keeps every shell honest without threading an assign
+      through each LiveView. --%>
       <.link
         navigate="/notifications"
-        aria-label="Notifications"
+        aria-label={"Notifications#{(@waiting > 0 && " — #{@waiting} waiting") || ""}"}
         aria-current={@here == :notifications && "page"}
         title="Notifications — what's waiting on a human, across every workspace"
-        class={mode_btn(@here == :notifications)}
+        class={["relative", mode_btn(@here == :notifications)]}
+        id={@id <> "-inbox"}
+        phx-hook="AppBadge"
+        data-count={@waiting}
       >
+        <span
+          :if={@waiting > 0}
+          class="absolute top-1 right-1 md:top-0.5 md:right-0.5 min-w-[1.05rem] h-[1.05rem] px-1 inline-flex items-center justify-center rounded-full bg-orange-600 text-white text-meta font-semibold tabular-nums leading-none"
+        >
+          {min(@waiting, 99)}
+        </span>
         <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5" aria-hidden="true">
           <path
             fill-rule="evenodd"
@@ -615,6 +631,17 @@ defmodule LoopyardWeb.Components.Common do
       </.link>
     </nav>
     """
+  end
+
+  # Open decisions, straight from the store's ETS — a read, never a scan of
+  # agents. Anything that goes wrong here must not take a page's header down
+  # with it, so a failure is simply "nothing waiting".
+  defp waiting_count do
+    Loopyard.Notifications.count(:decisions)
+  rescue
+    _ -> 0
+  catch
+    _, _ -> 0
   end
 
   # Where you ARE is lit and inert-looking; the others are quiet targets. Full
