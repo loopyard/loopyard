@@ -33,8 +33,12 @@ defmodule LoopyardWeb.DashboardSummaryTest do
     test "status reads below the title, not as a corner badge", %{html: html} do
       # The gauge is a LINK — a status you can't act on is decoration. The old
       # badges were bare <span>s floated with ml-auto inside the heading row,
-      # so the test that matters is: the health word lives INSIDE the link.
-      assert html =~ ~r{<a[^>]+href="/system"[^>]*>.*?(healthy|degraded|down|not ready)}s
+      # so the test that matters is: the state word lives INSIDE the link.
+      # The Configuration gauge leads with whatever is WRONG (a required
+      # integration beats a subsystem), so "not connected" is one of its words.
+      assert html =~
+               ~r{<a[^>]+href="/system"[^>]*>.*?(healthy|degraded|down|not ready|not connected)}s
+
       assert html =~ ~s|href="/notifications"|
     end
   end

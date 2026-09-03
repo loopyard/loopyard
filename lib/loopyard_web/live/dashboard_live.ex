@@ -152,17 +152,6 @@ defmodule LoopyardWeb.DashboardLive do
   # elements contradicting each other is worse than either being wrong alone,
   # because now nothing on the page can be trusted. While a blocking first-run
   # step is open, say what's actually true.
-  defp system_line(_health, :inference),
-    do: "Subsystems up · agents blocked until Claude connects"
-
-  defp system_line(health, _step), do: health_line(health)
-
-  # Health.component/1 returns :healthy | {:degraded, reason} | {:down, reason}.
-  defp health_word(:healthy), do: "ok"
-  defp health_word({:degraded, _}), do: "degraded"
-  defp health_word({:down, _}), do: "down"
-  defp health_word(other), do: to_string(other)
-
   defp safe(fun, default) do
     fun.()
   rescue
@@ -485,13 +474,15 @@ defmodule LoopyardWeb.DashboardLive do
                   (@health == :down && :down) || :calm
               }
             >
-              {system_line(@health, @first_run_step)}
-              <:detail>
-                {(@remote_exposed && "Reachable on #{@host}") || "Private to this machine"} · bound to {@bind}
-              </:detail>
+              {config_line(@health, @first_run_step, @connections)}
+              <:detail>bound to {@bind}</:detail>
             </.gauge>
             <div class="relative z-10 mt-4">
-              <.config_row navigate="/system" label="System" value={host_line(@health_map)} />
+              <.config_row
+                navigate="/system"
+                label="System"
+                value={(@remote_exposed && "Reachable on #{@host}") || "Private to this machine"}
+              />
               <.config_row navigate="/system/ports" label="Ports" value={ports_line(@ports)} />
               <.config_row
                 navigate="/system/secrets"
@@ -553,15 +544,17 @@ defmodule LoopyardWeb.DashboardLive do
     """
   end
 
-  defp host_line(health_map) when map_size(health_map) == 0, do: "—"
+  # The card's ONE line: what, across all four settings, is not right. Each row
+  # under it states its own fact, so this must not restate one of them — a
+  # summary sitting directly above the thing it summarises is what made the old
+  # System card read as a drawer.
+  defp config_line(health, first_run_step, connections) do
+    missing = Enum.filter(connections, &(&1.required? and !&1.connected?))
 
-  defp host_line(health_map) do
-    case Enum.reject(health_map, &(elem(&1, 1) == :healthy)) do
-      [] ->
-        "#{map_size(health_map)} subsystems ok"
-
-      bad ->
-        "#{name_list(Enum.map(bad, &(elem(&1, 0) |> to_string() |> String.replace("_", " "))))} #{health_word(bad |> List.first() |> elem(1))}"
+    cond do
+      first_run_step == :inference or missing != [] -> connections_line(connections)
+      health == :healthy -> "Everything healthy"
+      true -> health_line(health)
     end
   end
 
@@ -667,13 +660,9 @@ defmodule LoopyardWeb.DashboardLive do
     }
   end
 
-  defp health_line(:healthy) do
-    n = length(Loopyard.Health.components())
-    "All #{n} subsystems healthy"
-  rescue
-    _ -> "All subsystems healthy"
-  end
-
+  # :healthy never reaches here — config_line/3 answers that case itself, and
+  # "all N healthy" directly above four rows that each report their own state
+  # was the redundancy that made this card read as a drawer.
   defp health_line(:degraded), do: "A subsystem is degraded — tap for detail"
   defp health_line(:down), do: "A subsystem is down — tap for detail"
   defp health_line(_), do: "Status unavailable"
