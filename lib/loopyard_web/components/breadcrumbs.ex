@@ -62,12 +62,17 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
   attr :class, :string, default: ""
   slot :status
 
+  # THE BAR READS AT BODY SIZE. Chrome is not something you read: at `lead`
+  # the phone bar ran 20px and a project · workspace title filled it. Every
+  # part of the bar moves together — brand wordmark, ancestors, current page,
+  # the workspace trigger and the switcher sheet it opens — so nothing
+  # changes shape between a screen and the sheet over it.
   def current(assigns) do
     assigns = assign(assigns, :label, current_label(assigns.crumbs))
 
     ~H"""
     <div :if={@label} class={["flex items-center gap-2 min-w-0", @class]}>
-      <span class="text-lead font-medium text-zinc-900 dark:text-zinc-100 truncate">
+      <span class="text-body font-medium text-zinc-900 dark:text-zinc-100 truncate">
         {@label}
       </span>
       {render_slot(@status)}
@@ -148,20 +153,20 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
                 >
                   <Brand.logo
                     mark_class="w-5 h-5 flex-none"
-                    wordmark_class="text-lead tracking-tight"
+                    wordmark_class="text-body tracking-tight"
                   />
                 </.link>
               <% path -> %>
                 <.link
                   navigate={path}
-                  class="focus-ring text-lead font-medium text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors truncate rounded-sm"
+                  class="focus-ring text-body font-medium text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors truncate rounded-sm"
                 >
                   {label}
                 </.link>
               <% true -> %>
                 <span
                   aria-current={if idx == length(@crumbs) - 1, do: "page"}
-                  class="text-lead font-medium text-zinc-900 dark:text-zinc-100 truncate"
+                  class="text-body font-medium text-zinc-900 dark:text-zinc-100 truncate"
                 >
                   {label}
                 </span>

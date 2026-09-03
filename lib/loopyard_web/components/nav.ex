@@ -435,7 +435,7 @@ defmodule LoopyardWeb.Components.Nav do
           type="button"
           phx-click={toggle_panel(@id)}
           aria-label={"Close #{@title}"}
-          class="flex-none flex items-center justify-center gap-1 h-14 px-4 w-full text-lead border-b border-zinc-200 dark:border-zinc-700/80"
+          class="flex-none flex items-center justify-center gap-1 h-14 px-4 w-full text-body border-b border-zinc-200 dark:border-zinc-700/80"
         >
           <%!-- Mirrors the trigger it opens from: same h-14, the same thing
     centred, and the chevron IMMEDIATELY BESIDE the title — exactly where

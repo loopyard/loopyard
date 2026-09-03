@@ -130,7 +130,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
             aria-controls="nav-switcher"
             aria-haspopup="dialog"
             aria-label={"Switch workspace — currently #{@project && @project.name} #{@ws_name}"}
-            class="focus-ring min-w-0 inline-flex items-center gap-1 min-h-11 px-1 rounded-sm text-lead"
+            class="focus-ring min-w-0 inline-flex items-center gap-1 min-h-11 px-1 rounded-sm text-body"
           >
             <LoopyardWeb.Components.Common.workspace_identity
               project={(@project && @project.name) || @ws_name}
