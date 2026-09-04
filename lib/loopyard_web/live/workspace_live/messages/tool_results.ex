@@ -123,7 +123,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
       </summary>
       <pre
         :if={@expanded?}
-        class={"mt-1 p-3 rounded-sm text-lead md:text-[13px] font-mono leading-snug overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap
+        class={"mt-1 p-3 rounded-sm text-body font-mono leading-snug overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap
     #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300"}"}
       >{Ansi.to_html(@display)}</pre>
       <div :if={@expanded?} class="flex items-center gap-2 mt-1 h-5">
@@ -298,7 +298,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
         onclick={@lazy? && "event.preventDefault()"}
       >
         <.icon name={:document} class="w-3.5 h-3.5 flex-none text-sky-500 dark:text-sky-400" />
-        <span class="min-w-0 flex-1 flex items-baseline gap-1.5 font-mono text-lead md:text-[13px]">
+        <span class="min-w-0 flex-1 flex items-baseline gap-1.5 font-mono text-body">
           <span class="flex-none text-zinc-700 dark:text-zinc-200 font-medium">{@basename}</span>
           <span :if={@dir} class="min-w-0 truncate text-zinc-400 dark:text-zinc-500">{@dir}</span>
         </span>
@@ -308,7 +308,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
       </summary>
       <div
         :if={@expanded?}
-        class="highlight border-t border-zinc-200 dark:border-zinc-800 max-h-96 overflow-auto text-lead md:text-[13px] font-mono leading-relaxed"
+        class="highlight border-t border-zinc-200 dark:border-zinc-800 max-h-96 overflow-auto text-body font-mono leading-relaxed"
       >
         <div :for={{line, i} <- @lines} class="flex min-w-max">
           <span class="flex-none sticky left-0 w-12 pr-3 text-right select-none tabular-nums bg-brand-paper-shade dark:bg-brand-ink border-r border-zinc-100 dark:border-zinc-800 text-zinc-400 dark:text-zinc-600">
@@ -409,7 +409,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
         :if={@expanded?}
         class="mt-1 rounded-sm overflow-hidden bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800"
       >
-        <div class="max-h-96 overflow-auto text-lead md:text-[13px] font-mono leading-snug py-1">
+        <div class="max-h-96 overflow-auto text-body font-mono leading-snug py-1">
           <div
             :for={row <- @rows}
             class="flex gap-2 px-3 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50"

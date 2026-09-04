@@ -297,9 +297,12 @@ defmodule LoopyardWeb.DashboardLive do
                 <path d="M3 3.5A1.5 1.5 0 0 1 4.5 2h3A1.5 1.5 0 0 1 9 3.5v3A1.5 1.5 0 0 1 7.5 8h-3A1.5 1.5 0 0 1 3 6.5v-3ZM3 13.5A1.5 1.5 0 0 1 4.5 12h3A1.5 1.5 0 0 1 9 13.5v3A1.5 1.5 0 0 1 7.5 18h-3A1.5 1.5 0 0 1 3 16.5v-3ZM11 3.5A1.5 1.5 0 0 1 12.5 2h3A1.5 1.5 0 0 1 17 3.5v3A1.5 1.5 0 0 1 15.5 8h-3A1.5 1.5 0 0 1 11 6.5v-3ZM11 13.5a1.5 1.5 0 0 1 1.5-1.5h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3a1.5 1.5 0 0 1-1.5-1.5v-3Z" />
               </svg>
             </:icon>
+            <%!-- "Nothing running" was a lie: dev servers, databases and every
+            container keep running whether or not an agent is mid-turn. This
+            gauge counts AGENTS at work, so it says so. --%>
             <.gauge navigate="/workspaces" tone={(@ws.working > 0 && :working) || :calm}>
               {(@ws.working > 0 && "#{@ws.working} #{plural(@ws.working, "workspace")} working") ||
-                "Nothing running"}
+                "No agent is working"}
               <:detail>
                 {@ws.projects} {plural(@ws.projects, "project")} · {@ws.workspaces} {plural(
                   @ws.workspaces,

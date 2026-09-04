@@ -678,7 +678,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         <div class="px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50">
           <h3 class="text-lead font-semibold uppercase tracking-wider text-zinc-500">Environment</h3>
         </div>
-        <pre class="px-4 py-3 text-lead md:text-[13px] font-mono leading-snug text-zinc-600 dark:text-zinc-400 overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto">{@env}</pre>
+        <pre class="px-4 py-3 text-body font-mono leading-snug text-zinc-600 dark:text-zinc-400 overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto">{@env}</pre>
       </div>
       <div class="flex-1 flex flex-col min-h-0">
         <div class="flex items-center justify-between px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
@@ -695,7 +695,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             />
           </form>
         </div>
-        <pre class="flex-1 px-4 py-3 text-lead md:text-[13px] font-mono leading-snug overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400 min-h-[200px]">{@logs}</pre>
+        <pre class="flex-1 px-4 py-3 text-body font-mono leading-snug overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400 min-h-[200px]">{@logs}</pre>
       </div>
     </div>
     """
