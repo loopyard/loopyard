@@ -373,15 +373,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
       <%!-- SETTLED: same rows (no layout jump), chosen lit emerald with a
     filled check, the rest quietly dimmed but legible. Durable
     receipt — survives refresh/restart via persisted :selections. --%>
-      <%!-- On a PHONE the band already runs edge to edge, so a filled row or a
-      receipt inside it runs edge to edge as well (-mx-4, no radius): a box
-      inset inside a box read as cramped. From md: the card has room. --%>
-      <div :if={locked?(@msg, @q)} class="flex flex-col gap-0.5">
+      <%!-- SETTLED ROWS ARE THE PENDING ROWS. Same padding, same gap, same
+      radius, same inset — answering must change COLOUR and nothing else, so
+      the option you tapped stays exactly where your eye left it. When the
+      receipt rows were tighter and full-bleed, settling nudged every line and
+      the question above them drifted. --%>
+      <div :if={locked?(@msg, @q)} class="flex flex-col gap-1">
         <div
           :for={o <- @q.options}
           class={
             [
-              "flex items-start gap-3 -mx-4 md:mx-0 rounded-none md:rounded-sm px-4 md:px-3 py-2 md:py-1.5",
+              "flex items-start gap-3 rounded-sm px-3 py-2.5 md:py-2",
               # The chosen row has to be unmistakable at a glance — a faint wash
               # read as "some green thing". Same row, same height: the fill and a
               # ring carry it, so nothing moves.
@@ -434,14 +436,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
         <div :if={!any_option_chosen?(@msg, @q)} class="text-lead">
           <div
             :if={answer_for(@msg, @q)}
-            class="flex items-center gap-3 -mx-4 md:mx-0 rounded-none md:rounded-sm bg-emerald-500/20 ring-1 ring-emerald-500/60 px-4 md:px-3 py-2.5 font-semibold text-emerald-800 dark:text-emerald-200"
+            class="flex items-center gap-3 rounded-sm bg-emerald-500/20 ring-1 ring-emerald-500/60 px-3 py-2.5 font-semibold text-emerald-800 dark:text-emerald-200"
           >
             <span class="flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full bg-emerald-500 text-white"><.check /></span>
             <span class="min-w-0">{answer_for(@msg, @q)}</span>
           </div>
           <div
             :if={!answer_for(@msg, @q)}
-            class="flex items-center justify-center -mx-4 md:mx-0 rounded-none md:rounded-sm bg-zinc-500/10 ring-1 ring-zinc-500/30 px-4 md:px-3 py-2.5 font-semibold text-zinc-500 dark:text-zinc-400"
+            class="flex items-center justify-center rounded-sm bg-zinc-500/10 ring-1 ring-zinc-500/30 px-3 py-2.5 font-semibold text-zinc-500 dark:text-zinc-400"
           >
             Dismissed — the agent moves on without an answer
           </div>
