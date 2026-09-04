@@ -45,9 +45,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
             state={if @msg.status == :pending, do: :needs_you, else: :done}
             class="min-w-0"
           />
+          <%!-- A LABEL, not an announcement. At lead size in flame this read as
+          the loudest thing on a dark screen — the rail and the identity dot
+          already say "waiting on you", and a card that shouts trains you to
+          brace instead of read. --%>
           <span class={[
-            "text-lead flex items-center gap-1.5 font-semibold uppercase tracking-wide flex-none",
-            (@msg.status == :pending && "text-orange-700 dark:text-orange-400") ||
+            "text-meta flex items-center gap-1.5 font-semibold uppercase tracking-wide flex-none",
+            (@msg.status == :pending && "text-orange-700 dark:text-orange-400/80") ||
               "text-zinc-500 dark:text-zinc-400"
           ]}>
             {case @msg.status do

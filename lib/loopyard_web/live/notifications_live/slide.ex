@@ -105,18 +105,30 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
             >
               <Brand.mark class="w-5 h-5" />
             </span>
-            <span :if={@system_source?} class="min-w-0 truncate">
+            <%!-- The byline is the way BACK TO THE CONVERSATION: a decision is a
+            moment in a chat, and the chat is where the reasoning around it
+            lives. The anchor names the card's own message, so a chat that has
+            it on screen lands on it. --%>
+            <.link
+              :if={@system_source?}
+              navigate={"#{@card.slide.path}#msg-#{@card.slide.msg_id}"}
+              class="min-w-0 truncate hover:underline"
+            >
               <span class="font-semibold text-zinc-800 dark:text-zinc-100">
                 {@card.slide.agent_name || "System"}
               </span>
               <span :if={@card.slide.asked_at}>{@verb} {Deck.ago_words(@card.slide.asked_at)}</span>
-            </span>
+            </.link>
             <%!-- A workspace agent's byline: a whole CARD wears the project ·
             workspace chip itself (the same chip twice, two lines apart, was
             the junk), so the byline is a state light and the name. A bare
             question of a fanned-out ask has no card header, so its byline
             carries the chip. --%>
-            <span :if={!@system_source?} class="min-w-0 flex items-center gap-2 truncate">
+            <.link
+              :if={!@system_source?}
+              navigate={"#{@card.slide.path}#msg-#{@card.slide.msg_id}"}
+              class="min-w-0 flex items-center gap-2 truncate hover:underline"
+            >
               <Common.workspace_identity
                 :if={@card.q}
                 project={@card.slide.project_name}
@@ -137,7 +149,7 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
                 <span class="font-semibold text-zinc-800 dark:text-zinc-100">{@card.slide.agent_name}</span>
                 <span :if={@card.slide.asked_at}>{@verb} {Deck.ago_words(@card.slide.asked_at)}</span>
               </span>
-            </span>
+            </.link>
             <span class="ml-auto flex-none inline-flex items-center gap-1 text-meta tabular-nums whitespace-nowrap">
               <a
                 :if={@prev}

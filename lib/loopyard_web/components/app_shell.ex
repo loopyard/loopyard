@@ -26,14 +26,6 @@ defmodule LoopyardWeb.Components.AppShell do
   attr :mode_id, :string, required: true, doc: "unique mode-nav placement id"
   attr :rest, :global, doc: "id / phx-hook for the page root (the chat's ScrollBottom)"
 
-  slot :status,
-    doc: """
-    A second, quieter bar under the first: what this page is looking at right
-    now. A workspace chat says this in its sidebar; the single-page shells
-    have no sidebar, so a status that lives only in the transcript scrolls
-    away and the page stops telling you what it's doing.
-    """
-
   slot :inner_block, required: true
 
   def shell(assigns) do
@@ -54,13 +46,6 @@ defmodule LoopyardWeb.Components.AppShell do
           <LoopyardWeb.Components.Common.global_nav id={@mode_id} active={@mode} />
         </:actions>
       </Nav.bar>
-
-      <div
-        :if={@status != []}
-        class="app-bar-secondary flex-none flex items-center gap-2 h-10 px-4 md:px-5 border-b border-zinc-200 dark:border-zinc-700/80 text-body"
-      >
-        {render_slot(@status)}
-      </div>
 
       <div class="flex-1 min-h-0 flex">
         {render_slot(@inner_block)}

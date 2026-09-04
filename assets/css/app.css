@@ -742,9 +742,3 @@ input[type="range"].volume-slider:focus-visible {
   outline-offset: -8px;
   background-color: rgb(124 58 237 / 0.04);
 }
-
-/* Toggled by the RevealOffscreen hook — a class, not an inline style, so the
-   server can still own everything else about the element. */
-.is-hidden {
-  display: none !important;
-}

@@ -49,9 +49,12 @@ defmodule LoopyardWeb.Components.StreamCard do
 
   # The left line MEANS "live — waiting on you / the active turn". Settled
   # receipts (:neutral) carry no line: the wash alone is the receipt.
+  # Dark mode carries colour much further than light: the same wash and rail
+  # that read as a calm tint on paper read as an alarm on ink. Both are damped
+  # there, and only there.
   defp band_tone(:needs_you, :always),
     do:
-      "border-l-2 bg-orange-50/70 dark:bg-orange-950/15 border-orange-400 dark:border-orange-500/60"
+      "border-l-2 bg-orange-50/70 dark:bg-orange-950/10 border-orange-400 dark:border-orange-500/40"
 
   defp band_tone(:you, :always),
     do: "border-l-2 bg-violet-100 dark:bg-[#2b2348] border-violet-500 dark:border-violet-400"
@@ -64,7 +67,7 @@ defmodule LoopyardWeb.Components.StreamCard do
 
   defp band_tone(:needs_you, :desktop),
     do:
-      "md:border-l-2 md:bg-orange-50/70 md:dark:bg-orange-950/15 md:border-orange-400 md:dark:border-orange-500/60"
+      "md:border-l-2 md:bg-orange-50/70 md:dark:bg-orange-950/10 md:border-orange-400 md:dark:border-orange-500/40"
 
   defp band_tone(:you, :desktop),
     do:

@@ -497,29 +497,6 @@ Hooks.StickyEdge = {
 // one lands. Capture the tap, mark the row held, and replay it the moment the
 // socket reconnects. Client-side only for the click→receipt sliver; the
 // server draft remains the multiplayer truth.
-// RevealOffscreen: show this element only while the element it watches is OUT
-// of view. Generic on purpose — `data-watch` is any selector. The composer's
-// "waiting on you" band uses it: repeating a decision card that is already on
-// screen is noise, and the band exists for exactly the case where the card has
-// scrolled away. Defaults to VISIBLE, so a missing target or a slow observer
-// never hides the ask.
-Hooks.RevealOffscreen = {
-  mounted() { this.watch() },
-  updated() { this.watch() },
-  destroyed() { this.io && this.io.disconnect() },
-  watch() {
-    if (this.io) this.io.disconnect()
-    const sel = this.el.dataset.watch
-    const target = sel && document.querySelector(sel)
-    if (!target) { this.el.classList.remove("is-hidden"); return }
-    this.io = new IntersectionObserver(
-      ([e]) => this.el.classList.toggle("is-hidden", e.isIntersecting),
-      { threshold: 0.2 }
-    )
-    this.io.observe(target)
-  },
-}
-
 // AppBadge: mirror the "needs you" count onto the installed PWA's app icon
 // (Badging API — supported on iOS 16.4+ Home Screen web apps and desktop
 // Chrome/Edge; silently a no-op elsewhere).

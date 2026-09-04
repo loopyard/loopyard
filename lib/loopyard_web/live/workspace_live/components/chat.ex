@@ -21,8 +21,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       active_prompt_ids: 1,
       awaiting_answer?: 1,
       awaiting_approval?: 1,
-      pending_question: 1,
-      question_prompt_preview: 1,
       building?: 1,
       live_status_mode: 3,
       active_turn_cutoff: 1
@@ -113,13 +111,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     assigns =
       assign(assigns,
         user_label: workstation_label(assigns.agent),
-        active_prompt_ids: active_prompt_ids(assigns),
-        # A pending question card surfaced RIGHT AT THE COMPOSER (below): the
-        # ask can scroll out of view (or, historically, fail to render live) —
-        # and typing then routes into it as the answer, which is baffling when
-        # you never saw the ask. Repeat the question at the input so it's
-        # impossible to miss and answering-by-typing is expected, not a surprise.
-        pending_question: pending_question(assigns.messages)
+        active_prompt_ids: active_prompt_ids(assigns)
       )
 
     # Precompute the section structure ONCE per render, with per-row context
@@ -502,40 +494,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             </div>
           </div>
         </div>
-        <%!-- WAITING-ON-YOU band: when a question is pending AND its card has
-            scrolled out of view, repeat it at the composer (flame =
-            blocked-on-a-human) so you always see the ask. While the card is on
-            screen the band hides itself — saying the same thing twice, one
-            above the other, is what read as noise.
-            It is a LINK to the card — it used to say "use the buttons above"
-            while being an inert div, so tapping it did nothing and the card
-            it referred to was somewhere up the transcript. One line of ask,
-            one obvious action. Full-bleed like the queue band. --%>
-        <a
-          :if={@pending_question}
-          id={"waiting-#{@pending_question[:id]}"}
-          phx-hook="RevealOffscreen"
-          data-watch={"#msg-#{@pending_question[:id]}"}
-          href={"#msg-#{@pending_question[:id]}"}
-          class="block w-full -mt-2 mb-2 px-3 md:px-6 py-2.5 bg-orange-50 dark:bg-orange-500/10 border-t border-b border-orange-200 dark:border-orange-500/25 hover:bg-orange-100 dark:hover:bg-orange-500/15 transition-colors"
-        >
-          <div class="wide:max-w-3xl mx-auto flex items-start gap-2">
-            <span class="flex-none text-orange-600 dark:text-orange-400" aria-hidden="true">⚑</span>
-            <div class="min-w-0 flex-1">
-              <div class="flex items-baseline gap-2">
-                <span class="min-w-0 flex-1 truncate text-meta font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-300">
-                  Waiting on you
-                </span>
-                <span class="flex-none text-meta font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-300">
-                  Answer ↑
-                </span>
-              </div>
-              <p class="mt-0.5 text-body text-zinc-700 dark:text-zinc-200 line-clamp-1">
-                {question_prompt_preview(@pending_question)}
-              </p>
-            </div>
-          </div>
-        </a>
         <%!-- The composer divider: just ABOVE the message box, BELOW the queued
             card. A DIRECT child of the pane (not the centered column), so it
             spans the full width of the screen/pane. --%>
