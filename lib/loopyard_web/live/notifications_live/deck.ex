@@ -99,16 +99,31 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
 
   @doc """
   Everything already on screen, in the order it was already in, plus whatever
-  is new — new ones go FIRST, which is the start of the deck, never the
-  middle of it. The deck is STICKY: an item that settles STAYS, rendered as
-  its own receipt; dropping a slide the instant it resolved would shift every
-  slide after it under the reader's thumb.
+  is new — new ones go at the END, never into the middle. A deck is a queue
+  you work through, so the ask that just arrived is the last one; putting it
+  first meant "1 of 3" was the question the agent asked most recently and the
+  three questions of one turn read backwards. The deck is STICKY: an item
+  that settles STAYS, rendered as its own receipt; dropping a slide the
+  instant it resolved would shift every slide after it under the reader's
+  thumb.
   """
   @spec merge([slide()], [slide()]) :: [slide()]
   def merge(shown, fresh) do
     seen = MapSet.new(shown, & &1.key)
-    Enum.reject(fresh, &MapSet.member?(seen, &1.key)) ++ shown
+    shown ++ Enum.reject(fresh, &MapSet.member?(seen, &1.key))
   end
+
+  @doc """
+  Is this card still waiting on a human? The deck is sticky — a settled card
+  STAYS as its own receipt — so "waiting" and "on the deck" are different
+  questions, and only the first one belongs in a count.
+  """
+  @spec pending_card?(map()) :: boolean()
+  def pending_card?(%{slide: %{kind: :finished}, item: item}),
+    do: match?(%{status: :open}, item)
+
+  def pending_card?(%{msg: %{status: :pending}}), do: true
+  def pending_card?(_), do: false
 
   @doc "The DOM id stem for a slide: agent · message · question."
   @spec dom_id(slide()) :: String.t()

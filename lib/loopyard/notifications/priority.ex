@@ -6,15 +6,18 @@ defmodule Loopyard.Notifications.Priority do
 
   Tiers, first to last: a pin, then approvals (a turn is STOPPED on one),
   questions, secrets, finished-with-changes, finished-without, then anything
-  demoted. Within a tier, newest first — the one asked a minute ago is almost
-  always the one to answer next.
+  demoted. Within a tier, OLDEST first — the inbox is a queue you work
+  through, so the newest ask is the last one, not the first. Newest-first was
+  tried and it inverted conversations: three questions from one turn came out
+  backwards, and answering "1 of 3" meant answering the question the agent
+  asked last.
   """
 
   alias Loopyard.Notifications.Item
 
   @doc "Sort key: lower sorts first."
   @spec sort_key(Item.t()) :: {integer(), integer()}
-  def sort_key(%Item{} = item), do: {tier(item), -unix_ms(item.raised_at)}
+  def sort_key(%Item{} = item), do: {tier(item), unix_ms(item.raised_at)}
 
   @doc "Sort items into inbox order."
   @spec order([Item.t()]) :: [Item.t()]

@@ -17,8 +17,10 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
   alias Phoenix.LiveView.JS
 
   attr :card, :map, required: true
-  attr :index, :integer, required: true
-  attr :total, :integer, required: true
+  # nil = this slide is settled: it keeps its place on the deck but is not one
+  # of the things still waiting, so it carries no position.
+  attr :index, :integer, default: nil
+  attr :total, :integer, default: 0
   attr :prev, :map, default: nil
   attr :next, :map, default: nil
   attr :target?, :boolean, default: false
@@ -146,7 +148,7 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
               >
                 ‹
               </a>
-              <span>{@index} of {@total}</span>
+              <span :if={@index}>{@index} of {@total}</span>
               <a
                 href={(@next && "#slide-" <> @next.dom_id) || "#slide-end"}
                 aria-label="Next decision"
@@ -212,7 +214,7 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
               <span class="flex items-center gap-3">
                 <span class="min-w-0 flex-1 truncate text-meta text-zinc-500 dark:text-zinc-400">
                   From {@who}<span :if={@card.slide.asked_at}> · {Deck.ago(@card.slide.asked_at)}</span>
-                  · {@index} of {@total}
+                  <span :if={@index}>· {@index} of {@total}</span>
                 </span>
                 <span
                   aria-label="Back to the decision"

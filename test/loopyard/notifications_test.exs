@@ -216,7 +216,7 @@ defmodule Loopyard.NotificationsTest do
     end
   end
 
-  test "inbox order: approvals before questions before secrets, newest first within a tier" do
+  test "inbox order: approvals before questions before secrets, oldest first within a tier" do
     now = DateTime.utc_now()
     at = fn secs -> DateTime.add(now, -secs, :second) end
 
@@ -228,7 +228,10 @@ defmodule Loopyard.NotificationsTest do
       %Item{id: "pinned", kind: :secret, raised_at: at.(900), priority: :pinned}
     ]
 
-    assert Enum.map(Priority.order(items), & &1.id) == ["pinned", "a", "q-new", "q-old", "s"]
+    # A queue, not a feed: the question asked first is the one you answer first,
+    # so the newest is LAST. Answering "1 of 3" used to answer the question the
+    # agent asked most recently.
+    assert Enum.map(Priority.order(items), & &1.id) == ["pinned", "a", "q-old", "q-new", "s"]
   end
 
   test "the log replays the newest record per id and a snapshot resets it" do

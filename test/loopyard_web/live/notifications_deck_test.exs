@@ -97,6 +97,32 @@ defmodule LoopyardWeb.NotificationsDeckTest do
     assert render(view) =~ "Dismissed", "the slide stays, as a receipt"
   end
 
+  test "the count is of what's still WAITING, oldest first", %{conn: conn} do
+    old_q = pending_question("m-old", "Asked first?")
+    new_q = %{pending_question("m-new", "Asked second?") | timestamp: DateTime.utc_now()}
+    old_q = %{old_q | timestamp: DateTime.add(DateTime.utc_now(), -60, :second)}
+    seed_agent("Chrono", [old_q, new_q])
+
+    {:ok, view, html} = live(conn, "/notifications")
+
+    # Oldest first: the question asked first is the one you answer first, so
+    # the newest is LAST, not "1 of 2".
+    {first_at, _} = :binary.match(html, "Asked first?")
+    {second_at, _} = :binary.match(html, "Asked second?")
+    assert first_at < second_at
+
+    assert html =~ "1 of 2"
+    assert html =~ "2 of 2"
+
+    # Settling one takes it out of the COUNT, though its slide stays as a
+    # receipt — so the number always says how much is left.
+    render_click(view, "skip_question", %{"question_id" => "qid-m-old", "q" => "q1"})
+    Loopyard.Notifications.sync()
+
+    html = render(view)
+    refute html =~ "2 of 2", "a settled card is no longer one of the things waiting"
+  end
+
   test "every pending decision is on ONE page", %{conn: conn} do
     seed_agent("Alpha", [pending_question("m-alpha", "First decision?")])
     seed_agent("Beta", [pending_question("m-beta", "Second decision?")])

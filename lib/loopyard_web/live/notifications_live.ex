@@ -66,6 +66,7 @@ defmodule LoopyardWeb.NotificationsLive do
      |> assign(:target, target)
      |> assign(:pending_keys, pending_keys(slides))
      |> assign(:advance_from, nil)
+     |> assign(:focus_key, nil)
      |> assign(:slides, slides)
      |> assign(:subscribed, MapSet.new())
      |> assign(:operator_id, operator_id)
@@ -166,6 +167,8 @@ defmodule LoopyardWeb.NotificationsLive do
 
   def handle_info(:advance_done, socket), do: {:noreply, assign(socket, :advance_from, nil)}
 
+  def handle_info(:focus_done, socket), do: {:noreply, assign(socket, :focus_key, nil)}
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # The deck is STICKY: a decision that settles STAYS, rendered as its own
@@ -188,9 +191,25 @@ defmodule LoopyardWeb.NotificationsLive do
     socket
     |> assign(:slides, slides)
     |> assign(:pending_keys, now_pending)
+    |> focus_arrival(socket.assigns.pending_keys, now_pending, slides)
     |> sync_secret_scope()
     |> subscribe_slides()
     |> load_threads()
+  end
+
+  # NOTHING WAS WAITING AND NOW SOMETHING IS → bring it to the reader. You
+  # answer the last one, land on the "that's everything" slide, and the next
+  # question arrives BEHIND you: appended to the deck, out of view, with no
+  # reason to look. Focus scrolls the carousel natively, the same move the
+  # settled-beat advance makes.
+  defp focus_arrival(socket, before, now, slides) do
+    if MapSet.size(before) == 0 and MapSet.size(now) > 0 do
+      key = Enum.find_value(slides, &(MapSet.member?(now, &1.key) && &1.key))
+      Process.send_after(self(), :focus_done, 2_000)
+      assign(socket, :focus_key, key)
+    else
+      socket
+    end
   end
 
   # ── the threads (talk about THIS decision) ───────────────────────────────
@@ -428,6 +447,7 @@ defmodule LoopyardWeb.NotificationsLive do
       cards={@cards}
       target={@target}
       advance_from={@advance_from}
+      focus_key={@focus_key}
       history?={@history?}
       threads={@threads}
       queued={@queued}
@@ -449,6 +469,11 @@ defmodule LoopyardWeb.NotificationsLive do
   attr :cards, :list, required: true
   attr :target, :any, default: nil, doc: "slide key to open at"
   attr :advance_from, :any, default: nil, doc: "slide key that just settled — move on from it"
+
+  attr :focus_key, :any,
+    default: nil,
+    doc: "slide key that arrived while nothing was waiting — scroll to it"
+
   attr :history?, :boolean, default: false
   attr :threads, :map, default: %{}
   attr :queued, :map, default: %{}
@@ -460,7 +485,18 @@ defmodule LoopyardWeb.NotificationsLive do
   attr :vapid_key, :string, default: nil
 
   def notifications_deck(assigns) do
-    assigns = assign(assigns, :total, length(assigns.cards))
+    # "n of N" counts what is still WAITING, not what is on the deck. The deck
+    # keeps settled cards as receipts, so counting them meant answering one of
+    # three left you looking at "3" forever and the number stopped meaning
+    # anything. A settled slide shows no position at all.
+    {numbered, waiting} =
+      Enum.map_reduce(assigns.cards, 0, fn card, n ->
+        if Deck.pending_card?(card),
+          do: {{card, n + 1}, n + 1},
+          else: {{card, nil}, n}
+      end)
+
+    assigns = assigns |> assign(:numbered, numbered) |> assign(:total, waiting)
 
     ~H"""
     <%!-- PAST decisions is the same deck with a different source. The trail says
@@ -482,15 +518,28 @@ defmodule LoopyardWeb.NotificationsLive do
       bar, so the title (who's asking) travels with the swipe. There is
       deliberately no page-level bar above the slides: two bars was one too
       many, and the arrows in the lower one were too short to tap. --%>
+        <%!-- One-shot: mounts when a decision arrives on an empty deck and
+        scrolls the carousel to it. The id carries the key, so a NEW arrival
+        remounts and fires again while a plain re-render does not. --%>
+        <span
+          :if={@focus_key}
+          id={"focus-" <> Deck.dom_id(Enum.find(@cards, &(&1.slide.key == @focus_key)).slide)}
+          phx-mounted={
+            JS.focus(
+              to: "#slide-" <> Deck.dom_id(Enum.find(@cards, &(&1.slide.key == @focus_key)).slide)
+            )
+          }
+          class="hidden"
+        ></span>
         <div
           :if={@cards != []}
           id="decisions-deck"
           class="flex-1 min-h-0 flex overflow-x-auto overflow-y-hidden snap-x snap-mandatory overscroll-x-contain"
         >
           <Slide.decision_slide
-            :for={{card, idx} <- Enum.with_index(@cards, 1)}
+            :for={{{card, position}, idx} <- Enum.with_index(@numbered, 1)}
             card={card}
-            index={idx}
+            index={position}
             total={@total}
             prev={Enum.at(@cards, idx - 2)}
             next={Enum.at(@cards, idx)}
