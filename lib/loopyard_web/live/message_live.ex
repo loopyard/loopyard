@@ -286,7 +286,7 @@ defmodule LoopyardWeb.MessageLive do
     assigns = assign(assigns, body: body, attachments: attachments)
 
     ~H"""
-    <div class=" bg-violet-100 dark:bg-[#2b2348] px-4 py-3 text-[15px] leading-relaxed whitespace-pre-wrap text-zinc-900 dark:text-zinc-50">
+    <div class=" bg-violet-100 dark:bg-brand-iris-wash-dark px-4 py-3 text-body leading-relaxed whitespace-pre-wrap text-zinc-900 dark:text-zinc-50">
       {@body}
       <div :if={@attachments != []} class={["flex flex-wrap gap-2", @body != "" && "mt-2"]}>
         <span

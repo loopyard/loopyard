@@ -172,7 +172,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
           it centres on the label's first line whatever the line-height —
           an 18px dot at the row's top edge floated above a 20px line. --%>
           <span class="relative flex h-[1lh] flex-none items-center text-lead" aria-hidden="true">
-            <span class="q-dot flex h-[18px] w-[18px] items-center justify-center rounded-full border-2 text-transparent transition-colors border-zinc-300 group-hover/opt:border-orange-400 dark:border-zinc-600 dark:group-hover/opt:border-orange-500 group-has-[:checked]/opt:border-orange-500 group-has-[:checked]/opt:bg-orange-500 group-has-[:checked]/opt:text-white">
+            <span class="q-dot flex h-dot w-dot items-center justify-center rounded-full border-2 text-transparent transition-colors border-zinc-300 group-hover/opt:border-orange-400 dark:border-zinc-600 dark:group-hover/opt:border-orange-500 group-has-[:checked]/opt:border-orange-500 group-has-[:checked]/opt:bg-orange-500 group-has-[:checked]/opt:text-white">
               <.check />
             </span>
           </span>
@@ -195,7 +195,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
         <div class="group/opt flex w-full items-center gap-3 rounded-sm px-3 py-1 transition-all focus-within:bg-orange-500/15 dark:focus-within:bg-orange-500/20 focus-within:ring-1 focus-within:ring-orange-500/70">
           <span
             aria-hidden="true"
-            class="flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border-2 border-zinc-300 dark:border-zinc-600 group-focus-within/opt:border-orange-500 group-focus-within/opt:bg-orange-500 transition-colors"
+            class="flex h-dot w-dot flex-none items-center justify-center rounded-full border-2 border-zinc-300 dark:border-zinc-600 group-focus-within/opt:border-orange-500 group-focus-within/opt:bg-orange-500 transition-colors"
           ></span>
           <input
             type="text"
@@ -400,7 +400,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
         >
           <span class="flex h-[1lh] flex-none items-center text-lead" aria-hidden="true">
             <span class={[
-              "flex h-[18px] w-[18px] items-center justify-center rounded-full border-2",
+              "flex h-dot w-dot items-center justify-center rounded-full border-2",
               if(chosen?(@msg, @q, o.label),
                 do: "border-emerald-500 bg-emerald-500 text-white",
                 else: "border-zinc-300 dark:border-zinc-600"
@@ -442,7 +442,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.Question do
             :if={answer_for(@msg, @q)}
             class="flex items-center gap-3 rounded-sm bg-emerald-500/20 ring-1 ring-emerald-500/60 px-3 py-2.5 font-semibold text-emerald-800 dark:text-emerald-200"
           >
-            <span class="flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full bg-emerald-500 text-white"><.check /></span>
+            <span class="flex h-dot w-dot flex-none items-center justify-center rounded-full bg-emerald-500 text-white"><.check /></span>
             <span class="min-w-0">{answer_for(@msg, @q)}</span>
           </div>
           <div

@@ -56,6 +56,21 @@ module.exports = {
       screens: {
         wide: '1920px',
       },
+      // A value used in three places is a DESIGN DECISION, not a one-off, and
+      // it needs a name or it drifts: two Stop buttons ended up with 2px and
+      // 3px corners because nobody could see the other one. These are the
+      // repeats that earned a token.
+      spacing: {
+        // The tappable LIST ROW — taller than the 44px minimum because a row
+        // you scan wants air, not just a legal hit area.
+        row: '3.25rem',
+        // The radio / check dot in a question's options.
+        dot: '18px'
+      },
+      boxShadow: {
+        // The lip under a header that has stuck to the top of its scroller.
+        stuck: '0 5px 6px -6px rgba(0, 0, 0, 0.28)'
+      },
       // Raise the FLOOR of the type scale app-wide. Overriding these steps here
       // re-sizes every `text-xs`/`text-sm`/`text-base` in one place — no more
       // 12px chrome, and the small end is compressed toward base so the UI reads

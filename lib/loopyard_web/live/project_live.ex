@@ -431,7 +431,7 @@ defmodule LoopyardWeb.ProjectLive do
               <.link
                 navigate={"/projects/#{@project.id}/settings"}
                 aria-label="Project settings"
-                class="flex-none inline-flex items-center gap-1.5 rounded-sm border border-zinc-200 dark:border-zinc-700 px-3 min-h-[2.75rem] text-body font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
+                class="flex-none inline-flex items-center gap-1.5 rounded-sm border border-zinc-200 dark:border-zinc-700 px-3 min-h-11 text-body font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"

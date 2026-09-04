@@ -230,7 +230,7 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
           the way back to the decision while the thread flies under it. --%>
             <a
               href={"#top-" <> @card.dom_id}
-              class="hidden group-data-[stuck]:block px-4 md:px-6 py-3 border-l-4 border-orange-500 bg-orange-50 dark:bg-orange-500/10 text-zinc-900 dark:text-zinc-50 shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
+              class="hidden group-data-[stuck]:block px-4 md:px-6 py-3 border-l-4 border-orange-500 bg-orange-50 dark:bg-orange-500/10 text-zinc-900 dark:text-zinc-50 shadow-stuck"
             >
               <%!-- Byline top-left, one round "back up" top-right, then the
               question under both at chat size, four lines at most — it was

@@ -388,7 +388,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     sibling of the band they'll become, not as an equal. --%>
           <div
             :if={(@agent[:pending_count] || 0) > 0}
-            class="-mx-3 md:-mx-6 wide:-mx-4 wide:mt-2 bg-violet-50 dark:bg-[#241f3a] px-4 md:px-6 pt-3 pb-3"
+            class="-mx-3 md:-mx-6 wide:-mx-4 wide:mt-2 bg-violet-50 dark:bg-brand-iris-wash-faint-dark px-4 md:px-6 pt-3 pb-3"
           >
             <%!-- Identity left, state to the RIGHT — same anatomy as the
       committed prompt band above, so the queue reads as that same
@@ -479,7 +479,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           <div
             id="send-echo"
             phx-update="ignore"
-            class="hidden -mx-3 md:-mx-6 wide:-mx-4 wide:mt-2 bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 pt-3 pb-3"
+            class="hidden -mx-3 md:-mx-6 wide:-mx-4 wide:mt-2 bg-violet-100 dark:bg-brand-iris-wash-dark px-4 md:px-6 pt-3 pb-3"
           >
             <div
               data-echo-label

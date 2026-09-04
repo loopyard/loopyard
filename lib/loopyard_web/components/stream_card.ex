@@ -57,7 +57,7 @@ defmodule LoopyardWeb.Components.StreamCard do
       "border-l-2 bg-orange-50/70 dark:bg-orange-950/10 border-orange-400 dark:border-orange-500/40"
 
   defp band_tone(:you, :always),
-    do: "border-l-2 bg-violet-100 dark:bg-[#2b2348] border-violet-500 dark:border-violet-400"
+    do: "border-l-2 bg-violet-100 dark:bg-brand-iris-wash-dark border-violet-500 dark:border-violet-400"
 
   # The rail is still THERE on a settled card — a card that dropped its 2px
   # border moved its whole content 2px left, a shift you see without being
@@ -73,7 +73,7 @@ defmodule LoopyardWeb.Components.StreamCard do
 
   defp band_tone(:you, :desktop),
     do:
-      "md:border-l-2 md:bg-violet-100 md:dark:bg-[#2b2348] md:border-violet-500 md:dark:border-violet-400"
+      "md:border-l-2 md:bg-violet-100 md:dark:bg-brand-iris-wash-dark md:border-violet-500 md:dark:border-violet-400"
 
   defp band_tone(:neutral, :desktop),
     do:
@@ -134,7 +134,7 @@ defmodule LoopyardWeb.Components.StreamCard do
       # min-h on the PHONE is the real floor (a 52px row is comfortable for a
       # thumb); desktop steps down to 44 because a pointer needs less.
       "focus-ring inline-flex items-center justify-center gap-1.5 rounded-sm",
-      "px-5 min-h-[3.25rem] sm:min-h-11 text-lead transition-colors",
+      "px-5 min-h-row sm:min-h-11 text-lead transition-colors",
       case variant do
         :primary ->
           ["font-semibold text-white shadow-sm ", primary_fill(tone)]

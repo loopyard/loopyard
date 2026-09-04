@@ -54,7 +54,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards.AuthFix do
         <div :if={@msg.status != :pending} class="flex items-center gap-2">
           <span
             aria-hidden="true"
-            class="flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border-2 border-emerald-500 bg-emerald-500 text-white"
+            class="flex h-dot w-dot flex-none items-center justify-center rounded-full border-2 border-emerald-500 bg-emerald-500 text-white"
           >
             <svg
               viewBox="0 0 12 12"

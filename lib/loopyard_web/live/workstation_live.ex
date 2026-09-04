@@ -345,7 +345,7 @@ defmodule LoopyardWeb.WorkstationLive do
         </div>
         <div
           id="ws-console"
-          class="h-[72dvh]  border border-zinc-200 dark:border-zinc-700 overflow-hidden p-2 bg-[#18181b]"
+          class="h-[72dvh]  border border-zinc-200 dark:border-zinc-700 overflow-hidden p-2 bg-zinc-900"
         >
           <div
             :if={@console_container}

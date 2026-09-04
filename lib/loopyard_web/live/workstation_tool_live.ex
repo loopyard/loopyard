@@ -256,7 +256,7 @@ defmodule LoopyardWeb.WorkstationToolLive do
             </div>
             <div
               id="ws-console"
-              class="rounded-sm overflow-hidden h-[44dvh] min-h-[280px] bg-[#18181b]"
+              class="rounded-sm overflow-hidden h-[44dvh] min-h-[280px] bg-zinc-900"
             >
               <div
                 :if={@console_container}

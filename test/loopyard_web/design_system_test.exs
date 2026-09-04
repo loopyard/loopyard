@@ -28,6 +28,38 @@ defmodule LoopyardWeb.DesignSystemTest do
     sources
   end
 
+  test "colour comes from the palette, never a hex literal" do
+    # Every colour in the app has a name — brand.iris.wash-dark, brand.ink,
+    # the zinc/orange/emerald scales — and a hex in a template is a colour
+    # nobody can find, reuse or change in one place. The two prompt-band
+    # washes were literals in five files while the tokens that named them sat
+    # in packages/brand unused.
+    offenders =
+      web_sources()
+      |> Enum.filter(fn {_p, src} -> Regex.match?(~r/[a-z]-\[#[0-9a-fA-F]{3,8}\]/, src) end)
+      |> Enum.map(fn {p, _} -> Path.relative_to_cwd(p) end)
+
+    assert offenders == [],
+           """
+           Hex colours in templates. Name it in packages/brand/tailwind.preset.js
+           and use the token (bg-brand-iris-wash-dark, bg-brand-ink, …).
+
+           #{Enum.map_join(offenders, "\n", &("  " <> &1))}
+           """
+  end
+
+  test "radii are the two the design language has" do
+    # rounded-sm for controls, rounded-full for circles. An arbitrary radius is
+    # a third rounding nobody agreed to — 2px and 3px squares sat next to each
+    # other on two Stop buttons.
+    offenders =
+      web_sources()
+      |> Enum.filter(fn {_p, src} -> Regex.match?(~r/\brounded-\[/, src) end)
+      |> Enum.map(fn {p, _} -> Path.relative_to_cwd(p) end)
+
+    assert offenders == [], "Arbitrary radii: #{Enum.join(offenders, ", ")}"
+  end
+
   test "sharp editorial: no large corner radii in the web layer" do
     # Surfaces are square; controls are rounded-sm; circles are rounded-full.
     # (The rounding apparatus — grouped-corner logic, sticky corner-squaring —
@@ -118,7 +150,12 @@ defmodule LoopyardWeb.DesignSystemTest do
     # default sizes are REPLACED rather than extended, so `text-sm` generates no
     # CSS at all. This test catches the ones a build can't: leftovers, arbitrary
     # values, and the chat's old private tokens.
-    banned = ~r/\b(?:text-(?:xs|sm|base|lg|xl|[2-9]xl|\[[^\]]+\])|chat-(?:body|sub|meta))\b/
+    # NOTE the shape: the arbitrary-value branch must NOT end in `\b`. It used
+    # to, and `text-[13px]` ends in `]` followed by a quote — two non-word
+    # characters, so there is no boundary there and the branch never matched.
+    # Twelve off-scale sizes lived in the transcript behind that one character.
+    banned =
+      ~r/\btext-(?:xs|sm|base|lg|xl|[2-9]xl)\b|\btext-\[[^\]]+\]|\bchat-(?:body|sub|meta)\b/
 
     offenders =
       web_sources()

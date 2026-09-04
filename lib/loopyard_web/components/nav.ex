@@ -264,7 +264,7 @@ defmodule LoopyardWeb.Components.Nav do
         aria-controls={@id}
         aria-haspopup="dialog"
         aria-label={"#{@title} — currently #{@current.label}"}
-        class="focus-ring flex-1 min-w-0 flex items-center gap-2 min-h-[2.75rem] px-3 rounded-sm text-left hover:bg-zinc-100 dark:hover:bg-zinc-800/60 active:bg-zinc-200 dark:active:bg-zinc-700/60 transition-colors"
+        class="focus-ring flex-1 min-w-0 flex items-center gap-2 min-h-11 px-3 rounded-sm text-left hover:bg-zinc-100 dark:hover:bg-zinc-800/60 active:bg-zinc-200 dark:active:bg-zinc-700/60 transition-colors"
       >
         <span class={["w-2 h-2 rounded-full flex-none", @current.dot]}></span>
         <span class="flex-1 min-w-0 truncate font-semibold text-zinc-900 dark:text-zinc-100">
@@ -468,7 +468,7 @@ defmodule LoopyardWeb.Components.Nav do
   """
   def sheet_row_class(active?) do
     [
-      "focus-ring flex items-center gap-3 min-h-[3.75rem] md:min-h-[3.25rem] -mx-2 px-2 py-2 text-lead transition-colors",
+      "focus-ring flex items-center gap-3 min-h-[3.75rem] md:min-h-row -mx-2 px-2 py-2 text-lead transition-colors",
       if(active?,
         do: "bg-violet-100 dark:bg-violet-500/15 text-zinc-900 dark:text-zinc-100 font-semibold",
         else:

@@ -291,7 +291,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
         phx-hook="Terminal"
         data-container={@container}
         phx-update="ignore"
-        class="flex-1 bg-[#18181b] p-3"
+        class="flex-1 bg-zinc-900 p-3"
       >
         <pre
           :if={@static_lines != []}

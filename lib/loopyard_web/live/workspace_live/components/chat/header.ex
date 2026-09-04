@@ -210,7 +210,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
             :if={group.key == :agents}
             patch={"#{@base_path}/new"}
             phx-click={JS.hide(to: "#item-switcher")}
-            class="flex items-center gap-2 px-3 min-h-[2.75rem] rounded-sm text-body font-medium text-violet-600 dark:text-violet-400 active:bg-violet-50 dark:active:bg-violet-500/10"
+            class="flex items-center gap-2 px-3 min-h-11 rounded-sm text-body font-medium text-violet-600 dark:text-violet-400 active:bg-violet-50 dark:active:bg-violet-500/10"
           >
             + New agent
           </.link>

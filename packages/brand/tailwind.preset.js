@@ -31,6 +31,7 @@ module.exports = {
             soft: "#c4b5fd", //   violet-300 — secondary accents on ink
             wash: "#ede9fe", //   violet-100 — prompt-band ground on paper
             "wash-active": "#ddd6fe", // violet-200 — the ACTIVE band on paper
+            "wash-faint-dark": "#241f3a", // the QUIETEST prompt ground on ink
             "wash-dark": "#2b2348", // prompt-band ground on ink
             "wash-active-dark": "#332a54" // active band on ink
           },

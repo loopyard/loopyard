@@ -161,8 +161,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
           # the top — a rounded-sm corner smashed into the header edge looks broken.
           "wide:data-[stuck]:!rounded-t-none",
           # The prompt being answered right now reads stronger (deeper wash).
-          (@active? && "bg-violet-200 dark:bg-[#332a54]") ||
-            "bg-violet-100 dark:bg-[#2b2348]",
+          (@active? && "bg-violet-200 dark:bg-brand-iris-wash-active-dark") ||
+            "bg-violet-100 dark:bg-brand-iris-wash-dark",
           @sticky_class,
           @band_top,
           @band_bottom

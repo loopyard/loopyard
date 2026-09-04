@@ -84,7 +84,7 @@ defmodule LoopyardWeb.AgentsLive.Row do
       navigate={@row.path}
       class={[
         "flex items-start gap-2.5 -mx-2 px-2 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors",
-        (@compact && "py-2") || "min-h-[3.25rem] py-2.5"
+        (@compact && "py-2") || "min-h-row py-2.5"
       ]}
     >
       <span
