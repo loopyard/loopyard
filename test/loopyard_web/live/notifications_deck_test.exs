@@ -66,6 +66,23 @@ defmodule LoopyardWeb.NotificationsDeckTest do
     }
   end
 
+  # The position a slide carries, read from the byline that precedes its
+  # prompt. The deck is a SHARED inbox — other tests leave decisions in the
+  # store — so a test may never assert an absolute total; it asserts how its
+  # own slides relate to each other.
+  defp position_of(html, prompt) do
+    {at, _} = :binary.match(html, prompt)
+
+    html
+    |> binary_part(0, at)
+    |> then(&Regex.scan(~r/(\d+) of (\d+)/, &1))
+    |> List.last()
+    |> case do
+      [_, n, total] -> {String.to_integer(n), String.to_integer(total)}
+      _ -> :none
+    end
+  end
+
   defp seed_agent(name, msgs) do
     Loopyard.StateKeeper.ensure_tables!()
     id = "deck-#{System.unique_integer([:positive])}"
@@ -86,6 +103,11 @@ defmodule LoopyardWeb.NotificationsDeckTest do
 
       for %{agent_id: ^id, id: nid} <- Loopyard.Notifications.all(),
           do: :ets.delete(:notifications, nid)
+
+      # Answering through the UI rebuilds a broker entry for the card. Leave it
+      # and the broker's own tests, which scan that table, inherit it.
+      for {qid, %{agent_id: ^id}} <- :ets.tab2list(:harness_questions),
+          do: :ets.delete(:harness_questions, qid)
     end)
 
     id
@@ -132,8 +154,9 @@ defmodule LoopyardWeb.NotificationsDeckTest do
     {second_at, _} = :binary.match(html, "Asked second?")
     assert first_at < second_at
 
-    assert html =~ "1 of 2"
-    assert html =~ "2 of 2"
+    {first_n, total} = position_of(html, "Asked first?")
+    {second_n, ^total} = position_of(html, "Asked second?")
+    assert first_n < second_n
 
     # Settling one takes it out of the COUNT, though its slide stays as a
     # receipt — so the number always says how much is left.
@@ -141,7 +164,13 @@ defmodule LoopyardWeb.NotificationsDeckTest do
     Loopyard.Notifications.sync()
 
     html = render(view)
-    refute html =~ "2 of 2", "a settled card is no longer one of the things waiting"
+
+    assert {_, remaining} = position_of(html, "Asked second?")
+
+    assert remaining == total - 1,
+           "a settled card is no longer one of the things waiting"
+
+    assert html =~ "Asked first?", "the settled question keeps its place as a receipt"
   end
 
   test "one ask fans out in the order it was asked, and answering one renumbers the rest",
@@ -157,8 +186,10 @@ defmodule LoopyardWeb.NotificationsDeckTest do
     {c, _} = :binary.match(html, "Third?")
     assert a < b and b < c
 
-    assert html =~ "1 of 3"
-    assert html =~ "3 of 3"
+    {n1, total} = position_of(html, "First?")
+    {n2, ^total} = position_of(html, "Second?")
+    {n3, ^total} = position_of(html, "Third?")
+    assert n1 < n2 and n2 < n3
 
     # A question of a multi-question ask resolves ON ITS OWN. The message stays
     # pending until the last one lands, so counting the MESSAGE left two
@@ -167,7 +198,12 @@ defmodule LoopyardWeb.NotificationsDeckTest do
     Loopyard.Notifications.sync()
 
     html = render(view)
-    refute html =~ "3 of 3", "answering one of three leaves two waiting, not three"
+
+    assert {_, remaining} = position_of(html, "Second?")
+
+    assert remaining == total - 1,
+           "answering one of three leaves two waiting, not three"
+
     assert html =~ "First?", "the answered question keeps its place as a receipt"
   end
 
