@@ -59,11 +59,13 @@ defmodule LoopyardWeb.Components.StreamCard do
   defp band_tone(:you, :always),
     do: "border-l-2 bg-violet-100 dark:bg-[#2b2348] border-violet-500 dark:border-violet-400"
 
-  # The rail is TRANSPARENT here, not absent: a settled card that dropped its
-  # 2px border moved its whole content 2px left, which is a shift you can see
-  # even if you can't name it.
+  # The rail is still THERE on a settled card — a card that dropped its 2px
+  # border moved its whole content 2px left, a shift you see without being
+  # able to name it — but it is painted in the card's own wash rather than
+  # left transparent, which showed as a pale line down the left edge on ink.
   defp band_tone(:neutral, :always),
-    do: "border-l-2 border-transparent bg-zinc-500/[0.06] dark:bg-white/[0.045]"
+    do:
+      "border-l-2 border-zinc-500/[0.06] dark:border-white/[0.045] bg-zinc-500/[0.06] dark:bg-white/[0.045]"
 
   defp band_tone(:needs_you, :desktop),
     do:
@@ -74,7 +76,8 @@ defmodule LoopyardWeb.Components.StreamCard do
       "md:border-l-2 md:bg-violet-100 md:dark:bg-[#2b2348] md:border-violet-500 md:dark:border-violet-400"
 
   defp band_tone(:neutral, :desktop),
-    do: "md:border-l-2 md:border-transparent md:bg-zinc-500/[0.06] md:dark:bg-white/[0.045]"
+    do:
+      "md:border-l-2 md:border-zinc-500/[0.06] md:dark:border-white/[0.045] md:bg-zinc-500/[0.06] md:dark:bg-white/[0.045]"
 
   attr :project, :string, default: nil
   attr :workspace, :string, default: nil
