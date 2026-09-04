@@ -148,7 +148,13 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
               >
                 ‹
               </a>
+              <%!-- The SAME slot holds the position while it waits and the
+              outcome once it is settled, so answering swaps a word instead of
+              inserting a row and shoving the question down the screen. --%>
               <span :if={@index}>{@index} of {@total}</span>
+              <span :if={!@index} class="uppercase tracking-wide font-semibold">
+                {settled_word(@card)}
+              </span>
               <a
                 href={(@next && "#slide-" <> @next.dom_id) || "#slide-end"}
                 aria-label="Next decision"
@@ -160,25 +166,32 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
           </div>
           <%!-- ONE question of a multi-question ask is a bare block, so it needs
         the band around it. A whole card (approval, secret, a settled
-        question receipt) already IS a band. No eyebrow on a pending one and
-        no per-question header label — the bar says who's asking and the
-        question is alone on its slide; a settled one keeps "Answered" so a
-        receipt can't be mistaken for a live ask. --%>
+        question receipt) already IS a band. No eyebrow, and no "Answered"
+        header on settling: adding a row above the question moved the
+        question itself down the screen at the exact moment you had just
+        read it. The outcome is a word in the bar; the chosen option turns
+        green and the buttons go. --%>
           <LoopyardWeb.Components.StreamCard.band
             :if={@card.q}
             tone={(@pending? && :needs_you) || :neutral}
             chrome={:desktop}
           >
-            <LoopyardWeb.Components.StreamCard.header
-              :if={!@pending?}
-              state={:needs_you}
-              label_class="text-zinc-500 dark:text-zinc-400"
-            >
-              <:label>Answered</:label>
-            </LoopyardWeb.Components.StreamCard.header>
-
             <Cards.question_block msg={@card.msg} q={@card.q} show_header={false} />
           </LoopyardWeb.Components.StreamCard.band>
+
+          <%!-- Settled, and another decision is waiting: the way on, where the
+          buttons used to be. Without it a settled slide is a dead end you
+          have to swipe out of. --%>
+          <.link
+            :if={!@pending? && @next}
+            href={"#slide-" <> @next.dom_id}
+            class={[
+              "mt-4 w-full sm:w-auto",
+              LoopyardWeb.Components.StreamCard.action_class(variant: :primary, tone: :confirm)
+            ]}
+          >
+            Next decision →
+          </.link>
 
           <Cards.question_card
             :if={!@finished? && is_nil(@card.q) && @card.msg.role == :question}
@@ -441,32 +454,50 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
   attr :history?, :boolean, default: false
   attr :last, :map, default: nil
   attr :vapid_key, :string, default: nil
+  attr :waiting, :integer, default: 0, doc: "decisions still open behind this slide"
+  attr :next_pending, :map, default: nil, doc: "the first one still waiting, to go back to"
 
-  # The slide past the last decision: where the deck ends, and the way to the
-  # past ones. Swipe on from the last decision and you land here.
+  # The slide past the last decision: where the deck ends, and the way on.
+  #
+  # It used to claim "that's everything waiting on you" even with decisions
+  # still open behind it — you swipe past a card you skipped and the app tells
+  # you you're done while its own badge says two. And the links floated as a
+  # loose centred pile: different widths, arrows on opposite sides, a full tap
+  # target of air between them.
   def end_slide(assigns) do
     ~H"""
     <section
       id="slide-end"
       class="w-full h-full flex-none snap-start snap-always overflow-y-auto flex flex-col"
     >
-      <div class="flex-1 flex flex-col items-center justify-center gap-4 py-24 px-6">
-        <p class="text-body text-zinc-400 dark:text-zinc-500">
-          {(@history? && "That's every past decision.") || "That's everything waiting on you."}
-        </p>
-        <.link
-          navigate={(@history? && "/notifications") || "/notifications/history"}
-          class="text-body font-medium inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
-        >
-          {(@history? && "← Back to pending") || "Past decisions →"}
-        </.link>
-        <.link
-          navigate="/"
-          class="text-body font-medium inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
-        >
-          ← Home
-        </.link>
-        <.push_bell :if={!@history?} vapid_key={@vapid_key} />
+      <div class="flex-1 flex flex-col items-center justify-center px-6">
+        <div class="w-full max-w-xs flex flex-col items-stretch text-center">
+          <p class="text-lead text-zinc-500 dark:text-zinc-400 mb-6">
+            {end_line(@history?, @waiting)}
+          </p>
+          <%!-- One stack, one width, one edge: the actions read as a group
+          instead of three things that happen to be centred. --%>
+          <.link
+            :if={@next_pending}
+            href={"#slide-" <> @next_pending.dom_id}
+            class="text-body font-semibold min-h-11 inline-flex items-center justify-center text-violet-600 dark:text-violet-400 hover:underline"
+          >
+            Go to the next one
+          </.link>
+          <.link
+            navigate={(@history? && "/notifications") || "/notifications/history"}
+            class="text-body font-medium min-h-11 inline-flex items-center justify-center text-violet-600 dark:text-violet-400 hover:underline"
+          >
+            {(@history? && "Back to pending") || "Past decisions"}
+          </.link>
+          <.link
+            navigate="/"
+            class="text-body min-h-11 inline-flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:underline"
+          >
+            Home
+          </.link>
+          <.push_bell :if={!@history?} vapid_key={@vapid_key} />
+        </div>
       </div>
     </section>
     """
@@ -489,6 +520,24 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
   end
 
   # The question's own words, for the collapsed band.
+  # What happened to this decision, for the bar. Mirrors the question card's
+  # own vocabulary so a receipt reads the same wherever you meet it.
+  defp end_line(true, _waiting), do: "That's every past decision."
+  defp end_line(_history?, 0), do: "That's everything waiting on you."
+  defp end_line(_history?, 1), do: "One decision is still waiting on you."
+  defp end_line(_history?, n), do: "#{n} decisions are still waiting on you."
+
+  defp settled_word(%{msg: %{status: status}}) do
+    case status do
+      :timeout -> "No answer"
+      :retracted -> "Retracted"
+      :dismissed -> "Dismissed"
+      _ -> "Answered"
+    end
+  end
+
+  defp settled_word(_), do: "Done"
+
   defp card_prompt(%{q: %{prompt: p}}) when is_binary(p), do: p
   defp card_prompt(%{msg: %{questions: [%{prompt: p} | _]}}) when is_binary(p), do: p
   defp card_prompt(%{msg: msg}), do: Loopyard.CardText.render(msg) |> String.slice(0, 200)

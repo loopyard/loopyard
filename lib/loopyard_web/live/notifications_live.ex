@@ -552,23 +552,37 @@ defmodule LoopyardWeb.NotificationsLive do
             operator_id={@operator_id}
             user_label={@user_label}
           />
-          <Slide.end_slide history?={@history?} last={List.last(@cards)} vapid_key={@vapid_key} />
+          <Slide.end_slide
+            history?={@history?}
+            last={List.last(@cards)}
+            waiting={@total}
+            next_pending={Enum.find_value(@numbered, fn {card, position} -> position && card end)}
+            vapid_key={@vapid_key}
+          />
         </div>
 
         <%!-- Nothing on the deck: the "you're done" beat, with the one bar it needs. --%>
         <div :if={@cards == []} class="flex-1 flex flex-col min-h-0">
-          <div class="flex-1 flex flex-col items-center justify-center gap-4 py-24">
-            <p class="text-body text-zinc-400 dark:text-zinc-500">
-              {(@history? && "No decisions asked yet.") || "Nothing waiting on you."}
-            </p>
-            <.link
-              :if={!@history?}
-              navigate="/notifications/history"
-              class="text-body font-medium inline-flex items-center min-h-11 md:min-h-0 text-violet-600 dark:text-violet-400 hover:underline"
-            >
-              Past decisions →
-            </.link>
-            <Slide.push_bell :if={!@history?} vapid_key={@vapid_key} />
+          <div class="flex-1 flex flex-col items-center justify-center px-6">
+            <div class="w-full max-w-xs flex flex-col items-stretch text-center">
+              <p class="text-lead text-zinc-500 dark:text-zinc-400 mb-6">
+                {(@history? && "No decisions asked yet.") || "Nothing waiting on you."}
+              </p>
+              <.link
+                :if={!@history?}
+                navigate="/notifications/history"
+                class="text-body font-medium min-h-11 inline-flex items-center justify-center text-violet-600 dark:text-violet-400 hover:underline"
+              >
+                Past decisions
+              </.link>
+              <.link
+                navigate="/"
+                class="text-body min-h-11 inline-flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:underline"
+              >
+                Home
+              </.link>
+              <Slide.push_bell :if={!@history?} vapid_key={@vapid_key} />
+            </div>
           </div>
         </div>
       </div>
