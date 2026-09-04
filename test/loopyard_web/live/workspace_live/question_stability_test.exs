@@ -76,7 +76,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.QuestionStabilityTest do
 
     assert settled =~ "emerald", "the chosen option is confirmed in moss"
     assert settled =~ "Yes"
-    assert settled =~ "No", "the options you didn't pick stay, so the card still reads as a record"
+
+    assert settled =~ "No",
+           "the options you didn't pick stay, so the card still reads as a record"
   end
 
   test "a settled question offers no way to answer it again" do
