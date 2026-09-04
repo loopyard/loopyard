@@ -57,7 +57,8 @@ defmodule LoopyardWeb.Components.StreamCard do
       "border-l-2 bg-orange-50/70 dark:bg-orange-950/10 border-orange-400 dark:border-orange-500/40"
 
   defp band_tone(:you, :always),
-    do: "border-l-2 bg-violet-100 dark:bg-brand-iris-wash-dark border-violet-500 dark:border-violet-400"
+    do:
+      "border-l-2 bg-violet-100 dark:bg-brand-iris-wash-dark border-violet-500 dark:border-violet-400"
 
   # The rail is still THERE on a settled card — a card that dropped its 2px
   # border moved its whole content 2px left, a shift you see without being
