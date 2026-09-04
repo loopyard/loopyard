@@ -45,6 +45,27 @@ defmodule LoopyardWeb.NotificationsDeckTest do
     }
   end
 
+  defp multi_question(msg_id, prompts) do
+    %{
+      id: msg_id,
+      role: :question,
+      question_id: "qid-#{msg_id}",
+      status: :pending,
+      selections: %{},
+      done: [],
+      questions:
+        for {prompt, i} <- Enum.with_index(prompts, 1) do
+          %{
+            id: "q#{i}",
+            header: "",
+            prompt: prompt,
+            options: [%{label: "Yes", description: nil}, %{label: "No", description: nil}]
+          }
+        end,
+      timestamp: DateTime.utc_now()
+    }
+  end
+
   defp seed_agent(name, msgs) do
     Loopyard.StateKeeper.ensure_tables!()
     id = "deck-#{System.unique_integer([:positive])}"
@@ -121,6 +142,33 @@ defmodule LoopyardWeb.NotificationsDeckTest do
 
     html = render(view)
     refute html =~ "2 of 2", "a settled card is no longer one of the things waiting"
+  end
+
+  test "one ask fans out in the order it was asked, and answering one renumbers the rest",
+       %{conn: conn} do
+    seed_agent("Twenty", [multi_question("m-20q", ["First?", "Second?", "Third?"])])
+
+    {:ok, view, html} = live(conn, "/notifications")
+
+    # The agent's order is the reading order: you answer its first question
+    # first, not its last.
+    {a, _} = :binary.match(html, "First?")
+    {b, _} = :binary.match(html, "Second?")
+    {c, _} = :binary.match(html, "Third?")
+    assert a < b and b < c
+
+    assert html =~ "1 of 3"
+    assert html =~ "3 of 3"
+
+    # A question of a multi-question ask resolves ON ITS OWN. The message stays
+    # pending until the last one lands, so counting the MESSAGE left two
+    # answered questions still claiming to be waiting.
+    render_click(view, "skip_question", %{"question_id" => "qid-m-20q", "q" => "q1"})
+    Loopyard.Notifications.sync()
+
+    html = render(view)
+    refute html =~ "3 of 3", "answering one of three leaves two waiting, not three"
+    assert html =~ "First?", "the answered question keeps its place as a receipt"
   end
 
   test "every pending decision is on ONE page", %{conn: conn} do

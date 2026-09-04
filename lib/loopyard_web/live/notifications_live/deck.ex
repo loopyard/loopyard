@@ -117,10 +117,18 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
   Is this card still waiting on a human? The deck is sticky — a settled card
   STAYS as its own receipt — so "waiting" and "on the deck" are different
   questions, and only the first one belongs in a count.
+
+  A multi-question ask fans out to one slide PER QUESTION, and each resolves
+  on its own: the whole message stays `:pending` until the last one is
+  answered, so asking the message would say "3 of 3 waiting" when two are
+  already done. Ask the QUESTION.
   """
   @spec pending_card?(map()) :: boolean()
   def pending_card?(%{slide: %{kind: :finished}, item: item}),
     do: match?(%{status: :open}, item)
+
+  def pending_card?(%{msg: %{status: :pending} = msg, q: %{id: q_id}}),
+    do: q_id not in (msg[:done] || [])
 
   def pending_card?(%{msg: %{status: :pending}}), do: true
   def pending_card?(_), do: false

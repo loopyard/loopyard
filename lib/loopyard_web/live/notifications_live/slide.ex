@@ -48,11 +48,10 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
         finished?: finished?,
         item: item,
         prompt: (finished? && item && item.label) || card_prompt(assigns.card),
-        pending?:
-          if(finished?,
-            do: item != nil and item.status == :open,
-            else: assigns.card.msg.status == :pending
-          ),
+        # ONE predicate for "still waiting", shared with the deck's count — a
+        # question of a multi-question ask resolves on its own, so asking the
+        # message left an answered question wearing the flame.
+        pending?: Deck.pending_card?(assigns.card),
         verb: (finished? && "finished") || "asked",
         awaiting?: awaiting_reply?(assigns.thread),
         blocked?: operator_blocked?(assigns.operator_id, assigns.card),
