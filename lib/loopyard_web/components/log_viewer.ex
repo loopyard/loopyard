@@ -110,10 +110,14 @@ defmodule LoopyardWeb.Components.LogViewer do
       phx-hook="LogExpand"
       class="mt-3 mb-1 rounded-sm overflow-hidden bg-zinc-500/[0.06] dark:bg-white/[0.045]"
     >
-      <div class="flex items-center gap-2 px-3.5 pt-2 pb-1">
+      <%!-- ONE leading for the whole card. The command line took the body
+      token's 1.5 while the output under it ran at leading-snug, so two mono
+      lines four pixels apart sat on different rhythms and the box read as
+      loose. Same leading, tighter box. --%>
+      <div class="flex items-center gap-2 px-3.5 pt-2 pb-0.5">
         <span
           title={@command}
-          class="text-body font-mono text-zinc-700 dark:text-zinc-200 truncate min-w-0 flex-1"
+          class="text-body font-mono leading-snug text-zinc-700 dark:text-zinc-200 truncate min-w-0 flex-1"
         >
           <span :if={@command} class="select-none text-zinc-400 dark:text-zinc-500">$ </span>{@command ||
             @status_label}
@@ -152,7 +156,7 @@ defmodule LoopyardWeb.Components.LogViewer do
       >{Ansi.to_html(@display)}</pre>
       <%!-- Footer: verdict left, actions right. Borderless — blends into the
     soft panel; the verdict dot + colour carry the status, not a rule. --%>
-      <div class="flex items-center gap-2 px-3.5 pt-1 pb-2">
+      <div class="flex items-center gap-2 px-3.5 pt-0.5 pb-2">
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
         <span
           :if={@status == :building && elapsed_since(@started)}

@@ -150,22 +150,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       phx-hook="PerfProbe"
       phx-drop-target={@uploads && @uploads.attachments.ref}
     >
-      <%!-- Windowed transcript: when you've scrolled up into history, the live
-    tail isn't loaded. This snaps you back to the newest messages. --%>
-      <button
-        :if={not @window_tail?}
-        phx-click="load_latest"
-        class="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 rounded-full bg-violet-600 text-white text-lead font-medium px-3.5 py-1.5 shadow-lg shadow-violet-900/20 hover:bg-violet-700 transition-colors"
-      >
-        Jump to latest
-        <svg viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5">
-          <path
-            fill-rule="evenodd"
-            d="M10 3a.75.75 0 0 1 .75.75v9.19l3.72-3.72a.75.75 0 1 1 1.06 1.06l-5 5a.75.75 0 0 1-1.06 0l-5-5a.75.75 0 1 1 1.06-1.06l3.72 3.72V3.75A.75.75 0 0 1 10 3Z"
-            clip-rule="evenodd"
-          />
-        </svg>
-      </button>
       <%!-- scroll-smooth: the auto-tail (ScrollBottom hook nudges scrollTop as the
     agent streams) animates instead of jumping, so following the thinking
     glides. Pure CSS — honors prefers-reduced-motion automatically. --%>
@@ -316,8 +300,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               :if={
                 @streaming_text != "" || (assigns[:streaming_thinking] || "") != "" ||
                   @agent.status in [:backoff, :compacting] ||
-                  (@agent.status == :thinking && not awaiting_answer?(@messages) &&
-                     not awaiting_approval?(@messages) && not building?(@messages))
+                  (@agent.status == :thinking && not building?(@messages))
               }
               class="-mx-4 md:-mx-6 wide:-mx-4 px-4 md:px-6 chat-live-rail-tail"
             >
@@ -349,6 +332,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                 messages={@messages}
                 word={@thinking_word}
               />
+              <%!-- A turn parked inside ask_user used to render NOTHING here: the
+              rail was suppressed while awaiting an answer, so a message you
+              typed sat under a "Queued" label with nothing on screen saying
+              what it was queued behind, and the agent read as hung. The
+              blocked mode exists to say it — let it through. --%>
               <.live_status
                 :if={@agent.status in [:thinking, :backoff, :compacting]}
                 messages={@messages}
@@ -493,6 +481,28 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             >
             </div>
           </div>
+        </div>
+        <%!-- Windowed transcript: when you've scrolled up into history, the live
+        tail isn't loaded, and this snaps you back to the newest messages.
+
+        It hangs off a ZERO-HEIGHT anchor immediately above the composer, so it
+        floats over the end of the transcript. Positioned against the pane it
+        sat squarely on top of "Type a message…" — the one control you always
+        need was covered by a control you rarely do. --%>
+        <div :if={not @window_tail?} class="relative h-0 w-full z-10">
+          <button
+            phx-click="load_latest"
+            class="absolute bottom-2 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 rounded-full bg-violet-600 text-white text-lead font-medium px-3.5 py-1.5 shadow-lg shadow-violet-900/20 hover:bg-violet-700 transition-colors"
+          >
+            Jump to latest
+            <svg viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5">
+              <path
+                fill-rule="evenodd"
+                d="M10 3a.75.75 0 0 1 .75.75v9.19l3.72-3.72a.75.75 0 1 1 1.06 1.06l-5 5a.75.75 0 0 1-1.06 0l-5-5a.75.75 0 1 1 1.06-1.06l3.72 3.72V3.75A.75.75 0 0 1 10 3Z"
+                clip-rule="evenodd"
+              />
+            </svg>
+          </button>
         </div>
         <%!-- The composer divider: just ABOVE the message box, BELOW the queued
             card. A DIRECT child of the pane (not the centered column), so it
