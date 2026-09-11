@@ -55,6 +55,22 @@ defmodule Loopyard.Agent.ReconcilerTest do
       [{^id, %{status: :stopped}}] = :ets.lookup(:chat_agents, id)
     end
 
+    test "a row restored from disk and not yet woken is asleep, NOT drift" do
+      # AgentLog replay stamps alive?: false and keeps the status the agent
+      # went to sleep with; system agents stay that way until visited.
+      id = "asleep-#{:rand.uniform(1_000_000)}"
+
+      :ets.insert(
+        :chat_agents,
+        {id, %{id: id, status: :idle, alive?: false, messages: [], name: "Operator"}}
+      )
+
+      result = Reconciler.reconcile_now()
+      assert result.drift_count == 0
+
+      [{^id, %{status: :idle}}] = :ets.lookup(:chat_agents, id)
+    end
+
     test ":crashed agent with no pid is NOT drift — that's the expected shape" do
       id = "crashed-ok-#{:rand.uniform(1_000_000)}"
       :ets.insert(:chat_agents, {id, %{id: id, status: :crashed, messages: [], name: "C"}})

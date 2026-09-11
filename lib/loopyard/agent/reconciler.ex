@@ -169,6 +169,14 @@ defmodule Loopyard.Agent.Reconciler do
     alive = agent_alive?(id)
 
     cond do
+      # Restored from disk and never woken (`AgentLog.populate_ets/2` stamps
+      # `alive?: false`; a running agent rewrites the whole row, dropping it).
+      # Its status is the one it went to sleep with — a system agent waits
+      # here until its page or `Agents.ensure_running/1` wakes it. Asleep is
+      # not dead: marking it :crashed told /agents the operator had crashed.
+      Map.get(summary, :alive?) == false and not alive ->
+        nil
+
       # Alive-according-to-status, dead-according-to-Registry. The
       # canonical drift: correct to :crashed.
       status in [:idle, :thinking, :booting] and not alive ->

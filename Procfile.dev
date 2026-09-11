@@ -1,1 +1,3 @@
-web: LOOPYARD_BIND=0.0.0.0 mix loopyard.server
+# A pull that bumps mix.lock would otherwise stop the server at "lock mismatch";
+# the check is ~0.5s and offline when deps are current, fetches only when not.
+web: (mix deps.loadpaths --no-compile >/dev/null 2>&1 || mix deps.get) && LOOPYARD_BIND=0.0.0.0 mix loopyard.server

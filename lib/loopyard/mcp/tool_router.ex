@@ -110,8 +110,25 @@ defmodule Loopyard.MCP.ToolRouter do
           # The token's identity wins — drop whatever the model supplied.
           |> Map.put(:agent_id, agent_id)
 
-        mod.execute(params, %{agent_id: agent_id}) |> to_mcp_result()
+        case missing_required(mod, params) do
+          [] ->
+            mod.execute(params, %{agent_id: agent_id}) |> to_mcp_result()
+
+          missing ->
+            error_text("Missing required parameter(s): #{Enum.join(missing, ", ")}")
+        end
     end
+  end
+
+  # The in-process path validates against the schema before a tool runs; this
+  # bridge must too. Tools pattern-match their required params in `execute/2`
+  # heads, so a model that omits one (a Codex agent calling `read_agent_file`
+  # with no `path`) crashed the request with a FunctionClauseError instead of
+  # getting an error it could correct.
+  defp missing_required(mod, params) do
+    for key <- mod.input_schema()["required"] || [],
+        is_nil(params[String.to_existing_atom(key)]),
+        do: key
   end
 
   # Convert only the top-level keys the tool declares (schema property names),

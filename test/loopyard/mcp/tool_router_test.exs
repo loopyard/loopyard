@@ -33,7 +33,36 @@ defmodule Loopyard.MCP.ToolRouterTest do
     def execute(_params, _assigns), do: {:error, "kaboom"}
   end
 
-  @modules [EchoTool, OkTool, DataTool, ErrTool]
+  defmodule RequiredTool do
+    use Loopyard.Tool,
+      name: "needs_path",
+      description: "matches its required param in the head",
+      params: [agent_id: {:string, required: true}, path: {:string, required: true}]
+
+    def execute(%{path: path}, _assigns), do: {:ok, path}
+  end
+
+  @modules [EchoTool, OkTool, DataTool, ErrTool, RequiredTool]
+
+  describe "call_tool/4 required params" do
+    test "a missing required param is a tool error, not a crash" do
+      result = ToolRouter.call_tool("needs_path", %{}, "agent-1", @modules)
+
+      assert %{"isError" => true, "content" => [%{"text" => text}]} = result
+      assert text =~ "path"
+      refute text =~ "agent_id"
+    end
+
+    test "a null required param counts as missing" do
+      result = ToolRouter.call_tool("needs_path", %{"path" => nil}, "agent-1", @modules)
+      assert %{"isError" => true} = result
+    end
+
+    test "present required params reach the tool" do
+      result = ToolRouter.call_tool("needs_path", %{"path" => "a.md"}, "agent-1", @modules)
+      assert %{"isError" => false, "content" => [%{"text" => "a.md"}]} = result
+    end
+  end
 
   describe "list_tools/1" do
     test "returns bare-named specs with schema" do
