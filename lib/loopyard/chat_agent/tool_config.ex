@@ -90,6 +90,12 @@ defmodule Loopyard.ChatAgent.ToolConfig do
   alias Loopyard.Tools.AgentFiles
 
   @acp_control_plane_tools [
+    # Shell commands whose output a human can WATCH: exec streams into a live
+    # console card as the command runs. The harness's native Bash can't — the
+    # Claude SDK reports only elapsed seconds until the command exits, so a long
+    # build or test run showed nothing, then everything. Same container the
+    # agent's Bash already runs in; no new capability (SECURITY.md → bridge).
+    Container.Exec,
     # Container / service control plane
     Container.Ports,
     Container.WorkspaceInfo,

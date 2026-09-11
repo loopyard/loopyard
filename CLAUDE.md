@@ -265,8 +265,9 @@ reach it via `host.docker.internal`. Every call is bearer-authed
 (`Loopyard.MCP.Token`, per-agent scoped) and dispatched by
 `Loopyard.MCP.ToolRouter` to the *same* `Loopyard.Tool` `execute/2` the
 in-process path calls — the identity comes from the token, never the payload.
-Only the control-plane subset is exposed (`ToolConfig.acp_control_plane_tools/0`);
-fs/exec tools are omitted (the container has native Read/Write/Bash). This is
+Only the control-plane subset is exposed (`ToolConfig.acp_control_plane_tools/0`),
+plus `exec` — its output streams live into the chat, which native Bash can't;
+fs tools are omitted (the container has native Read/Write). This is
 the one Loopyard surface reachable from inside a container — read
 docs/SECURITY.md → "ACP MCP bridge" before touching it.
 

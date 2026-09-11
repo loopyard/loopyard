@@ -125,17 +125,18 @@ defmodule Loopyard.MCP.ToolRouterTest do
   end
 
   describe "default control-plane surface" do
-    test "exposes the headline control-plane tools and NOT the fs/exec ones" do
+    test "exposes the headline control-plane tools and exec, NOT the fs ones" do
       names = ToolRouter.list_tools() |> Enum.map(& &1["name"])
 
-      # Control-plane tools an in-container ACP agent can't do natively:
-      for t <- ~w(ports propose_fork propose_integrate propose_delete_workspace ask_user
+      # What an in-container ACP agent can't do natively — exec included: its
+      # output streams live, which native Bash can't.
+      for t <- ~w(exec ports propose_fork propose_integrate propose_delete_workspace ask_user
                   request_secret get_secret app_url docker_compose) do
         assert t in names, "expected #{t} in ACP MCP surface"
       end
 
       # Redundant with the container's native tools — must NOT be exposed:
-      for t <- ~w(exec read_file write_file edit grep glob tree) do
+      for t <- ~w(read_file write_file edit grep glob tree) do
         refute t in names, "#{t} should NOT be in the ACP MCP surface"
       end
     end

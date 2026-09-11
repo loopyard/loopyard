@@ -66,7 +66,8 @@ defmodule LoopyardWeb.MCP.ServerTest do
     names = Enum.map(body["result"]["tools"], & &1["name"])
     assert "ports" in names
     assert "propose_fork" in names
-    refute "exec" in names
+    assert "exec" in names
+    refute "read_file" in names
   end
 
   test "notifications return 202 with no body", %{token: token} do

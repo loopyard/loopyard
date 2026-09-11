@@ -42,6 +42,25 @@ defmodule Loopyard.ChatAgent.ToolConfigTest do
     end
   end
 
+  describe "acp_control_plane_tools/0" do
+    test "exec crosses the bridge — the in-container agent's only streaming shell" do
+      assert Loopyard.Tools.Container.Exec in ToolConfig.acp_control_plane_tools(),
+             "native Bash reports nothing until a command exits; exec streams"
+    end
+
+    test "the fs tools stay native (no second path for the same file ops)" do
+      bridged = ToolConfig.acp_control_plane_tools()
+
+      for mod <- [
+            Loopyard.Tools.Container.ReadFile,
+            Loopyard.Tools.Container.WriteFile,
+            Loopyard.Tools.Container.Edit
+          ] do
+        refute mod in bridged, "#{inspect(mod)} should not cross the bridge"
+      end
+    end
+  end
+
   describe "build_mcp_servers/2" do
     test "builds a map from tool modules with empty assigns when no agent_id" do
       tools = ToolConfig.default_tools()
