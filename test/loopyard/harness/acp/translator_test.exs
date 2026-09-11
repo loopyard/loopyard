@@ -23,8 +23,8 @@ defmodule Loopyard.Harness.ACP.TranslatorTest do
 
   defp chunk(text), do: %{"type" => "text", "text" => text}
 
-  describe "text-block separation across tool calls (no jammed sentences)" do
-    test "a tool call between two text blocks inserts a paragraph break" do
+  describe "text blocks interleave with tool calls" do
+    test "the text before a tool call commits ABOVE the call; the rest at finish" do
       {state, events} =
         run(Translator.new(), [
           %{"sessionUpdate" => "agent_message_chunk", "content" => chunk("Checking main.")},
@@ -37,12 +37,93 @@ defmodule Loopyard.Harness.ACP.TranslatorTest do
           %{"sessionUpdate" => "agent_message_chunk", "content" => chunk("No — not merged.")}
         ])
 
-      # The break rides the LIVE delta too, so browser + committed text match.
-      assert %Event.TextDelta{text: "\n\nNo — not merged."} =
-               Enum.find(events, &match?(%Event.TextDelta{text: "\n\n" <> _}, &1))
+      committed = Enum.filter(events, &match?(%Event.Text{}, &1))
+      assert committed == [%Event.Text{text: "Checking main."}]
+
+      text_at = Enum.find_index(events, &match?(%Event.Text{}, &1))
+      call_at = Enum.find_index(events, &match?(%Event.ToolCall{}, &1))
+      assert text_at < call_at
+
+      # No glue between blocks — they're separate messages now.
+      assert %Event.TextDelta{text: "No — not merged."} = List.last(events)
 
       {_state, finish_events} = Translator.finish(state, nil)
-      assert %Event.Text{text: "Checking main.\n\nNo — not merged."} = hd(finish_events)
+      assert [%Event.Text{text: "No — not merged."}, %Event.SessionResult{}] = finish_events
+    end
+
+    test "a status ping for a call already on screen doesn't split a paragraph" do
+      {state, events} =
+        run(Translator.new(), [
+          %{
+            "sessionUpdate" => "tool_call",
+            "toolCallId" => "t1",
+            "title" => "Bash",
+            "rawInput" => %{"command" => "sleep 60"}
+          },
+          %{"sessionUpdate" => "agent_message_chunk", "content" => chunk("Still ")},
+          %{
+            "sessionUpdate" => "tool_call_update",
+            "toolCallId" => "t1",
+            "status" => "in_progress"
+          },
+          %{"sessionUpdate" => "agent_message_chunk", "content" => chunk("waiting.")}
+        ])
+
+      refute Enum.any?(events, &match?(%Event.Text{}, &1))
+
+      {_state, finish_events} = Translator.finish(state, nil)
+      assert %Event.Text{text: "Still waiting."} = hd(finish_events)
+    end
+
+    test "a whitespace-only block before a tool call is not a message" do
+      {_state, events} =
+        run(Translator.new(), [
+          %{"sessionUpdate" => "agent_message_chunk", "content" => chunk("\n\n")},
+          %{
+            "sessionUpdate" => "tool_call",
+            "toolCallId" => "t1",
+            "title" => "Bash",
+            "rawInput" => %{"command" => "ls"}
+          }
+        ])
+
+      refute Enum.any?(events, &match?(%Event.Text{}, &1))
+    end
+
+    test "text then reasoning keeps that order" do
+      {state, events} =
+        run(Translator.new(), [
+          %{"sessionUpdate" => "agent_message_chunk", "content" => chunk("First.")},
+          %{"sessionUpdate" => "agent_thought_chunk", "content" => chunk("hmm")}
+        ])
+
+      assert [%Event.TextDelta{}, %Event.Text{text: "First."}, %Event.ThinkingDelta{}] = events
+
+      {_state, finish_events} = Translator.finish(state, nil)
+      assert [%Event.Thinking{thinking: "hmm"}, %Event.SessionResult{}] = finish_events
+    end
+
+    test "the output estimate counts the whole turn's text, not the last block" do
+      {state, _} =
+        run(Translator.new(), [
+          %{
+            "sessionUpdate" => "agent_message_chunk",
+            "content" => chunk(String.duplicate("a", 400))
+          },
+          %{
+            "sessionUpdate" => "tool_call",
+            "toolCallId" => "t1",
+            "title" => "Bash",
+            "rawInput" => %{"command" => "ls"}
+          },
+          %{
+            "sessionUpdate" => "agent_message_chunk",
+            "content" => chunk(String.duplicate("b", 400))
+          }
+        ])
+
+      {_state, finish_events} = Translator.finish(state, nil)
+      assert %Event.SessionResult{output_tokens: 200} = List.last(finish_events)
     end
 
     test "deltas WITHIN one block (no tool between) are NOT broken apart" do

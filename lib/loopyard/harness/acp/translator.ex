@@ -8,11 +8,12 @@ defmodule Loopyard.Harness.ACP.Translator do
   need turn-scoped state:
 
     * **Text finalization.** ACP streams only `agent_message_chunk` deltas;
-      there is no "final full message" frame. We accumulate the chunks and,
-      on `finish/2`, emit one `%Event.Text{}` so `StreamHandler` commits and
-      persists the assistant message (the live `TextDelta`s are display-only
-      and would vanish on refresh without this — same partial/final split the
-      ClaudeCode backend uses).
+      there is no "final full message" frame. We accumulate the chunks of the
+      open text BLOCK and emit it as one `%Event.Text{}` when the block ends —
+      a tool call, a reasoning chunk, or `finish/2` — so `StreamHandler`
+      commits and persists it (the live `TextDelta`s are display-only and would
+      vanish on refresh without this). One message per block, like the
+      ClaudeCode backend: text, tool, text, tool reads in the order it happened.
 
     * **Tool-call dedup.** A single tool call surfaces across multiple
       `tool_call` / `tool_call_update` frames (title fills in, then status,
@@ -33,11 +34,14 @@ defmodule Loopyard.Harness.ACP.Translator do
 
   alias Loopyard.Agent.Event
 
-  # `break_pending`: a tool call surfaced since the last text chunk, so the next
-  # text chunk opens a NEW block and must be separated with a paragraph break.
-  # Without it, the assistant's text block BEFORE a tool call and the one AFTER
-  # were concatenated with no separator — "…and main." + "No — not merged" came
-  # out as "…and main.No — not merged".
+  # `text`: the OPEN text block only. It used to hold the whole turn and commit
+  # once at finish, so every block landed as one message AFTER the turn's last
+  # tool — the transcript read as a wall of tool cards, then a wall of text, and
+  # the prose that narrated each step never sat next to that step. (Before that
+  # it also jammed blocks together: "…and main." + "No — not merged".)
+  #
+  # `turn_text_bytes`: bytes of answer text across the whole turn, for the
+  # usage-silent output estimate in finish/2 — `text` no longer spans the turn.
   #
   # `used_tokens`: latest context usage from the adapter's `usage_update`
   # notifications (claude-agent-acp; the old claude-code-acp never sends them).
@@ -54,7 +58,7 @@ defmodule Loopyard.Harness.ACP.Translator do
   defstruct text: [],
             model: nil,
             tools: %{},
-            break_pending: false,
+            turn_text_bytes: 0,
             used_tokens: nil,
             thoughts: []
 
@@ -62,7 +66,7 @@ defmodule Loopyard.Harness.ACP.Translator do
           text: iodata(),
           model: String.t() | nil,
           tools: map(),
-          break_pending: boolean(),
+          turn_text_bytes: non_neg_integer(),
           used_tokens: non_neg_integer() | nil,
           thoughts: iodata()
         }
@@ -92,9 +96,6 @@ defmodule Loopyard.Harness.ACP.Translator do
   def step(state, _other), do: {state, []}
 
   # Streaming assistant text — accumulate for the final Text, emit a live delta.
-  # A paragraph break is prepended when this chunk opens a new block after a
-  # tool call (break_pending) so the break lands in BOTH the live delta stream
-  # and the committed text — the browser and the persisted message match.
   defp do_step(state, "agent_message_chunk", update) do
     text = dig_text(update["content"])
 
@@ -105,11 +106,11 @@ defmodule Loopyard.Harness.ACP.Translator do
       # the transcript keeps think-then-answer order.
       {state, thinking} = flush_thoughts(state)
 
-      sep = if state.break_pending and state.text != [], do: "\n\n", else: ""
-      chunk = sep <> text
-
-      {%{state | text: [state.text, chunk], break_pending: false},
-       thinking ++ [%Event.TextDelta{text: chunk}]}
+      {%{
+         state
+         | text: [state.text, text],
+           turn_text_bytes: state.turn_text_bytes + byte_size(text)
+       }, thinking ++ [%Event.TextDelta{text: text}]}
     end
   end
 
@@ -122,7 +123,13 @@ defmodule Loopyard.Harness.ACP.Translator do
     if text == "" do
       {state, []}
     else
-      {%{state | thoughts: [state.thoughts, text]}, [%Event.ThinkingDelta{thinking: text}]}
+      # Reasoning starting ends any open text block — the mirror of the rule
+      # above, so at most one of text/thoughts is ever open and the flushes
+      # can't reorder them.
+      {state, answer} = flush_text(state)
+
+      {%{state | thoughts: [state.thoughts, text]},
+       answer ++ [%Event.ThinkingDelta{thinking: text}]}
     end
   end
 
@@ -133,19 +140,18 @@ defmodule Loopyard.Harness.ACP.Translator do
   # update/result forces it out).
   defp do_step(state, "tool_call", update) do
     id = update["toolCallId"]
-    # Acting ends any open reasoning block (Claude thinks, then calls).
-    {state, thinking} = flush_thoughts(state)
+    # Acting ends the open block (Claude thinks or narrates, then calls), so
+    # it commits ABOVE the call — that's what puts each step's prose next to it.
+    {state, block} = flush_block(state)
     {state, entry} = buffer_tool(state, id, update)
     {state, events} = maybe_emit_call(state, id, entry)
-    # Tool activity now sits between any prior text and the next — the next
-    # text chunk opens a fresh block (see break_pending).
-    {%{state | break_pending: true}, thinking ++ events}
+    {state, block ++ events}
   end
 
   defp do_step(state, "tool_call_update", update) do
     id = update["toolCallId"]
-    {state, thinking} = flush_thoughts(state)
     {state, entry} = buffer_tool(state, id, update)
+    new_call? = not entry.emitted_call
 
     # Ensure the call is emitted before its result (force it out if needed).
     # If it's ALREADY out and this update brought more of its arguments, emit
@@ -185,7 +191,15 @@ defmodule Loopyard.Harness.ACP.Translator do
         {state, []}
       end
 
-    {%{state | break_pending: true}, thinking ++ call_events ++ result_events}
+    # Only a frame that lands something NEW in the transcript (the call's first
+    # appearance, or its result) ends the open block. A status ping or an
+    # argument refinement for a call already on screen must not cut a
+    # paragraph in half. The tool state above doesn't touch text/thoughts, so
+    # flushing after it still commits the block ahead of these events.
+    {state, block} =
+      if new_call? or result_events != [], do: flush_block(state), else: {state, []}
+
+    {state, block ++ call_events ++ result_events}
   end
 
   # Slash commands / skills available this session (surface for #8); not chat noise.
@@ -229,19 +243,15 @@ defmodule Loopyard.Harness.ACP.Translator do
   defp do_step(state, _kind, _update), do: {state, []}
 
   @doc """
-  Flush end-of-turn events: the accumulated full assistant `Text` (so the
-  message is committed/persisted) and a `SessionResult` for accounting +
-  session-id capture.
+  Flush end-of-turn events: the still-open block — the answer's last `Text`,
+  or reasoning a turn ended inside — so it's committed/persisted, and a
+  `SessionResult` for accounting + session-id capture.
   """
   @spec finish(t(), nil | {:error, term()}, usage() | nil) :: {t(), [Event.t()]}
   def finish(state, error \\ nil, usage \\ nil) do
-    full = IO.iodata_to_binary(state.text)
-
     # A turn that ended mid-reasoning (no answer, or interrupted) still has an
     # open block — commit it rather than losing it.
-    {state, thinking_events} = flush_thoughts(state)
-
-    text_events = if full == "", do: [], else: [%Event.Text{text: full}]
+    {state, block_events} = flush_block(state)
 
     # Thread the turn's error status into SessionResult.is_error — that's what
     # drives the bounded auto-retry and the WHY/CONSEQUENCE/ACTION error
@@ -276,7 +286,7 @@ defmodule Loopyard.Harness.ACP.Translator do
       model: state.model,
       context_used_tokens: state.used_tokens,
       input_tokens: Map.get(usage, :input_tokens) || state.used_tokens || 0,
-      output_tokens: Map.get(usage, :output_tokens) || div(byte_size(full), 4),
+      output_tokens: Map.get(usage, :output_tokens) || div(state.turn_text_bytes, 4),
       cache_read_tokens: Map.get(usage, :cache_read_tokens, 0),
       cost_usd: Map.get(usage, :cost_usd, 0.0),
       duration_ms: 0.0,
@@ -286,8 +296,27 @@ defmodule Loopyard.Harness.ACP.Translator do
     }
 
     # Reset turn-scoped accumulation; keep model.
-    {%{state | text: [], tools: %{}, break_pending: false},
-     thinking_events ++ text_events ++ [result]}
+    {%{state | tools: %{}, turn_text_bytes: 0}, block_events ++ [result]}
+  end
+
+  # Commit whichever block is open. At most one is: a text chunk flushes
+  # reasoning and a reasoning chunk flushes text.
+  defp flush_block(state) do
+    {state, thinking} = flush_thoughts(state)
+    {state, answer} = flush_text(state)
+    {state, thinking ++ answer}
+  end
+
+  # Commit the open text block, if any, as a persisted `%Event.Text{}` —
+  # StreamHandler clears the live partial when it sees one. A whitespace-only
+  # block (the "\n\n" the model emits before a tool call) is not a message.
+  defp flush_text(%{text: []} = state), do: {state, []}
+
+  defp flush_text(state) do
+    text = IO.iodata_to_binary(state.text)
+    state = %{state | text: []}
+
+    if String.trim(text) == "", do: {state, []}, else: {state, [%Event.Text{text: text}]}
   end
 
   # Commit the open reasoning block, if any, as a persisted `%Event.Thinking{}`.
