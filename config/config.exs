@@ -23,6 +23,10 @@ config :loopyard, default_harness: Loopyard.Harness.ACP
 config :loopyard,
   model_window_default: 200_000,
   model_windows: %{
+    # "claude-fable-5" prefix-matches claude-fable-5-1 too (both 1M).
+    "claude-fable-5" => 1_000_000,
+    "claude-opus-5" => 1_000_000,
+    "claude-sonnet-5" => 1_000_000,
     "claude-opus-4-8" => 1_000_000,
     "claude-opus-4-7" => 1_000_000,
     "claude-opus-4-6" => 1_000_000,

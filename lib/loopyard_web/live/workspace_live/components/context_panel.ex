@@ -500,6 +500,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   # Known frontier ids → their marketing names (the adapter's list doesn't
   # carry these full ids, so map them ourselves). Anything already resolved to
   # a human name upstream (e.g. "Sonnet 4.5" from the adapter) passes through.
+  def short_model("claude-opus-5"), do: "Opus 5"
   def short_model("claude-opus-4-8"), do: "Opus 4.8"
   def short_model("claude-fable-5"), do: "Fable 5"
   def short_model("claude-sonnet-5"), do: "Sonnet 5"

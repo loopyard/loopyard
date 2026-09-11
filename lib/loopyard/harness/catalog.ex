@@ -66,7 +66,13 @@ defmodule Loopyard.Harness.Catalog do
       # Offered in the picker. The in-container CLI's set_model passes FULL
       # model ids through (verified), so these are ids rather than the adapter's
       # stale default/opus/haiku aliases.
+      # Before listing a new id, run it on the adapter's BUNDLED Claude Code
+      # (claude-agent-sdk-linux-*/claude in the image), not the global `claude`
+      # — that bundle is what the harness execs, and a model newer than it is a
+      # 400 on the first turn ("version X or newer is required"). Fable 5.1 is
+      # held back on exactly that until the adapter pin moves.
       models: [
+        {"claude-opus-5", "Opus 5"},
         {"claude-opus-4-8", "Opus 4.8"},
         {"claude-fable-5", "Fable 5"},
         {"claude-sonnet-5", "Sonnet 5"},

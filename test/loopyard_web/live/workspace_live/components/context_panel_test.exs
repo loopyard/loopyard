@@ -84,6 +84,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanelTest do
 
   describe "short_model/1" do
     test "known frontier ids map to marketing names" do
+      assert ContextPanel.short_model("claude-opus-5") == "Opus 5"
       assert ContextPanel.short_model("claude-opus-4-8") == "Opus 4.8"
       assert ContextPanel.short_model("claude-fable-5") == "Fable 5"
       assert ContextPanel.short_model("claude-sonnet-5") == "Sonnet 5"

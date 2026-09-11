@@ -16,6 +16,14 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 ## Robustness (handles edge cases gracefully)
 
+0. **Take the context window from the harness, not a table.** claude-agent-acp's
+   `usage_update` carries `size` (Claude Code's own `modelUsage.contextWindow`);
+   `Harness.ACP.Translator` reads only `used`, so the gauge and proactive
+   compaction divide by `:model_windows` — which silently assumed 200K for
+   Opus 5 / Fable 5 / Sonnet 5 until rows were added by hand. Catch: the adapter
+   sends a placeholder `size: 200000` until the first result corrects it, so
+   prefer the table for a turn with no authoritative size yet.
+
 0. **Attachment retention / orphan sweep.** Uploads (`.loopyard/uploads`) are
    never deleted, and a LiveView that dies between copying files and
    consuming its entries leaves copies no message references. A safe sweep
