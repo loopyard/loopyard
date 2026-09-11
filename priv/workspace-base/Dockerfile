@@ -54,7 +54,7 @@ RUN arch="$(dpkg --print-architecture)" \
 RUN npm install -g \
       @anthropic-ai/claude-code \
       @openai/codex \
-      @agentclientprotocol/claude-agent-acp@0.60.0 \
+      @agentclientprotocol/claude-agent-acp@0.76.0 \
       @agentclientprotocol/codex-acp@1.6.0
 
 # Fly CLI (`fly`) — installed to a SYSTEM path (/usr/local), NOT $HOME: the

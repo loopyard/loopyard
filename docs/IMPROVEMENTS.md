@@ -16,6 +16,15 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 ## Robustness (handles edge cases gracefully)
 
+0. **An image bump never reaches a running container.** `WorkContainer.@image`
+   (and the workstation container, same image) only applies at `docker run`;
+   `ensure_up` `docker start`s a stopped leftover and leaves a running one alone,
+   so a `sleep infinity` box stays on its old adapter indefinitely. The v4→v5
+   bump (claude-agent-acp 0.60→0.76, Fable 5.1) was re-stamped by hand. Fix:
+   when the container's image ≠ `@image`, recreate on the stopped path, and
+   re-stamp a running one only while every agent on it is idle (recreating
+   kills the in-container harness — and any background command).
+
 0. **Take the context window from the harness, not a table.** claude-agent-acp's
    `usage_update` carries `size` (Claude Code's own `modelUsage.contextWindow`);
    `Harness.ACP.Translator` reads only `used`, so the gauge and proactive

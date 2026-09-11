@@ -502,6 +502,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   # a human name upstream (e.g. "Sonnet 4.5" from the adapter) passes through.
   def short_model("claude-opus-5"), do: "Opus 5"
   def short_model("claude-opus-4-8"), do: "Opus 4.8"
+  def short_model("claude-fable-5-1"), do: "Fable 5.1"
   def short_model("claude-fable-5"), do: "Fable 5"
   def short_model("claude-sonnet-5"), do: "Sonnet 5"
   def short_model("claude-haiku-4-5" <> _), do: "Haiku 4.5"

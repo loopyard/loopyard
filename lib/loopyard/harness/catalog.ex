@@ -69,12 +69,12 @@ defmodule Loopyard.Harness.Catalog do
       # Before listing a new id, run it on the adapter's BUNDLED Claude Code
       # (claude-agent-sdk-linux-*/claude in the image), not the global `claude`
       # — that bundle is what the harness execs, and a model newer than it is a
-      # 400 on the first turn ("version X or newer is required"). Fable 5.1 is
-      # held back on exactly that until the adapter pin moves.
+      # 400 on the first turn ("version X or newer is required"). Fable 5.1
+      # needs 2.1.251+; adapter 0.76.0 bundles 2.1.257 (verified).
       models: [
         {"claude-opus-5", "Opus 5"},
+        {"claude-fable-5-1", "Fable 5.1"},
         {"claude-opus-4-8", "Opus 4.8"},
-        {"claude-fable-5", "Fable 5"},
         {"claude-sonnet-5", "Sonnet 5"},
         {"claude-haiku-4-5-20251001", "Haiku 4.5"}
       ]
