@@ -100,6 +100,26 @@ defmodule Loopyard.Harness.CatalogTest do
       refute cmd =~ "YOUR AGENT ID"
     end
 
+    # claude-agent-acp 0.76 rejects a model outside the session's list with
+    # "Internal error" — observed live for Fable 5.1 and Opus 4.8, both in the
+    # picker. The launch env is what puts every picker id on that list.
+    test "Claude's launch allowlists every picker model" do
+      cmd = ACP.docker_exec_cmd("work-1", :claude)
+
+      assert [_, encoded] =
+               Regex.run(
+                 ~r/export CLAUDE_MODEL_CONFIG="\$\(printf %s ([A-Za-z0-9+\/=]+) \| base64 -d\)"/,
+                 cmd
+               )
+
+      ids = Enum.map(Catalog.fetch(:claude).models, &elem(&1, 0))
+      assert Jason.decode!(Base.decode64!(encoded)) == %{"availableModels" => ids}
+
+      # The one id Claude Code 2.1.257 drops from availableModels.
+      assert cmd =~ ~s|export ANTHROPIC_CUSTOM_MODEL_OPTION="claude-fable-5-1"|
+      assert "claude-fable-5-1" in ids
+    end
+
     test "the brief stays a cwd file for Claude — no config env" do
       refute ACP.docker_exec_cmd("work-1", :claude, brief: "hello") =~ "CODEX_CONFIG"
     end

@@ -297,6 +297,29 @@ defmodule Loopyard.ChatAgent.ContextWindowTest do
     end
   end
 
+  describe "harness-reported window" do
+    test "the harness's window wins over the table — ACP reports a display name", %{id: id} do
+      pid = agent_pid(id)
+      ref = make_ref()
+      :sys.replace_state(pid, fn s -> %{s | stream_ref: ref} end)
+
+      # Observed live: result.model was "Opus 5" (the adapter's label), which no
+      # table entry matches, so a 1M agent read 56% full at ~11%.
+      send(
+        pid,
+        {:stream_event, id, ref,
+         %Event.SessionResult{
+           model: "Opus 5",
+           context_used_tokens: 112_000,
+           context_window_tokens: 1_000_000
+         }}
+      )
+
+      _ = :sys.get_state(pid)
+      assert_in_delta :sys.get_state(pid).context_utilization, 0.112, 0.001
+    end
+  end
+
   describe "proactive auto-compaction (summarize -> fresh session)" do
     test "a turn ending past the compact threshold restarts a FRESH session", %{id: id} do
       pid = agent_pid(id)

@@ -28,7 +28,11 @@ defmodule Loopyard.Agent.Event.SessionResult do
     # the harness didn't report it, and utilization falls back to the per-turn
     # input+cache figure (what backends without a context signal have always
     # done).
-    context_used_tokens: nil
+    context_used_tokens: nil,
+    # The window `context_used_tokens` is measured against, when the harness
+    # reports it (claude-agent-acp's usage_update `size`). It knows the model
+    # it actually ran; `nil` falls back to the `:model_windows` config table.
+    context_window_tokens: nil
   ]
 
   @type t :: %__MODULE__{
@@ -37,6 +41,7 @@ defmodule Loopyard.Agent.Event.SessionResult do
           output_tokens: non_neg_integer(),
           cache_read_tokens: non_neg_integer(),
           context_used_tokens: non_neg_integer() | nil,
+          context_window_tokens: pos_integer() | nil,
           cost_usd: float(),
           duration_ms: float(),
           num_turns: non_neg_integer(),

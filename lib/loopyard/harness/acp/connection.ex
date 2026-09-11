@@ -87,7 +87,10 @@ defmodule Loopyard.Harness.ACP.Connection do
   def set_model(pid, model_id) when is_binary(model_id),
     do: GenServer.cast(pid, {:set_model, model_id})
 
-  @doc "The adapter's model list for this session: `[%{id, name, description}]`."
+  @doc """
+  The adapter's model list for this session: `[%{id, name, description, label}]`,
+  where `label` is the display name `Models.model_name/2` resolves.
+  """
   def available_models(pid) do
     GenServer.call(pid, :available_models, 1_000)
   catch
@@ -257,7 +260,12 @@ defmodule Loopyard.Harness.ACP.Connection do
   def handle_call(:available_models, _from, state) do
     models =
       Enum.map(state.available_models, fn m ->
-        %{id: m["modelId"], name: m["name"], description: m["description"]}
+        %{
+          id: m["modelId"],
+          name: m["name"],
+          description: m["description"],
+          label: Models.model_name(state.available_models, m["modelId"])
+        }
       end)
 
     {:reply, models, state}

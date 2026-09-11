@@ -38,18 +38,19 @@ defmodule Loopyard.ChatAgent.ModelControl do
     state
   end
 
-  # Display value for a model id. When the backend's model list carries a
-  # description (adapter aliases like "opus" → "Opus 4.6"), use it. Otherwise
-  # return the id VERBATIM — full frontier ids ("claude-opus-4-8") aren't in the
-  # adapter list, and the UI's short_model/1 maps them to "Opus 4.8". Do NOT
-  # capitalize (that produced the ugly "Claude-opus-4-8").
+  # Display value for a model id: the backend's resolved `label` when its list
+  # has the id (adapter aliases like "opus" → "Opus 5"). Otherwise the id
+  # VERBATIM — the UI's short_model/1 maps full ids ("claude-opus-4-8") to
+  # "Opus 4.8". Do NOT capitalize (that produced the ugly "Claude-opus-4-8"),
+  # and never read the description here: 0.76 writes "Newer version
+  # available · …" there, and it became the model's name.
   defp model_label(state, model_id) do
     with true <- state.session != nil,
          true <- function_exported?(state.backend, :available_models, 1),
          models when is_list(models) <- state.backend.available_models(state.session),
-         %{description: d} when is_binary(d) and d != "" <-
+         %{label: label} when is_binary(label) and label != "" <-
            Enum.find(models, &(&1.id == model_id)) do
-      d |> String.split("·") |> hd() |> String.trim()
+      label
     else
       _ -> model_id
     end

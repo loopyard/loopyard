@@ -339,6 +339,12 @@ ChatAgent checks `session_alive?` before every send. Restarts with exponential b
 
 **The bug this prevents:** a `tools/list` serialization bug (unevaluated sigil in a tool description) caused every session to crash on startup. Without backoff, the agent hot-looped restarts and hammered the Claude API until rate-limited.
 
+## A model's display name is not its id — and the adapter decides what's switchable
+
+Under ACP, `result.model` and the agent's `model` are the adapter's DISPLAY name ("Opus 5"), resolved once by `Connection.Models.model_name/2` — `name` wins, and a description's "Name · blurb" lead only when `name` is the bare CLI alias. Never key anything on that string: the context window comes from the harness's reported `size` (`SessionResult.context_window_tokens`), with `:model_windows` as the fallback keyed on ids. And a picker id only works if the adapter lists it: claude-agent-acp 0.76 answers "Internal error" to anything outside the session's model list, so the Claude Catalog entry's launch env puts every picker id on it (`CLAUDE_MODEL_CONFIG` + `ANTHROPIC_CUSTOM_MODEL_OPTION`). Adding a model = add it to the Catalog, then probe it on the image (switch + one turn) before shipping.
+
+**The bug this prevents:** on the 0.76 bump, the sidebar labeled an agent "Newer version available" (a description's lead segment), its 1M window read as 200K (56% full at 11%, compacting early), and Fable 5.1 / Opus 4.8 in the picker silently didn't switch.
+
 ## Resource cleanup goes through remove_project
 
 When tearing down a project (eval cleanup, user deletion, system reset), always call `ProjectRegistry.remove_project/1`. It dispatches through the Source adapter to clean up adapter-specific resources (Local: mutagen session, host worktree, volumes; GitHub: volumes). Never write ad-hoc cleanup that manually stops workspaces, deletes volumes, or wipes agent logs — if `remove_project` doesn't handle it, fix `remove_project`.

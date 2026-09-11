@@ -719,6 +719,34 @@ defmodule Loopyard.Harness.ACP.TranslatorTest do
       assert %Event.SessionResult{input_tokens: 123_456} = List.last(finish_events)
     end
 
+    test "the turn's LAST size is the window the result carries" do
+      # The adapter seeds 200K before the model answers, then corrects it from
+      # the model's own usage (observed: 200K, 200K, 1M on every 1M model).
+      state =
+        Enum.reduce([200_000, 200_000, 1_000_000], Translator.new(), fn size, st ->
+          {st, _} =
+            Translator.step(st, %{
+              "sessionUpdate" => "usage_update",
+              "used" => 16_000,
+              "size" => size
+            })
+
+          st
+        end)
+
+      {_state, finish_events} = Translator.finish(state)
+
+      assert %Event.SessionResult{context_window_tokens: 1_000_000} = List.last(finish_events)
+    end
+
+    test "no size reported → no window on the result (the config table decides)" do
+      {state, _} =
+        Translator.step(Translator.new(), %{"sessionUpdate" => "usage_update", "used" => 1})
+
+      {_state, finish_events} = Translator.finish(state)
+      assert %Event.SessionResult{context_window_tokens: nil} = List.last(finish_events)
+    end
+
     test "used tokens survive finish/2 (session-scoped, not turn-scoped)" do
       {state, _} =
         Translator.step(Translator.new(), %{

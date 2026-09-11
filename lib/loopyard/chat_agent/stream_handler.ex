@@ -189,7 +189,12 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
     claude_sid = state.backend.session_id(state.session) || state.claude_session_id
 
-    window = RateLimit.context_window_for(result.model || state.model)
+    # The harness's own window when it reports one: it knows the model that
+    # actually ran. The config table keys on model IDS, and `result.model` is a
+    # display name under ACP ("Opus 5") — the table missed it and assumed
+    # 200K, so 1M agents read 5x too full and compacted early.
+    window =
+      result.context_window_tokens || RateLimit.context_window_for(result.model || state.model)
 
     # Prefer the harness's own context-usage level when it reports one; only
     # fall back to summing this turn's input + cache_read (which approximates

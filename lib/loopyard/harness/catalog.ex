@@ -46,6 +46,21 @@ defmodule Loopyard.Harness.Catalog do
           models: [{String.t(), String.t()}]
         }
 
+  # Offered in the Claude picker, as full ids rather than the adapter's
+  # default/opus/haiku aliases.
+  # Before listing a new id, run it on the adapter's BUNDLED Claude Code
+  # (claude-agent-sdk-linux-*/claude in the image), not the global `claude`
+  # — that bundle is what the harness execs, and a model newer than it is a
+  # 400 on the first turn ("version X or newer is required"). Fable 5.1
+  # needs 2.1.251+; adapter 0.76.0 bundles 2.1.257 (verified).
+  @claude_models [
+    {"claude-opus-5", "Opus 5"},
+    {"claude-fable-5-1", "Fable 5.1"},
+    {"claude-opus-4-8", "Opus 4.8"},
+    {"claude-sonnet-5", "Sonnet 5"},
+    {"claude-haiku-4-5-20251001", "Haiku 4.5"}
+  ]
+
   # Order is display order in the harness picker.
   @harnesses [
     %{
@@ -58,26 +73,24 @@ defmodule Loopyard.Harness.Catalog do
       # Either unlocks the harness. The OAuth token is what
       # `Workstation.Env` provisions; an API key is the BYO-key path.
       credential_keys: ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"],
-      env: %{},
+      # claude-agent-acp only switches to a model in the session's own list
+      # (anything else is "Internal error"), and that list is Claude Code's
+      # picker: default/sonnet/opus/haiku. Our ids resolve onto an alias where
+      # one matches (claude-opus-5 → opus); the rest need adding.
+      # CLAUDE_MODEL_CONFIG's availableModels makes Claude Code list the ones
+      # it knows (Opus 4.8, dated Haiku). It drops ids it doesn't know, and
+      # ANTHROPIC_CUSTOM_MODEL_OPTION is its one slot for those — Fable 5.1 on
+      # 2.1.257. Probed on the v5 image: every id below switches and runs.
+      env: %{
+        "CLAUDE_MODEL_CONFIG" =>
+          Jason.encode!(%{"availableModels" => Enum.map(@claude_models, &elem(&1, 0))}),
+        "ANTHROPIC_CUSTOM_MODEL_OPTION" => "claude-fable-5-1"
+      },
       # Claude Code reads CLAUDE.local.md in its cwd; the Initializer installs
       # the brief there.
       brief: :cwd_file,
       config: %{},
-      # Offered in the picker. The in-container CLI's set_model passes FULL
-      # model ids through (verified), so these are ids rather than the adapter's
-      # stale default/opus/haiku aliases.
-      # Before listing a new id, run it on the adapter's BUNDLED Claude Code
-      # (claude-agent-sdk-linux-*/claude in the image), not the global `claude`
-      # — that bundle is what the harness execs, and a model newer than it is a
-      # 400 on the first turn ("version X or newer is required"). Fable 5.1
-      # needs 2.1.251+; adapter 0.76.0 bundles 2.1.257 (verified).
-      models: [
-        {"claude-opus-5", "Opus 5"},
-        {"claude-fable-5-1", "Fable 5.1"},
-        {"claude-opus-4-8", "Opus 4.8"},
-        {"claude-sonnet-5", "Sonnet 5"},
-        {"claude-haiku-4-5-20251001", "Haiku 4.5"}
-      ]
+      models: @claude_models
     },
     %{
       id: :codex,

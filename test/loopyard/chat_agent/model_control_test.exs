@@ -11,9 +11,14 @@ defmodule Loopyard.ChatAgent.ModelControlTest do
 
     def available_models(_session) do
       [
-        %{id: "opus", description: "Opus 4.6 · most capable"},
-        %{id: "sonnet", description: "Sonnet 4.5 · balanced"},
-        %{id: "nodesc", description: ""}
+        %{id: "opus", description: "Opus 4.6 · most capable", label: "Opus 4.6"},
+        %{id: "sonnet", description: "Sonnet 4.5 · balanced", label: "Sonnet 4.5"},
+        %{id: "nodesc", description: "", label: nil},
+        %{
+          id: "claude-opus-4-8",
+          description: "Newer version available · select Opus for Opus 5",
+          label: "Opus 4.8"
+        }
       ]
     end
   end
@@ -127,7 +132,7 @@ defmodule Loopyard.ChatAgent.ModelControlTest do
   end
 
   describe "model label" do
-    test "prefers the adapter description (first · segment) for a known alias", %{state: state} do
+    test "uses the backend's resolved label for a known alias", %{state: state} do
       state = %{state | backend: FullBackend, session: self()}
 
       new_state = ModelControl.switch(state, "opus")
@@ -140,9 +145,19 @@ defmodule Loopyard.ChatAgent.ModelControlTest do
     } do
       state = %{state | backend: FullBackend, session: self()}
 
+      new_state = ModelControl.switch(state, "claude-opus-5")
+
+      assert new_state.model == "claude-opus-5"
+    end
+
+    test "an upsell in the description never becomes the model's name", %{state: state} do
+      # Observed live on claude-agent-acp 0.76: picking Opus 4.8 labeled the
+      # agent "Newer version available".
+      state = %{state | backend: FullBackend, session: self()}
+
       new_state = ModelControl.switch(state, "claude-opus-4-8")
 
-      assert new_state.model == "claude-opus-4-8"
+      assert new_state.model == "Opus 4.8"
     end
 
     test "returns the id verbatim when the adapter description is empty", %{state: state} do

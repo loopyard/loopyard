@@ -1823,6 +1823,7 @@ defmodule LoopyardWeb.WorkspaceLive do
               host={@host}
               live_action={@live_action}
               streaming_text={@streaming_text}
+              agent_details_expanded={@agent_details_expanded}
             />
           </div>
           <%!-- The surface content. `md:!flex` keeps it visible on desktop

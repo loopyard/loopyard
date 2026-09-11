@@ -190,7 +190,7 @@ defmodule Loopyard.Harness.ACP do
     # login no one can complete in a headless container). Exported inside the
     # container, after ~/.profile so it wins over anything sourced there.
     exports =
-      Enum.map_join(extra_env, "", fn {key, value} -> ~s|export #{key}="#{value}"; | end) <>
+      Enum.map_join(extra_env, "", fn {key, value} -> env_export(key, value) end) <>
         brief_export(spec, Keyword.get(launch_opts, :brief))
 
     inner = reap <> ~S|. "$HOME/.profile" 2>/dev/null; | <> exports <> launch
@@ -211,12 +211,23 @@ defmodule Loopyard.Harness.ACP do
     if config == %{} do
       ""
     else
-      encoded = config |> Jason.encode!() |> Base.encode64()
-      ~s|export #{var}="$(printf %s #{encoded} \| base64 -d)"; |
+      config |> Jason.encode!() |> base64_export(var)
     end
   end
 
   defp brief_export(_spec, _brief), do: ""
+
+  # A Catalog env value that's shell-inert goes out as-is; anything else (the
+  # JSON in CLAUDE_MODEL_CONFIG — its double quotes would end the export) takes
+  # the brief's base64 route through the single-quoted launch script.
+  defp env_export(key, value) do
+    if value =~ ~r/\A[A-Za-z0-9_.:\/@+,=-]*\z/,
+      do: ~s|export #{key}="#{value}"; |,
+      else: base64_export(value, key)
+  end
+
+  defp base64_export(value, var),
+    do: ~s|export #{var}="$(printf %s #{Base.encode64(value)} \| base64 -d)"; |
 
   # Host mode vs in-container mode (#5). In-container: the adapter runs via
   # `docker exec -i` where the code lives, cwd defaults to /workspace, and we

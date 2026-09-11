@@ -60,6 +60,7 @@ defmodule Loopyard.Harness.ACP.Translator do
             tools: %{},
             turn_text_bytes: 0,
             used_tokens: nil,
+            window_tokens: nil,
             thoughts: []
 
   @type t :: %__MODULE__{
@@ -68,6 +69,7 @@ defmodule Loopyard.Harness.ACP.Translator do
           tools: map(),
           turn_text_bytes: non_neg_integer(),
           used_tokens: non_neg_integer() | nil,
+          window_tokens: pos_integer() | nil,
           thoughts: iodata()
         }
 
@@ -223,10 +225,21 @@ defmodule Loopyard.Harness.ACP.Translator do
   # resetsAt (ms), utilization, rateLimitType. That's the event-driven signal
   # that replaces blind nil-reset polling: a :rejected here parks the agent
   # with a PRECISELY timed retry.
+  #
+  # `size` is the window. The adapter seeds it from a heuristic (200K for a
+  # model it hasn't run yet) and corrects it from the model's own usage by the
+  # turn's last update — 1M for Opus 5 / Fable 5.1 / Opus 4.8 (probed) — so
+  # the LAST one in a turn is the one the result carries.
   defp do_step(state, "usage_update", update) do
     state =
       case update["used"] do
         used when is_integer(used) and used >= 0 -> %{state | used_tokens: used}
+        _ -> state
+      end
+
+    state =
+      case update["size"] do
+        size when is_integer(size) and size > 0 -> %{state | window_tokens: size}
         _ -> state
       end
 
@@ -285,6 +298,7 @@ defmodule Loopyard.Harness.ACP.Translator do
     result = %Event.SessionResult{
       model: state.model,
       context_used_tokens: state.used_tokens,
+      context_window_tokens: state.window_tokens,
       input_tokens: Map.get(usage, :input_tokens) || state.used_tokens || 0,
       output_tokens: Map.get(usage, :output_tokens) || div(state.turn_text_bytes, 4),
       cache_read_tokens: Map.get(usage, :cache_read_tokens, 0),
