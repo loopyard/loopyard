@@ -134,6 +134,20 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
       assert render_async(view) =~ "Could not delete volume no-such-volume"
     end
 
+    test "picking a model in the sidebar doesn't crash the page",
+         %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
+      {:ok, view, _html} = live(conn, ws_chat_path(ws, setup_agent_id))
+
+      # Observed live: the handler read a nonexistent `:agent` assign, so every
+      # pick raised KeyError and remounted the page without switching.
+      render_change(view, "set_agent_model", %{
+        "agent-id" => setup_agent_id,
+        "model" => "claude:claude-opus-5"
+      })
+
+      assert render(view) =~ "Test Agent"
+    end
+
     test "redirects to / for unknown workspace", %{conn: conn} do
       assert {:error, {:live_redirect, %{to: "/"}}} =
                live(conn, "/projects/nonexistent/workspaces/nonexistent")

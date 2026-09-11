@@ -77,22 +77,29 @@ defmodule Loopyard.Harness.ACP.Connection.Models do
 
   # id → human name from the adapter's model list. nil when unknown.
   #
-  # claude-agent-acp names its entries by CLI alias ("opus") and puts the real
-  # marketing name in a "Opus 4.6 · most capable" description, so for that shape
-  # the description's leading segment is the better label. Other adapters write
-  # a plain sentence there — codex-acp's "Latest frontier agentic coding model."
-  # — and taking its leading segment put a whole sentence in the sidebar where
-  # the model name goes. So the description only wins when it carries the
-  # "Name · blurb" separator that marks it as that shape; otherwise `name` does.
+  # `name` is the label unless it's just the CLI alias. Older claude-agent-acp
+  # named entries by alias ("opus") and put the marketing name in a
+  # "Opus 4.6 · most capable" description; only then does the description's
+  # leading segment win. Descriptions are otherwise prose, not names: codex-acp
+  # writes a sentence there, and 0.76 marks a superseded pin "Newer version
+  # available · select Opus for Opus 5" — both landed in the sidebar as the
+  # model name when the description was trusted first.
   def model_name(models, id) when is_list(models) and is_binary(id) do
     case Enum.find(models, &(&1["modelId"] == id)) do
-      %{"description" => d} = entry when is_binary(d) and d != "" ->
-        if String.contains?(d, "·"),
-          do: d |> String.split("·") |> hd() |> String.trim(),
-          else: entry_name(entry) || String.trim(d)
-
       entry when is_map(entry) ->
-        entry_name(entry)
+        name = entry_name(entry)
+        desc = entry_desc(entry)
+
+        cond do
+          name && String.downcase(name) != String.downcase(id) ->
+            name
+
+          desc && String.contains?(desc, "·") ->
+            desc |> String.split("·") |> hd() |> String.trim()
+
+          true ->
+            name || desc
+        end
 
       _ ->
         nil
@@ -103,4 +110,7 @@ defmodule Loopyard.Harness.ACP.Connection.Models do
 
   defp entry_name(%{"name" => n}) when is_binary(n) and n != "", do: n
   defp entry_name(_), do: nil
+
+  defp entry_desc(%{"description" => d}) when is_binary(d) and d != "", do: String.trim(d)
+  defp entry_desc(_), do: nil
 end

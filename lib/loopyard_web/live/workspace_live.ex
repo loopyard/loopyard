@@ -1073,7 +1073,8 @@ defmodule LoopyardWeb.WorkspaceLive do
 
     with true <- is_binary(agent_id),
          {:ok, harness, model} <- Catalog.parse_selection(selection) do
-      current = socket.assigns.agent[:harness] || Catalog.default()
+      agent = Enum.find(socket.assigns.agents, &(&1.id == agent_id)) || %{}
+      current = agent[:harness] || Catalog.default()
 
       if harness == current do
         if model, do: ChatAgent.set_model(agent_id, model)

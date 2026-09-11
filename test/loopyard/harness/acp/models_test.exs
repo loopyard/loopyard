@@ -19,6 +19,26 @@ defmodule Loopyard.Harness.ACP.Connection.ModelsTest do
       assert Models.model_name(models, "opus") == "Opus 4.6"
     end
 
+    test "claude-agent-acp 0.76: a real name beats an upgrade notice in the description" do
+      # Observed live: the pinned-id entry's description is an upsell, and its
+      # leading segment put "Newer version available" in the sidebar.
+      models = [
+        %{
+          "modelId" => "claude-opus-4-8",
+          "name" => "Opus 4.8",
+          "description" => "Newer version available · select Opus for Opus 5"
+        },
+        %{
+          "modelId" => "opus",
+          "name" => "Opus 5",
+          "description" => "Opus 5 · Best for everyday, complex tasks"
+        }
+      ]
+
+      assert Models.model_name(models, "claude-opus-4-8") == "Opus 4.8"
+      assert Models.model_name(models, "opus") == "Opus 5"
+    end
+
     test "codex-acp: a plain-sentence description does NOT become the label" do
       # Observed live: taking the leading segment of "Latest frontier agentic
       # coding model." put the whole sentence where the model name goes.
