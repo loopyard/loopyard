@@ -266,12 +266,11 @@ defmodule Loopyard.ChatAgent.Initializer do
     #   * operator (explicit :container, no workspace) → its workstation container,
     #     home volume, $HOME, operator tools
     # The model ACP sessions run on. The adapter boots on the CLI's "default"
-    # alias (Sonnet 4.5) unless told otherwise — we want the STRONGEST model on
-    # agent work. The in-container CLI's `session/set_model` passes FULL model
-    # ids through (verified: `claude-opus-4-8` runs), so default to Opus 4.8
-    # rather than the adapter's stale "opus" alias (4.6). Applied via
-    # session/set_model once the session is ready. Overridable per-agent (opts)
-    # or globally (config :loopyard, :acp_model).
+    # alias (Sonnet) unless told otherwise — we want the STRONGEST model on
+    # agent work, so default to Opus 5 by full id (the adapter resolves it onto
+    # its "opus" entry). Applied via session/set_config_option once the session
+    # is ready. Overridable per-agent (opts) or globally
+    # (config :loopyard, :acp_model).
     # Which harness drives this agent. Every one speaks ACP, so only the adapter
     # binary changes (see Harness.Catalog).
     harness =
@@ -345,7 +344,7 @@ defmodule Loopyard.ChatAgent.Initializer do
   # --- Private helpers ---
 
   defp acp_default_model,
-    do: Application.get_env(:loopyard, :acp_model, "claude-opus-4-8")
+    do: Application.get_env(:loopyard, :acp_model, "claude-opus-5")
 
   defp maybe_put_model(session_opts, nil), do: session_opts
   defp maybe_put_model(session_opts, model), do: Keyword.put(session_opts, :model, model)
