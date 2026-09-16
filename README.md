@@ -43,6 +43,7 @@ On Linux, install them with your package manager first, then run setup.
 ```bash
 git clone https://github.com/loopyard/loopyard.git
 cd loopyard
+mix deps.get
 mix loopyard.setup
 mix loopyard.server
 ```
