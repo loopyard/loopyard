@@ -13,6 +13,7 @@ defmodule Mix.Tasks.Loopyard.Setup do
   4. Install Hex + Rebar locally
   5. Fetch Mix dependencies
   6. Install JavaScript dependencies and build assets
+  7. Build the stock workspace base image
 
   Safe to re-run — each step is idempotent.
   """
@@ -32,6 +33,7 @@ defmodule Mix.Tasks.Loopyard.Setup do
     step("Hex + Rebar", fn -> hex_rebar() end)
     step("Mix dependencies", fn -> mix_deps() end)
     step("Assets", fn -> assets() end)
+    step("Workspace base image", fn -> workspace_image() end)
 
     info("\n✓ Setup complete. Run: mix loopyard.server\n")
   end
@@ -149,6 +151,25 @@ defmodule Mix.Tasks.Loopyard.Setup do
   end
 
   defp mix_deps, do: run_command("mix", ["deps.get"])
+
+  # Without the base image the FIRST agent on a fresh machine always fails:
+  # the boot saga races ahead to `docker exec` the work container while
+  # ensure_image/0 is still building it, surfacing as an opaque
+  # {:harness_start_failed, {:closed, {:exit_status, 1}}}. Build it here so
+  # that never happens. Idempotent — ensure_image/0 no-ops when present.
+  defp workspace_image do
+    Mix.Task.run("app.config")
+
+    case Loopyard.Workspace.WorkContainer.ensure_image() do
+      :ok ->
+        {:ok, Loopyard.Workspace.WorkContainer.image()}
+
+      # Never fail setup on this — Docker may legitimately not be running yet,
+      # and ensure_image/0 retries lazily on first agent boot.
+      {:error, reason} ->
+        {:skip, "not built (#{inspect(reason)}) — will build on first agent"}
+    end
+  end
 
   defp assets do
     with :ok <- run_command("npm", ["ci", "--prefix", "assets"]),
