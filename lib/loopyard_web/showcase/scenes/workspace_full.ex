@@ -87,6 +87,12 @@ defmodule LoopyardWeb.Showcase.Scenes.WorkspaceFull do
       workspace_state: :running,
       workspace_state_since: Mock.at(-7200),
       docker_connected?: true,
+      # Shape of `Loopyard.Workstation.accounts/0`: a second identity with a
+      # Claude credential, so the sidebar's account picker has a real choice.
+      accounts: [
+        %{id: "maya", harnesses: [:claude, :codex]},
+        %{id: "maya-rocketship", harnesses: [:claude]}
+      ],
       messages: messages,
       streaming_text: "",
       streaming_thinking:
