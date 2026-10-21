@@ -145,6 +145,15 @@ defmodule Loopyard.ChatAgent.Client do
   def set_harness(id, harness_id, model \\ nil),
     do: GenServer.cast(via(id), {:set_harness, harness_id, model})
 
+  @doc """
+  Move the agent onto another workstation's ACCOUNT (its credentials). A
+  `:credentials` restart follows: the native session id is dropped and the
+  conversation is rebuilt from Loopyard's durable log. See
+  `ChatAgent.WorkstationControl`.
+  """
+  def set_workstation(id, workstation_id) when is_binary(workstation_id),
+    do: GenServer.cast(via(id), {:set_workstation, workstation_id})
+
   @doc "Register an agent as booting in ETS so all viewers can see it"
   def register_booting(id, name, working_dir, opts \\ []),
     do: Lifecycle.register_booting(id, name, working_dir, opts)

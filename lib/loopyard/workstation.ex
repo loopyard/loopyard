@@ -130,8 +130,10 @@ defmodule Loopyard.Workstation do
 
   @doc """
   Restart the harness session of every agent bound to this workstation — every
-  workspace agent whose workspace resolves to `id`, plus the operator agent for
-  `id`. Use this after pushing a fresh credential (e.g. a new
+  agent STAMPED with `id` (`workstation_identity`: a workspace agent's account,
+  per agent since `ChatAgent.set_workstation/2`; a row without the stamp falls
+  back to its workspace's identity), plus the system agents for `id`. Use this
+  after pushing a fresh credential (e.g. a new
   `CLAUDE_CODE_OAUTH_TOKEN`) into the identity env: a *running* ACP/CLI session
   sourced its env at launch and holds the OLD token until it is restarted, so
   the volume-level `Env.sync_home` alone doesn't rescue an already-live session.
@@ -148,10 +150,7 @@ defmodule Loopyard.Workstation do
     system_ids = Loopyard.Agents.system(id) |> MapSet.new(& &1.id)
 
     Loopyard.ChatAgent.list_agents()
-    |> Enum.filter(fn a ->
-      MapSet.member?(system_ids, a.id) or
-        (is_binary(a[:workspace_id]) and agent_workstation(a[:workspace_id]) == id)
-    end)
+    |> Enum.filter(fn a -> MapSet.member?(system_ids, a.id) or agent_identity(a) == id end)
     |> Enum.each(fn a ->
       case Registry.lookup(Loopyard.ChatAgentRegistry, a.id) do
         [{pid, _}] when is_pid(pid) ->
@@ -192,11 +191,41 @@ defmodule Loopyard.Workstation do
     :ok
   end
 
+  # The account an agent runs under: its own stamp, else its workspace's.
+  defp agent_identity(%{workstation_identity: wid}) when is_binary(wid), do: wid
+
+  defp agent_identity(a) do
+    if is_binary(a[:workspace_id]), do: agent_workstation(a[:workspace_id]), else: nil
+  end
+
   # workstation_id/1 raises on unknown/malformed ids; never let that abort a reload.
   defp agent_workstation(ws_id) do
     Workspace.workstation_id(ws_id)
   rescue
     _ -> nil
+  end
+
+  @doc """
+  Every workstation with the harnesses it holds a credential for — the
+  options behind the per-agent account picker. `[%{id: "brad", harnesses:
+  [:claude, :codex]}]`, sorted by id. Advisory (see `Catalog.credentialed?/2`):
+  a harness signed in inside the box (`codex login`) isn't visible here.
+  Reads every identity's env store — call it from mount/event handlers, never
+  from render.
+  """
+  @spec accounts() :: [%{id: String.t(), harnesses: [Loopyard.Harness.Catalog.id()]}]
+  def accounts do
+    Enum.map(list(), fn id ->
+      env = Loopyard.Workstation.Env.all(id)
+
+      %{
+        id: id,
+        harnesses:
+          Loopyard.Harness.Catalog.all()
+          |> Enum.filter(&Loopyard.Harness.Catalog.credentialed?(&1.id, env))
+          |> Enum.map(& &1.id)
+      }
+    end)
   end
 
   # --- Docker naming (per identity) ---
