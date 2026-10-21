@@ -20,6 +20,19 @@ defmodule Loopyard.Harness.ACP.Translator do
       then result). We emit exactly one `%Event.ToolCall{}` and at most one
       `%Event.ToolResult{}` per `toolCallId`.
 
+    * **Sub-agent lineage.** A harness-native sub-agent (Claude Code's
+      `Task`/`Agent` tool) runs INSIDE the CLI; the adapter streams the
+      sub-agent's own calls on the same session, each stamped with
+      `_meta.claudeCode.parentToolUseId` — the delegating call's id. That
+      lands on `%Event.ToolCall{parent_id: …}` so the transcript nests them.
+      The delegating call itself is stamped `kind: :agent` (from
+      `_meta.claudeCode.subagent`). A BACKGROUND sub-agent (the CLI's
+      default) "completes" the call at once with an internal "Async agent
+      launched" result and never reports back on it; that result is
+      swallowed, the call is held open while its children stream, and
+      `finish/3` closes it — see docs/ARCHITECTURE.md "Sub-agents inside
+      the harness" for the captured frames.
+
     * **End-of-turn accounting.** `finish/2` emits a `%Event.SessionResult{}`
       so token/cost accounting and `claude_session_id` capture fire. NOTE:
       claude-code-acp does not surface token usage today, so token fields are
@@ -164,33 +177,44 @@ defmodule Loopyard.Harness.ACP.Translator do
     {state, call_events} =
       if entry.emitted_call do
         if input_grew?(state, id, entry) do
-          {put_tool(state, id, %{entry | emitted_input: entry.input}),
-           [%Event.ToolCall{id: id, name: entry.name || "tool", input: entry.input}]}
+          {put_tool(state, id, %{entry | emitted_input: entry.input}), [call_event(id, entry)]}
         else
           {state, []}
         end
       else
-        entry = %{entry | emitted_call: true}
-
-        entry = %{entry | emitted_input: entry.input}
-
-        {put_tool(state, id, entry),
-         [%Event.ToolCall{id: id, name: entry.name || "tool", input: entry.input}]}
+        entry = %{entry | emitted_call: true, emitted_input: entry.input}
+        {put_tool(state, id, entry), [call_event(id, entry)]}
       end
 
     entry = state.tools[id]
     raw = dig_text(update["content"])
 
     {state, result_events} =
-      if not entry.result and raw != "" do
-        entry = %{entry | result: true}
-        {content, wrapped_error?} = clean_result(raw)
-        is_error = update["status"] in ["failed", "error"] or wrapped_error?
+      cond do
+        entry.result or raw == "" ->
+          {state, []}
 
-        {put_tool(state, id, entry),
-         [%Event.ToolResult{id: id, content: content, is_error: is_error}]}
-      else
-        {state, []}
+        # A BACKGROUND sub-agent's launch receipt ("Async agent launched
+        # successfully… internal metadata — never quote") is not a result:
+        # the sub-agent is still working. Swallow it and hold the call open —
+        # its children stream in under it and finish/3 closes it.
+        entry.async ->
+          {state, []}
+
+        # A delegation's argument frames echo the sub-agent PROMPT as `content`
+        # (status-less, before the launch). Taking that as the result both
+        # showed the prompt as the "report" and locked the real report out
+        # (one result per id). Only a status-bearing frame settles a delegation.
+        entry.subagent and is_nil(update["status"]) ->
+          {state, []}
+
+        true ->
+          entry = %{entry | result: true}
+          {content, wrapped_error?} = clean_result(raw)
+          is_error = update["status"] in ["failed", "error"] or wrapped_error?
+
+          {put_tool(state, id, entry),
+           [%Event.ToolResult{id: id, content: content, is_error: is_error}]}
       end
 
     # Only a frame that lands something NEW in the transcript (the call's first
@@ -266,6 +290,13 @@ defmodule Loopyard.Harness.ACP.Translator do
     # open block — commit it rather than losing it.
     {state, block_events} = flush_block(state)
 
+    # Background sub-agents never report back on their call (the CLI feeds the
+    # report to the parent as a task-notification turn instead). The adapter
+    # holds `session/prompt` open until that follow-up turn is done, so the
+    # end of the turn is the one honest moment to close the card: by now the
+    # parent has folded the report into its reply above.
+    closes = close_background_agents(state, error)
+
     # Thread the turn's error status into SessionResult.is_error — that's what
     # drives the bounded auto-retry and the WHY/CONSEQUENCE/ACTION error
     # surface upstream. Without it a failed ACP turn looked like a clean, $0
@@ -310,7 +341,30 @@ defmodule Loopyard.Harness.ACP.Translator do
     }
 
     # Reset turn-scoped accumulation; keep model.
-    {%{state | tools: %{}, turn_text_bytes: 0}, block_events ++ [result]}
+    {%{state | tools: %{}, turn_text_bytes: 0}, block_events ++ closes ++ [result]}
+  end
+
+  defp close_background_agents(state, error) do
+    state.tools
+    |> Enum.filter(fn {_id, e} -> e.async and not e.result end)
+    |> Enum.sort_by(fn {_id, e} -> e.seq end)
+    |> Enum.map(fn {id, _e} ->
+      case error do
+        nil ->
+          %Event.ToolResult{
+            id: id,
+            content: "Finished in the background — the agent folded its report into the reply.",
+            is_error: false
+          }
+
+        _ ->
+          %Event.ToolResult{
+            id: id,
+            content: "Interrupted — the turn ended before the background sub-agent reported.",
+            is_error: true
+          }
+      end
+    end)
   end
 
   # Commit whichever block is open. At most one is: a text chunk flushes
@@ -411,17 +465,46 @@ defmodule Loopyard.Harness.ACP.Translator do
   defp buffer_tool(state, id, update) do
     entry =
       state.tools[id] ||
-        %{emitted_call: false, result: false, name: nil, input: %{}, emitted_input: %{}}
+        %{
+          emitted_call: false,
+          result: false,
+          name: nil,
+          input: %{},
+          emitted_input: %{},
+          # Sub-agent lineage (see moduledoc): the delegating call's id, whether
+          # this call IS a delegation, and whether that delegation went async.
+          parent_id: nil,
+          subagent: false,
+          async: false,
+          seq: map_size(state.tools)
+        }
 
     input = update["rawInput"] || %{}
+    meta = get_in(update, ["_meta", "claudeCode"]) || %{}
 
     entry = %{
       entry
       | name: tool_name(update) || entry.name,
-        input: Map.merge(entry.input, input)
+        input: Map.merge(entry.input, input),
+        parent_id: entry.parent_id || meta["parentToolUseId"],
+        subagent: entry.subagent or meta["subagent"] == true,
+        async: entry.async or get_in(meta, ["toolResponse", "isAsync"]) == true
     }
 
     {put_tool(state, id, entry), entry}
+  end
+
+  # The one place a ToolCall is built from a buffered entry: name, the input
+  # known so far, lineage, and the kind the wire told us (only a delegation
+  # is stamped — everything else classifies from its name downstream).
+  defp call_event(id, entry) do
+    %Event.ToolCall{
+      id: id,
+      name: entry.name || "tool",
+      input: entry.input,
+      parent_id: entry.parent_id,
+      kind: if(entry.subagent, do: :agent)
+    }
   end
 
   # Emit a ToolCall once we know its input; otherwise keep buffering.
@@ -430,9 +513,7 @@ defmodule Loopyard.Harness.ACP.Translator do
   defp maybe_emit_call(state, id, entry) do
     if map_size(entry.input) > 0 do
       entry = %{entry | emitted_call: true, emitted_input: entry.input}
-
-      {put_tool(state, id, entry),
-       [%Event.ToolCall{id: id, name: entry.name || "tool", input: entry.input}]}
+      {put_tool(state, id, entry), [call_event(id, entry)]}
     else
       {state, []}
     end
