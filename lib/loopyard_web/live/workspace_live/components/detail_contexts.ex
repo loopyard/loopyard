@@ -54,6 +54,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
   attr :base_path, :string, required: true
   attr :host, :string, default: nil
   attr :live_action, :atom, default: :index
+  # The account picker's options (`Loopyard.Workstation.accounts/0`).
+  attr :accounts, :list, default: []
   attr :streaming_text, :string, default: ""
   attr :agent_details_expanded, :boolean, default: false
 

@@ -1823,6 +1823,7 @@ defmodule LoopyardWeb.WorkspaceLive do
               live_action={@live_action}
               streaming_text={@streaming_text}
               agent_details_expanded={@agent_details_expanded}
+              accounts={@accounts}
             />
           </div>
           <%!-- The surface content. `md:!flex` keeps it visible on desktop
@@ -1865,6 +1866,7 @@ defmodule LoopyardWeb.WorkspaceLive do
           workspace_state={@workspace_state}
           workspace_state_since={@workspace_state_since}
           docker_connected?={@docker_connected?}
+          accounts={@accounts}
           live_token_est={
             LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus.token_estimate(@streaming_text)
           }

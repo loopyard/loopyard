@@ -150,12 +150,24 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
 
     test "the sidebar offers the agent's account and switching it doesn't crash the page",
          %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
+      # A workstation holding a Claude credential must show up as an option —
+      # the `accounts` assign has to reach the component through BOTH the rail
+      # and the mobile detail (a missing pass-through rendered only the agent's
+      # own identity, flagged as uncredentialed, on the live instance).
+      other = "acct-lv-#{System.unique_integer([:positive])}"
+      :ok = Loopyard.Workstation.create(other)
+      on_exit(fn -> File.rm_rf(Loopyard.Workstation.dir(other)) end)
+      :ok = Loopyard.Workstation.Env.put("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-test", other)
+
       {:ok, view, html} = live(conn, ws_chat_path(ws, setup_agent_id))
 
       # The agent's current identity is always an option (so the control names
-      # where the agent is even with no credential on file).
+      # where the agent is even with no credential on file)…
       assert html =~ ~s(name="workstation")
       assert html =~ ~s|aria-label="Agent account (workstation)"|
+      # …and so is every workstation with a credential for its harness.
+      assert html =~ ~s|<option value="#{other}">|
+      refute html =~ "#{String.capitalize(other)} · no Claude Code credential"
 
       render_change(view, "set_agent_workstation", %{
         "agent-id" => setup_agent_id,

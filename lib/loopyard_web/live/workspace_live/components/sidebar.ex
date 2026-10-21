@@ -206,6 +206,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
   attr :workspace_id, :string, required: true
   attr :is_local_source?, :boolean, default: false
   attr :sync_status, :any, default: nil
+  # The account picker's options (`Loopyard.Workstation.accounts/0`).
+  attr :accounts, :list, default: []
 
   def workspace_switcher(assigns) do
     assigns =
