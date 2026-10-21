@@ -364,14 +364,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
           into: MapSet.new(),
           do: r.tool_id
 
+    # A sub-agent delegation (and every call the sub-agent makes under it)
+    # has its own live surface — the sub-agent card renders inline mid-turn
+    # with its children and elapsed time — so neither belongs in the feed.
     turn
     |> Enum.filter(&(&1.role == :tool and not own_surface_tool?(&1[:tool])))
     |> Enum.reject(&(command_kind?(&1) and completed_tool?(&1, done_ids)))
+    |> Enum.reject(&(tool_kind(&1) == :agent or is_binary(&1[:parent_tool_id])))
   end
 
-  defp command_kind?(m) do
-    (m[:tool_kind] || Loopyard.Agent.ToolKind.classify(m[:tool] || "")) == :command
-  end
+  defp tool_kind(m), do: m[:tool_kind] || Loopyard.Agent.ToolKind.classify(m[:tool] || "")
+
+  defp command_kind?(m), do: tool_kind(m) == :command
 
   defp completed_tool?(m, done_ids),
     do: is_binary(m[:tool_id]) and MapSet.member?(done_ids, m[:tool_id])
