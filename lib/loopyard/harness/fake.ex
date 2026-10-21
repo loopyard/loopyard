@@ -50,6 +50,23 @@ defmodule Loopyard.Harness.Fake do
   @impl Loopyard.Harness
   def session_id(_session), do: nil
 
+  # The optional mode surface (what `Harness.ACP` exposes): a fake session
+  # advertises a plan mode so the composer's Discuss/Build switch renders and
+  # its LiveView path is exercised; switching is a no-op.
+  def modes(_session) do
+    %{
+      current: "default",
+      boot: "default",
+      plan: "plan",
+      available: [
+        %{id: "default", name: "Manual", description: "Always ask"},
+        %{id: "plan", name: "Plan", description: "Plan before making changes"}
+      ]
+    }
+  end
+
+  def set_mode(_session, _mode_id), do: :ok
+
   @impl GenServer
   def init(:ok), do: {:ok, %{}}
 end

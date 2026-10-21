@@ -16,14 +16,23 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   Cohesive helper clusters live in sub-modules: the initialize/authenticate/
   session handshake in `Connection.Handshake` (auth-method selection in
-  `Connection.Auth`), stderr diagnostics in `Connection.Diagnostics`,
-  model/session wire helpers in `Connection.Models`, token/cost accounting in
-  `Connection.Usage`.
+  `Connection.Auth`), the agent-initiated requests we answer (fs, permission,
+  elicitation) in `Connection.AgentRequests`, stderr diagnostics in `Connection.Diagnostics`,
+  model/session wire helpers in `Connection.Models`, session-mode wire helpers
+  in `Connection.Modes`, token/cost accounting in `Connection.Usage`.
   """
   use GenServer
   require Logger
 
-  alias Loopyard.Harness.ACP.Connection.{Diagnostics, Handshake, Models, Usage}
+  alias Loopyard.Harness.ACP.Connection.{
+    AgentRequests,
+    Diagnostics,
+    Handshake,
+    Models,
+    Modes,
+    Usage
+  }
+
   alias Loopyard.Harness.ACP.Translator
   alias Loopyard.Agent.Event
 
@@ -97,6 +106,26 @@ defmodule Loopyard.Harness.ACP.Connection do
     :exit, _ -> []
   end
 
+  @doc """
+  Switch the live session's mode (ACP `session/set_mode`, or the `"mode"`
+  config option under claude-agent-acp's dialect). Async; the display updates
+  optimistically and a refusal reverts it — mirrors `set_model/2`.
+  """
+  def set_mode(pid, mode_id) when is_binary(mode_id),
+    do: GenServer.cast(pid, {:set_mode, mode_id})
+
+  @doc """
+  The session's modes: `%{current: id, boot: id, plan: id | nil,
+  available: [%{id, name, description}]}`. `boot` is the mode the session
+  came up in (the harness's own default — what the composer's Build setting
+  returns to); `plan` is the advertised plan mode's id, nil when there is none.
+  """
+  def modes(pid) do
+    GenServer.call(pid, :modes, 1_000)
+  catch
+    :exit, _ -> %{current: nil, boot: nil, plan: nil, available: []}
+  end
+
   def stop(pid), do: GenServer.stop(pid, :normal)
 
   # ---- init / handshake ----
@@ -146,6 +175,17 @@ defmodule Loopyard.Harness.ACP.Connection do
           model: Keyword.get(opts, :model),
           available_models: [],
           fallback_model: nil,
+          # Session modes (Connection.Modes). `desired_mode` is the mode the
+          # caller wants the session in (the composer's Discuss = the plan
+          # mode) — requested once the session is ready, exactly like
+          # `desired_model`; `mode` is what the session is in now; `boot_mode`
+          # is what it came up in (what Build returns to); `fallback_mode`
+          # restores the display if a switch is refused.
+          desired_mode: Keyword.get(opts, :mode),
+          mode: nil,
+          boot_mode: nil,
+          available_modes: [],
+          fallback_mode: nil,
           cwd: Keyword.get(opts, :cwd) || File.cwd!(),
           resume: Keyword.get(opts, :resume),
           mcp_servers: Keyword.get(opts, :mcp_servers, []),
@@ -257,6 +297,19 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   def handle_call(:ping, _from, state), do: {:reply, {:error, state.status}, state}
 
+  def handle_call(:modes, _from, state) do
+    {:reply,
+     %{
+       current: state.mode,
+       boot: state.boot_mode,
+       plan: Modes.plan_mode_id(state.available_modes),
+       available:
+         Enum.map(state.available_modes, fn m ->
+           %{id: m["id"], name: m["name"], description: m["description"]}
+         end)
+     }, state}
+  end
+
   def handle_call(:available_models, _from, state) do
     models =
       Enum.map(state.available_models, fn m ->
@@ -328,6 +381,25 @@ defmodule Loopyard.Harness.ACP.Connection do
   end
 
   def handle_cast({:set_model, _model_id}, state), do: {:noreply, state}
+
+  # Live mode switch (the composer's Discuss/Build). Optimistic display; the
+  # :set_mode error path reverts. `desired_mode` tracks the request too, so a
+  # Discuss session that later needs to decide an ExitPlanMode permission
+  # knows the human asked for planning (see decide_permission/3).
+  def handle_cast({:set_mode, mode_id}, %{session_id: sid} = state) when is_binary(sid) do
+    {state, id} = Modes.request_mode_switch(state, mode_id)
+
+    {:noreply,
+     %{
+       state
+       | pending: Map.put(state.pending, id, :set_mode),
+         fallback_mode: state.mode,
+         mode: mode_id,
+         desired_mode: mode_id
+     }}
+  end
+
+  def handle_cast({:set_mode, _mode_id}, state), do: {:noreply, state}
 
   # Deferred JSON-RPC answer to an `elicitation/create` request — sent by the
   # Task that blocked on Questions.ask (see handle_agent_request).
@@ -449,6 +521,20 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   defp handle_response(:set_model, _msg, state), do: {:noreply, state}
 
+  # session/set_mode outcome. Success needs nothing (the display already
+  # shows the requested mode); a refusal reverts to the mode the session is
+  # actually in — never fail the session over a mode preference.
+  defp handle_response(:set_mode, %{"error" => error}, state) do
+    Logger.warning(
+      "ACP: mode switch failed (#{inspect(error)}); staying in #{inspect(state.fallback_mode)}"
+    )
+
+    {:noreply,
+     %{state | mode: state.fallback_mode || state.mode, desired_mode: state.fallback_mode}}
+  end
+
+  defp handle_response(:set_mode, _msg, state), do: {:noreply, state}
+
   defp handle_response(:session_prompt, _msg, %{turn: nil} = state), do: {:noreply, state}
 
   defp handle_response(:session_prompt, msg, state) do
@@ -503,6 +589,29 @@ defmodule Loopyard.Harness.ACP.Connection do
     end
   end
 
+  # Request the DESIRED mode when the session advertises it and isn't in it —
+  # the composer's Discuss setting re-applied to every fresh/resumed session,
+  # exactly like `maybe_set_model/2`. A mode the session doesn't advertise is
+  # left alone (no spurious request, no error to revert).
+  @doc false
+  def maybe_set_mode(state, _result) do
+    desired = state.desired_mode
+
+    if is_binary(desired) and desired != state.mode and is_binary(state.session_id) and
+         Modes.available?(state.available_modes, desired) do
+      {state, id} = Modes.request_mode_switch(state, desired)
+
+      %{
+        state
+        | pending: Map.put(state.pending, id, :set_mode),
+          fallback_mode: state.mode,
+          mode: desired
+      }
+    else
+      state
+    end
+  end
+
   @doc false
   def new_session(state),
     do: request(state, "session/new", %{"cwd" => state.cwd, "mcpServers" => state.mcp_servers})
@@ -535,8 +644,10 @@ defmodule Loopyard.Harness.ACP.Connection do
          %{"update" => %{"sessionUpdate" => "config_option_update"} = update},
          state
        ) do
+    config = %{"configOptions" => update["configOptions"]}
+
     state =
-      case Models.extract_models(%{"configOptions" => update["configOptions"]}) do
+      case Models.extract_models(config) do
         {models, current, :config_option} when is_binary(current) ->
           %{
             state
@@ -548,7 +659,30 @@ defmodule Loopyard.Harness.ACP.Connection do
           state
       end
 
+    # The same push carries the "mode" option — a set_mode round-trip
+    # confirming, or the harness changing mode itself.
+    state =
+      case Modes.extract_modes(config) do
+        {modes, current, :config_option} when is_binary(current) ->
+          %{state | available_modes: modes, mode: current}
+
+        _ ->
+          state
+      end
+
     {:noreply, state}
+  end
+
+  # current_mode_update: the harness changed mode on its own (EnterPlanMode
+  # from the model, a clamped set_mode, an accepted plan flipping to
+  # acceptEdits). Session-level state, tracked with or without a turn.
+  defp handle_notification(
+         "session/update",
+         %{"update" => %{"sessionUpdate" => "current_mode_update", "currentModeId" => mode}},
+         state
+       )
+       when is_binary(mode) do
+    {:noreply, %{state | mode: mode}}
   end
 
   defp handle_notification("session/update", %{"update" => update}, %{turn: turn} = state)
@@ -568,138 +702,12 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   # ---- agent requests we must answer ----
 
-  defp handle_agent_request("fs/read_text_file", id, params, state) do
-    # SECURITY: the adapter is untrusted. In host mode we advertise the fs
-    # capability, so it can ask us to read ANY path the BEAM user can reach.
-    # Clamp the requested path to the session cwd before touching disk.
-    case clamp_path(state.cwd, params["path"]) do
-      {:ok, safe} ->
-        result =
-          case File.read(safe) do
-            {:ok, content} -> %{"content" => content}
-            {:error, reason} -> %{"content" => "ERROR: #{:file.format_error(reason)}"}
-          end
-
-        {:noreply, respond(state, id, result)}
-
-      {:error, reason} ->
-        {:noreply, respond_error(state, id, -32_602, "path outside workspace: #{reason}")}
-    end
-  end
-
-  defp handle_agent_request("fs/write_text_file", id, params, state) do
-    # SECURITY: same clamp as reads — a host-fs write escape is worse than a
-    # read. Reject (JSON-RPC error) instead of silently writing outside cwd.
-    case clamp_path(state.cwd, params["path"]) do
-      {:ok, safe} ->
-        _ = File.write(safe, params["content"] || "")
-        {:noreply, respond(state, id, %{})}
-
-      {:error, reason} ->
-        {:noreply, respond_error(state, id, -32_602, "path outside workspace: #{reason}")}
-    end
-  end
-
-  defp handle_agent_request("session/request_permission", id, params, state) do
-    options = params["options"] || []
-
-    # Surface for the (future) UI even though we auto-decide for now.
-    if state.turn do
-      send(
-        state.turn.subscriber,
-        {:acp_event, state.turn.ref,
-         %Event.PermissionRequest{
-           request_id: id,
-           session_id: params["sessionId"],
-           tool_call_id: get_in(params, ["toolCall", "toolCallId"]),
-           tool_name: get_in(params, ["toolCall", "title"]),
-           input: get_in(params, ["toolCall", "rawInput"]),
-           options: normalize_options(options)
-         }}
-      )
-    end
-
-    {:noreply, decide_permission(state, id, options)}
-  end
-
-  defp handle_agent_request("elicitation/create", id, params, state) do
-    # The harness's native AskUserQuestion, surfaced as an ACP form elicitation
-    # (we advertise elicitation.form iff state.agent_id is set). Route it to the
-    # agent's question card via the same broker the MCP ask_user tool uses —
-    # the human answers/skips per question, and the form response feeds the
-    # answers back into the tool's own input. Questions.ask BLOCKS (up to
-    # 10 min), so it runs in a Task: the connection keeps streaming the turn,
-    # and the JSON-RPC response is sent when the answer lands (handle_cast
-    # below). Decline (= "user skipped") on anything we can't present — cancel
-    # would abort the whole tool call.
-    alias Loopyard.Harness.QuestionAdapter.AcpElicitation
-
-    with agent_id when is_binary(agent_id) <- state.agent_id,
-         "form" <- params["mode"] || "form",
-         {:ok, questions} <- AcpElicitation.parse(params) do
-      conn = self()
-
-      # Supervised, and the JSON-RPC response is guaranteed: if ANYTHING in the
-      # ask/render path raises (malformed selection, broker hiccup), we still
-      # answer with a decline — an unanswered elicitation wedges the agent's
-      # whole turn on a request that will never resolve.
-      Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
-        result =
-          try do
-            case Loopyard.Harness.Questions.ask(agent_id, questions) do
-              {:ok, selections} ->
-                %{
-                  "action" => "accept",
-                  "content" => AcpElicitation.render_content(questions, selections)
-                }
-
-              {:error, :timeout} ->
-                %{"action" => "decline"}
-            end
-          rescue
-            e ->
-              Logger.warning("ACP elicitation crashed: #{Exception.message(e)} — declining")
-              %{"action" => "decline"}
-          catch
-            kind, reason ->
-              Logger.warning("ACP elicitation #{kind}: #{inspect(reason)} — declining")
-              %{"action" => "decline"}
-          end
-
-        GenServer.cast(conn, {:elicitation_result, id, result})
-      end)
-
-      {:noreply, state}
-    else
-      _ ->
-        Logger.warning(
-          "ACP: unpresentable elicitation/create; declining (#{inspect(params["mode"])})"
-        )
-
-        {:noreply, respond(state, id, %{"action" => "decline"})}
-    end
-  end
-
-  defp handle_agent_request(method, id, _params, state) do
-    Logger.debug("ACP: unhandled agent request #{method}; responding empty")
-    {:noreply, respond(state, id, %{})}
-  end
-
-  defp decide_permission(%{permission_mode: :auto_allow} = state, id, options) do
-    pick =
-      Enum.find(options, &String.starts_with?(to_string(&1["kind"] || ""), "allow")) ||
-        List.first(options)
-
-    respond(state, id, %{
-      "outcome" => %{"outcome" => "selected", "optionId" => pick && pick["optionId"]}
-    })
-  end
-
-  defp normalize_options(options) do
-    Enum.map(options, fn o ->
-      %{id: o["optionId"], name: o["name"], kind: o["kind"]}
-    end)
-  end
+  # The agent-initiated requests (fs reads/writes, permissions, elicitations)
+  # are one cohesive cluster with their own security clamps — they live in
+  # `Connection.AgentRequests` (same shape as `Handshake`: every clause
+  # returns `{:noreply, state}`).
+  defp handle_agent_request(method, id, params, state),
+    do: AgentRequests.handle(method, id, params, state)
 
   # ---- jsonrpc plumbing ----
 
@@ -713,12 +721,14 @@ defmodule Loopyard.Harness.ACP.Connection do
     {%{state | next_id: id + 1, pending: Map.put(state.pending, id, kind)}, id}
   end
 
-  defp respond(state, id, result) do
+  @doc false
+  def respond(state, id, result) do
     send_msg(state, %{"jsonrpc" => "2.0", "id" => id, "result" => result})
     state
   end
 
-  defp respond_error(state, id, code, message) do
+  @doc false
+  def respond_error(state, id, code, message) do
     send_msg(state, %{
       "jsonrpc" => "2.0",
       "id" => id,
@@ -726,24 +736,6 @@ defmodule Loopyard.Harness.ACP.Connection do
     })
 
     state
-  end
-
-  # Resolve an adapter-supplied path against the session cwd and reject any
-  # path that escapes the cwd root. Both `..` traversal and absolute paths
-  # outside cwd collapse to the same prefix check after `Path.expand`, which
-  # normalizes `.`/`..`/symlink-free segments. `cwd` itself is allowed.
-  defp clamp_path(_cwd, path) when not is_binary(path) or path == "",
-    do: {:error, "missing path"}
-
-  defp clamp_path(cwd, path) do
-    root = Path.expand(cwd)
-    resolved = Path.expand(path, root)
-
-    if resolved == root or String.starts_with?(resolved, root <> "/") do
-      {:ok, resolved}
-    else
-      {:error, path}
-    end
   end
 
   defp send_msg(state, msg), do: state.transport_mod.send_msg(state.transport, msg)
@@ -760,10 +752,20 @@ defmodule Loopyard.Harness.ACP.Connection do
   def session_ready(state, sid, result) do
     {models, current, dialect} = Models.extract_models(result)
     name = Models.model_name(models, current) || current || state.model
+    {modes, current_mode, mode_dialect} = Modes.extract_modes(result)
 
     state
     |> Map.put(:model_dialect, dialect)
-    |> Map.merge(%{session_id: sid, status: :ready, available_models: models, model: name})
+    |> Map.put(:mode_dialect, mode_dialect)
+    |> Map.merge(%{
+      session_id: sid,
+      status: :ready,
+      available_models: models,
+      model: name,
+      available_modes: modes,
+      mode: current_mode,
+      boot_mode: current_mode
+    })
   end
 
   @doc false
