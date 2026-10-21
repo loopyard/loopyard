@@ -31,13 +31,20 @@ defmodule Loopyard.Harness.ACP do
   `start_session/1` forwards to the Connection's `session/new` `mcpServers`.
 
   Known gaps (tracked on #3/#6): mapping Loopyard's tool *policy* (allowed/
-  disallowed tools) onto ACP; and the human-gated `:ask` permission mode (#7)
-  — today permissions are `:auto_allow`, which is *parity* with the ClaudeCode
-  path (it ran with `dangerously_skip_permissions`, trusting the container
-  sandbox as the boundary). Token usage + rate-limit status now arrive as
-  `usage_update` notifications from claude-agent-acp (the renamed
+  disallowed tools) onto ACP — the harness runs with its native tool defaults,
+  which is the intended in-container posture (native Bash/Edit/Read against
+  the volume) and deliberately includes the native `Task`/`Agent` sub-agent
+  tool (its calls reach the MCP bridge under the parent's token and nest
+  under the parent's card — see `Translator` and docs/ARCHITECTURE.md
+  "Sub-agents inside the harness"); and the human-gated `:ask` permission
+  mode (#7) — today permissions are `:auto_allow`, which is *parity* with the
+  old ClaudeCode path (it ran with `dangerously_skip_permissions`, trusting
+  the container sandbox as the boundary). Token usage + rate-limit status
+  arrive as `usage_update` notifications from claude-agent-acp (the renamed
   claude-code-acp) — see `Translator`'s usage_update clause; dollar cost is
-  still not surfaced.
+  still not surfaced. A BACKGROUND sub-agent's report never comes back on
+  its tool call (adapter gap, docs/IMPROVEMENTS.md) — the Translator closes
+  the call at the end of the turn instead.
   """
   @behaviour Loopyard.Harness
 

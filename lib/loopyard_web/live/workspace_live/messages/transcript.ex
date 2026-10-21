@@ -123,12 +123,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Transcript do
     # Mirrors Chat.in_live_feed?/4: rows the live activity feed already shows
     # are filtered here — EXCEPT a COMMAND's result, which renders inline as
     # the console box the moment it lands (mid-turn, like watching a
-    # terminal). Kind comes from the precomputed paired call.
+    # terminal), and a SUB-AGENT delegation (call + report), whose card IS
+    # the live view of that work. A sub-agent's own calls never render as
+    # rows of their own — live or in scrollback — they live inside their
+    # parent's card (`children` in its ctx). Kind comes from the precomputed
+    # paired call.
     visible? = fn {msg, idx} ->
+      row = Map.get(ctx, idx, %{})
+
       cond do
+        row[:nested] -> false
         not (is_integer(live_from) and idx > live_from) -> true
-        msg.role == :tool -> false
-        msg.role == :tool_result -> call_kind(Map.get(ctx, idx, %{})[:call]) == :command
+        msg.role == :tool -> call_kind(msg) == :agent
+        msg.role == :tool_result -> call_kind(row[:call]) in [:command, :agent]
         true -> true
       end
     end
@@ -168,6 +175,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Transcript do
     tail_from = expand_tail_from(messages)
     roles = messages |> Enum.map(& &1.role) |> List.to_tuple()
     n = tuple_size(roles)
+    {children_by_parent, results_by_id} = lineage(messages)
 
     # Pairing tracker, kept in lockstep with ToolResults.matching_tool_call/1:
     # by_id pairs results to calls via the harness toolCallId; legacy messages
@@ -187,10 +195,29 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Transcript do
             end
           end
 
+        # Sub-agent lineage: a call made by a harness-native sub-agent names
+        # its delegating call (`parent_tool_id`); it and its result are
+        # `nested` (rendered inside the parent's card, never as rows). The
+        # delegating `:agent` call gets its `children` (call + paired result,
+        # in order) and whether it has `settled` (its own report landed).
+        nested? =
+          (msg.role == :tool and is_binary(msg[:parent_tool_id])) or
+            (msg.role == :tool_result and match?(%{parent_tool_id: p} when is_binary(p), call))
+
+        children =
+          if msg.role == :tool and call_kind(msg) == :agent and is_binary(msg[:tool_id]) do
+            children_by_parent
+            |> Map.get(msg.tool_id, [])
+            |> Enum.map(&%{call: &1, result: Map.get(results_by_id, &1.tool_id)})
+          end
+
         entry = %{
           prev_role: if(idx > 0, do: elem(roles, idx - 1)),
           next_role: if(idx < n - 1, do: elem(roles, idx + 1)),
           call: call,
+          nested: nested?,
+          children: children,
+          settled: children != nil and Map.has_key?(results_by_id, msg.tool_id),
           streamed_exec:
             match?(%{role: :tool, tool: t} when is_binary(t), call) &&
               String.ends_with?(call.tool, "__exec"),
@@ -245,6 +272,26 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Transcript do
       nil -> max(length(messages) - 20, 0)
       rev_idx -> length(messages) - 1 - rev_idx
     end
+  end
+
+  # One pass over the window for sub-agent lineage: every child call grouped
+  # under its parent's tool_id (in arrival order), and every result by the
+  # tool_id it settles. Cheap (two map builds) and what lets a parent's ctx
+  # carry its children even though they arrive AFTER it.
+  defp lineage(messages) do
+    {by_parent, results} =
+      Enum.reduce(messages, {%{}, %{}}, fn
+        %{role: :tool, parent_tool_id: p, tool_id: _} = m, {bp, rs} when is_binary(p) ->
+          {Map.update(bp, p, [m], &[m | &1]), rs}
+
+        %{role: :tool_result, tool_id: t} = m, {bp, rs} when is_binary(t) ->
+          {bp, Map.put_new(rs, t, m)}
+
+        _m, acc ->
+          acc
+      end)
+
+    {Map.new(by_parent, fn {p, kids} -> {p, Enum.reverse(kids)} end), results}
   end
 
   defp call_kind(%{tool_kind: kind}) when not is_nil(kind), do: kind

@@ -33,6 +33,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
   alias LoopyardWeb.Components.ToolSummary
   alias LoopyardWeb.Live.WorkspaceLive.Messages.Cards
+  alias LoopyardWeb.Live.WorkspaceLive.Messages.SubAgent
   alias LoopyardWeb.Live.WorkspaceLive.Messages.Transcript
 
   # Transcript-structure helpers live in Messages.Transcript (size-cap split);
@@ -304,6 +305,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       # lands in the agent's prose. A wall of "Get file URL / output · 1 line"
       # rows says nothing; render neither call nor result.
       msg_kind(assigns.msg) == :plumbing -> ~H"<div></div>"
+      # A delegation to a harness-native sub-agent: the card that nests the
+      # sub-agent's own calls (they never render as rows) and counts up while
+      # it works. Its report renders as the call's result below.
+      msg_kind(assigns.msg) == :agent -> SubAgent.call(assigns)
       true -> render_tool_call(assigns)
     end
   end
@@ -364,6 +369,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       # console box as exec / docker builds: command + output + exit status.
       console_command_result?(assigns) ->
         chat_msg_console_result(assigns)
+
+      # A sub-agent's report (or the line that closed a background one) —
+      # prose, not console output; the card handles its own error styling.
+      tool_result_kind(assigns) == :agent ->
+        SubAgent.result(assigns)
 
       # A FAILED result is an error message, not content — never dress it as a
       # file/grep card (a failed Read's "File does not exist." is not ruby).

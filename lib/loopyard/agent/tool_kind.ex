@@ -26,10 +26,14 @@ defmodule Loopyard.Agent.ToolKind do
     * `:write`   — a file write (category tint only).
     * `:plumbing` — link/url helpers (file_url, app_url): mechanics whose
       product lands in the agent's prose — not rendered in the transcript.
+    * `:agent`   — a delegation to a harness-native sub-agent (Claude Code's
+      `Task`/`Agent`); renders as the sub-agent card that nests the child
+      calls (those carry the call's id as `parent_id`) and shows the
+      sub-agent's report as its result.
     * `:generic` — anything else; the plain collapsible output.
   """
 
-  @type t :: :command | :read | :grep | :edit | :write | :plumbing | :generic
+  @type t :: :command | :read | :grep | :edit | :write | :plumbing | :agent | :generic
 
   @doc "Neutral kind for a tool name. Unknown names → `:generic` (graceful)."
   @spec classify(String.t() | nil) :: t()
@@ -41,6 +45,7 @@ defmodule Loopyard.Agent.ToolKind do
       edit?(name) -> :edit
       name == "Write" or String.ends_with?(name, "__write_file") -> :write
       String.ends_with?(name, "__file_url") or String.ends_with?(name, "__app_url") -> :plumbing
+      name in ["Agent", "Task"] -> :agent
       true -> :generic
     end
   end

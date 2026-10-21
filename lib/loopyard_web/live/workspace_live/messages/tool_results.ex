@@ -193,11 +193,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
   def tool_result_kind(assigns) do
     # Rich result cards are keyed off the neutral tool KIND, so native ACP tools
     # ("Read"/"Grep") and loopyard MCP tools ("__read_file"/"__grep") — and any
-    # future harness that stamps the same kind — read identically. Only :read and
-    # :grep have result cards; everything else keeps the plain <pre>.
+    # future harness that stamps the same kind — read identically. :read, :grep
+    # and :agent (a sub-agent's report) have result cards; everything else keeps
+    # the plain <pre>.
     case call_kind(matching_tool_call(assigns)) do
       :read -> :read
       :grep -> :grep
+      :agent -> :agent
       _ -> :generic
     end
   end

@@ -157,6 +157,84 @@ A workspace is a git branch in its own env. *Most* interaction is just "read/wri
 
 The base image carries git/bash/curl/node + the harness adapter — *not* the project's own toolchain (elixir, the app's deps, postgres). Running the project's tests/build or the app itself still needs the project image, i.e. the **preview env**. Cheap container = code + git + harness; preview = run the app.
 
+### Sub-agents inside the harness
+
+Claude Code's native `Task`/`Agent` tool spawns a **sub-agent inside the same
+CLI process** — a second model loop with its own context, running in the same
+container against the same volume, speaking the same ACP session. Loopyard
+never sees a second process, session, or connection: everything the sub-agent
+does arrives as ordinary `session/update` frames on the parent's turn. Captured
+live against `claude-agent-acp` 0.76.0 / Claude Code 2.1.268 (2026-10-21; the
+fixtures in `test/loopyard/harness/acp/subagent_test.exs` are trimmed from
+that capture):
+
+**How it spawns.** The parent emits a `tool_call` whose
+`_meta.claudeCode` is `{toolName: "Agent", subagent: true}` (ACP `title`
+`"Task"`, `kind` `"think"`), then refines its `rawInput` in fragments:
+`description`, `subagent_type` (`Explore`, `general-purpose`, …),
+`run_in_background`, `prompt`. The prompt fragment also ECHOES the prompt as
+the frame's `content` — status-less, and not a result. The Translator stamps
+the call `kind: :agent` from `subagent: true`; `ToolKind.classify/1` maps the
+names `Agent`/`Task` to the same kind for messages persisted before that.
+
+**What Loopyard sees while it works.** Every tool call the sub-agent makes
+(`Bash`, `Read`, `Grep`, MCP bridge tools…) streams as a normal
+`tool_call`/`tool_call_update` pair on the parent's session, each stamped
+`_meta.claudeCode.parentToolUseId = <the Agent call's toolCallId>`. That is the
+whole lineage signal: no agent id on the children, no nesting depth, no
+"sub-agent started/finished" frame. The Translator carries it as
+`%Event.ToolCall{parent_id: …}`; `StreamHandler` records it as
+`parent_tool_id` on the `:tool` message (absent on top-level calls); the
+transcript (`Transcript.item_contexts/2`) groups children under their parent
+and hides them as rows, and the sub-agent card (`Messages.SubAgent`) renders
+them collapsed under the delegation with a live elapsed counter and the
+latest call on its summary line. Permission requests for the sub-agent's
+calls come through the same `session/request_permission` path as the parent's.
+The sub-agent's own prose/thinking is NOT streamed — only its tool calls.
+
+**How it joins back — two shapes, decided by `run_in_background`:**
+
+- *Foreground* (`run_in_background: false`): the Agent call stays open until
+  the sub-agent finishes, then a `tool_call_update` on the Agent call carries
+  `_meta.claudeCode.toolResponse: {status: "completed", prompt, …}` and a
+  second one `status: "completed"` with the sub-agent's **final report as its
+  content** (markdown). That report is the card's result, rendered as prose.
+- *Background* (the CLI's default since 2.1.x): the Agent call "completes"
+  immediately with `toolResponse: {isAsync: true, status: "async_launched",
+  agentId, resolvedModel, outputFile}` and a content of "Async agent launched
+  successfully… internal metadata — never quote". The children then stream
+  with the parent id as above. When the sub-agent finishes, the CLI feeds its
+  report to the parent as an internal **task-notification** user turn — the
+  parent's follow-up prose is the only place the report surfaces; the Agent
+  call NEVER gets a result frame with it. The adapter holds `session/prompt`
+  open across that follow-up (the only trace on the wire is a `usage_update`
+  tagged `_meta["_claude/origin"].kind == "task-notification"`), so the end
+  of the turn is the honest close: the Translator swallows the launch receipt,
+  keeps the call open while its children land, and `finish/3` emits a quiet
+  closing result ("Finished in the background — the agent folded its report
+  into the reply", or an error line if the turn was interrupted). The report
+  itself exists only as the sub-agent's JSONL transcript at `outputFile` in the
+  container's `/tmp` — not read today (see IMPROVEMENTS).
+
+**What Loopyard can and cannot see.** CAN: every tool call + result the
+sub-agent makes, its lineage, when the foreground report lands, the model the
+background one resolved to. CANNOT: the sub-agent's reasoning or prose, its
+token usage as a separate line (it folds into the session's `usage_update`),
+a background sub-agent's report on its own call, or nested sub-sub-agents as
+distinct levels (a grandchild carries only its immediate parent's id — the
+transcript nests one level: anything with a parent id folds under the
+nearest `:agent` call it names).
+
+**Identity and policy.** `Task`/`Agent` is allowed in-container. The old
+in-process path denied it because a sub-agent's MCP calls failed the
+`agent_id` check; over the ACP MCP bridge the identity is the bearer token in
+the session's `mcpServers` spec, which the sub-agent shares with its parent
+(it IS the parent's CLI process), so a sub-agent's bridge call runs as the
+parent agent — verified live: a sub-agent called the `ports` bridge tool and
+native `Bash` without an auth error. The workspace boundary is unchanged: the
+sub-agent runs in the same container against the same volume under the same
+token scope.
+
 ## Environment layering — image · home · code · services
 
 An agent's environment is **composed from independent layers, each owning one concern with one mechanism**. The design invariant is orthogonality: any layer changes without touching the others. Full model + build order in [plans/agent-home-and-refresh.md](../plans/archive/agent-home-and-refresh.md).

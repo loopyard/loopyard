@@ -29,6 +29,18 @@ defmodule LoopyardWeb.ShowcaseTest do
       "The stepper is two",
       "Stop"
     ],
+    # Harness-native sub-agents: the delegation card names the job + type,
+    # folds the sub-agent's calls under it (never as rows), shows its report
+    # as prose, and a working one counts up with its latest call.
+    "chat-subagent" => [
+      "Sub-agent: Find callers of CartTotal.recompute",
+      "Explore",
+      "3 calls",
+      "sub-agent report · 6 lines",
+      "Sub-agent: Audit stepper test coverage",
+      "3 calls so far",
+      "bin/rails test test/system/cart_test.rb -n /stepper/"
+    ],
     # The ask_user card: options, per-question commit, needs-you framing.
     "question-card" => [
       "Where should staging deploys go?",

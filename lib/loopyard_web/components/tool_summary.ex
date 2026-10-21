@@ -35,8 +35,13 @@ defmodule LoopyardWeb.Components.ToolSummary do
       {"Glob", %{"pattern" => pat}} ->
         "glob #{pat}"
 
-      {"Agent", %{"prompt" => p}} ->
-        "Spawned agent: #{String.slice(p, 0..60)}"
+      # A sub-agent delegation (Task/Agent): the model's own one-line
+      # description names the job better than the first 60 chars of a prompt.
+      {name, %{"description" => d}} when name in ["Agent", "Task"] and is_binary(d) ->
+        "Sub-agent: #{String.slice(d, 0..80)}"
+
+      {name, %{"prompt" => p}} when name in ["Agent", "Task"] ->
+        "Sub-agent: #{String.slice(p, 0..60)}"
 
       {"list_agents", _} ->
         "Listed all agents"

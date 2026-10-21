@@ -35,9 +35,14 @@ defmodule LoopyardWeb.Components.ToolSummaryTest do
                "glob **/*.rb"
     end
 
-    test "Agent tool shows prompt snippet" do
-      assert ToolSummary.summarize("Agent", %{"prompt" => "Find all test files"}) ==
-               "Spawned agent: Find all test files"
+    test "Agent tool shows the sub-agent's description, falling back to the prompt" do
+      assert ToolSummary.summarize("Agent", %{
+               "description" => "Find callers of greet",
+               "prompt" => "Find every caller…"
+             }) == "Sub-agent: Find callers of greet"
+
+      assert ToolSummary.summarize("Task", %{"prompt" => "Find all test files"}) ==
+               "Sub-agent: Find all test files"
     end
 
     # --- New tool summaries ---

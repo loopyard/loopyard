@@ -762,6 +762,15 @@ defmodule Loopyard.ChatAgent.StreamHandler do
       timestamp: now
     }
 
+    # A harness-native sub-agent's call names the delegating call it ran under
+    # (ACP: parentToolUseId). It rides the message so the transcript can nest
+    # the sub-agent's work under its `:agent` card; absent for top-level calls
+    # so the message shape of every other call is unchanged.
+    tool_msg =
+      if is_binary(ev.parent_id),
+        do: Map.put(tool_msg, :parent_tool_id, ev.parent_id),
+        else: tool_msg
+
     {state, tool_msg} = append_message(state, tool_msg)
 
     state = %{
