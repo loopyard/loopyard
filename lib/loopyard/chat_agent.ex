@@ -297,10 +297,8 @@ defmodule Loopyard.ChatAgent do
   @doc "Switch the agent's model (Usage-panel Model row); see ChatAgent.ModelControl."
   defdelegate set_model(id, model_id), to: Client
 
-  @doc "Switch the agent's harness (see `ChatAgent.HarnessControl`)."
+  @doc "Switch the agent's harness / account (see `ChatAgent.HarnessControl` / `WorkstationControl`)."
   defdelegate set_harness(id, harness_id, model \\ nil), to: Client
-
-  @doc "Move the agent onto another workstation's account (see `ChatAgent.WorkstationControl`)."
   defdelegate set_workstation(id, workstation_id), to: Client
 
   @doc "Start a stopped/crashed agent — starts a new GenServer and resumes from saved state"
@@ -601,7 +599,6 @@ defmodule Loopyard.ChatAgent do
   def handle_cast({:set_harness, harness_id, model}, state),
     do: Loopyard.ChatAgent.HarnessControl.handle_switch(state, harness_id, model)
 
-  @impl true
   def handle_cast({:set_workstation, workstation_id}, state),
     do: Loopyard.ChatAgent.WorkstationControl.handle_switch(state, workstation_id)
 

@@ -4,12 +4,12 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   alias Loopyard.ChatAgent
   alias Loopyard.Events
-  alias Loopyard.Harness.Catalog
   alias Loopyard.StreamBuffer
 
   use LoopyardWeb.Live.WorkspaceLive.Components
   import LoopyardWeb.Live.WorkspaceLive.MainContent
 
+  alias LoopyardWeb.Live.WorkspaceLive.AgentPicker
   alias LoopyardWeb.Live.WorkspaceLive.Attachments, as: ComposerAttachments
   alias LoopyardWeb.Live.WorkspaceLive.Composer
 
@@ -1071,45 +1071,10 @@ defmodule LoopyardWeb.WorkspaceLive do
   end
 
   @impl true
-  def handle_event("set_agent_model", %{"model" => selection} = params, socket) do
-    # Harness + model picker in the Usage panel. The selected value is a
-    # `harness:model` token so ONE control covers both — picking "Codex" is the
-    # same gesture as picking "Opus 4.8", which is how it reads to a user.
-    #
-    # Same harness → live ACP session/set_model, no restart. Different harness →
-    # restart onto the new adapter, conversation carried over from Loopyard's
-    # durable log. The StatusChanged broadcast refreshes the row either way.
-    agent_id = params["agent-id"] || socket.assigns.selected_id
+  def handle_event("set_agent_model", params, socket), do: AgentPicker.set_model(params, socket)
 
-    with true <- is_binary(agent_id),
-         {:ok, harness, model} <- Catalog.parse_selection(selection) do
-      agent = Enum.find(socket.assigns.agents, &(&1.id == agent_id)) || %{}
-      current = agent[:harness] || Catalog.default()
-
-      if harness == current do
-        if model, do: ChatAgent.set_model(agent_id, model)
-      else
-        ChatAgent.set_harness(agent_id, harness, model)
-      end
-    end
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("set_agent_workstation", %{"workstation" => ws_id} = params, socket) do
-    # Account picker (the Usage panel's second row): move the agent onto
-    # another workstation's credentials. The agent re-stamps itself and runs a
-    # :credentials restart (conversation carried over, native session dropped);
-    # the StatusChanged broadcast refreshes the row.
-    agent_id = params["agent-id"] || socket.assigns.selected_id
-
-    if is_binary(agent_id) and is_binary(ws_id) and ws_id != "" do
-      ChatAgent.set_workstation(agent_id, ws_id)
-    end
-
-    {:noreply, socket}
-  end
+  def handle_event("set_agent_workstation", params, socket),
+    do: AgentPicker.set_workstation(params, socket)
 
   @impl true
   def handle_event("rename_agent", %{"name" => name} = params, socket) do
