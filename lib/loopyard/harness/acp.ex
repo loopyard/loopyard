@@ -133,6 +133,10 @@ defmodule Loopyard.Harness.ACP do
   The `docker exec -i` command that runs the ACP adapter inside a container —
   the in-container variant of the transport (#5). Only this string differs from
   host mode; the protocol/connection layer is identical.
+
+  `launch_opts`: `:brief` (the agent brief, for harnesses that take it via env)
+  and `:identity` (the workstation id whose `~/.loopyard/env.<id>` the launch
+  sources after `~/.profile` — per-agent account; never the token itself).
   """
   # Handshake budget (must stay in sync with @resume_ready_timeout above): the
   # longest a legitimate in-flight adapter can still be handshaking. The orphan
@@ -193,9 +197,39 @@ defmodule Loopyard.Harness.ACP do
       Enum.map_join(extra_env, "", fn {key, value} -> env_export(key, value) end) <>
         brief_export(spec, Keyword.get(launch_opts, :brief))
 
-    inner = reap <> ~S|. "$HOME/.profile" 2>/dev/null; | <> exports <> launch
+    inner =
+      reap <>
+        ~S|. "$HOME/.profile" 2>/dev/null; | <>
+        identity_source(Keyword.get(launch_opts, :identity)) <>
+        exports <> launch
 
     "docker exec -i #{container} sh -c '#{inner}'"
+  end
+
+  # PER-AGENT IDENTITY. ~/.profile sources the container's HOST identity env
+  # (the workspace's workstation — the home volume the work container mounts).
+  # An agent stamped with another identity sources that identity's own file
+  # AFTER it, so its account wins: `~/.loopyard/env.<identity>`, materialized
+  # by `Workstation.Env.sync_identity_into/2` (it `unset`s every harness
+  # credential first, so a missing credential fails loudly instead of billing
+  # the host identity). Only the NAME crosses the command line — the file holds
+  # the token, so host `ps` never sees it. A missing file (an identity synced
+  # before this existed) falls through to the profile env, which is the host
+  # identity: the pre-feature behaviour, never a broken launch.
+  #
+  # The id is validated against the workstation charset ([a-z0-9-]) before it
+  # is interpolated into a single-quoted `sh -c` — nothing shell-significant
+  # can reach the script through it.
+  defp identity_source(nil), do: ""
+
+  defp identity_source(identity) when is_binary(identity) do
+    unless Loopyard.Workstation.valid_id?(identity) do
+      raise ArgumentError,
+            "invalid workstation identity for a harness launch: #{inspect(identity)}"
+    end
+
+    ~s|export LOOPYARD_IDENTITY="#{identity}"; | <>
+      ~S|f="$HOME/.loopyard/env.$LOOPYARD_IDENTITY"; if [ -f "$f" ]; then . "$f"; fi; |
   end
 
   # The brief for a harness that doesn't read CLAUDE.local.md (see
@@ -274,7 +308,12 @@ defmodule Loopyard.Harness.ACP do
             Keyword.put(
               base,
               :transport_opts,
-              cmd: docker_exec_cmd(container, Keyword.get(opts, :harness), brief: brief)
+              cmd:
+                docker_exec_cmd(container, Keyword.get(opts, :harness),
+                  brief: brief,
+                  # The account this agent runs under (see identity_source/1).
+                  identity: Keyword.get(opts, :workstation_identity)
+                )
             )
 
           transport ->

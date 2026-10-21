@@ -173,10 +173,18 @@ defmodule Loopyard.Workstation.Env do
   # Covers every harness in `Loopyard.Harness.Catalog`, not just Claude: dropping
   # in an OpenAI key must reload agents the same way, or a Codex harness keeps
   # running unauthenticated until something else happens to restart it.
-  @credential_keys ~w(CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY CODEX_API_KEY OPENAI_API_KEY)
+  @doc """
+  Every env key a harness authenticates with, across the whole
+  `Loopyard.Harness.Catalog` — the keys a credential push reloads agents for,
+  and the keys an identity file `unset`s before exporting its own (see
+  `identity_file_body/1`).
+  """
+  @spec credential_keys() :: [String.t()]
+  def credential_keys,
+    do: Loopyard.Harness.Catalog.all() |> Enum.flat_map(& &1.credential_keys) |> Enum.uniq()
 
   defp maybe_reload_agents(key, id) do
-    if key in @credential_keys, do: Loopyard.Workstation.reload_agents(id)
+    if key in credential_keys(), do: Loopyard.Workstation.reload_agents(id)
     :ok
   end
 
@@ -218,12 +226,63 @@ defmodule Loopyard.Workstation.Env do
 
   Writes `~/.loopyard/env` (mode 0600) holding `export K='V'` lines and ensures
   `~/.profile` sources it, so a login shell (`Docker.with_login_profile/1`) puts
-  the env in scope. Idempotent; call before boot. Runs via a transient
+  the env in scope. Also writes the identity's own `~/.loopyard/env.<id>`
+  (`identity_file_body/1`) — the per-identity file a harness launch sources
+  AFTER `~/.profile` (`Harness.ACP.docker_exec_cmd/3`), so an agent on this
+  identity and one on another identity in the same container each run under
+  their own account. Idempotent; call before boot. Runs via a transient
   `docker run --rm` mounting the home volume (auto-creates it if absent), so it
   works whether or not a container is currently up.
   """
   @spec sync_home(String.t()) :: :ok | {:error, term()}
   def sync_home(id) do
+    case checked_map(id) do
+      {:ok, map} -> materialize_home(id, map)
+      err -> err
+    end
+  end
+
+  @doc """
+  Materialize `identity`'s env into ANOTHER identity's home volume as
+  `~/.loopyard/env.<identity>` — the file an agent stamped with `identity`
+  sources at launch inside `host`'s work container, so a work container that
+  mounts one identity's `$HOME` can still run an agent under any other account
+  (`CLAUDE.md` → per-agent identity). Same refusal rules as `sync_home/1`: an
+  absent, unreadable or empty store writes NOTHING (it would strip a live agent
+  of its credential). Same identity → `sync_home/1`.
+  """
+  @spec sync_identity_into(String.t(), String.t()) :: :ok | {:error, term()}
+  def sync_identity_into(identity, host) when identity == host, do: sync_home(host)
+
+  def sync_identity_into(identity, host) when is_binary(identity) and is_binary(host) do
+    case checked_map(identity) do
+      {:ok, map} ->
+        write_home_files(host, [{identity_file(identity), identity_file_body(map)}])
+
+      err ->
+        err
+    end
+  end
+
+  @doc "The in-container path of an identity's env file, relative to `$HOME`."
+  @spec identity_file(String.t()) :: String.t()
+  def identity_file(identity), do: ".loopyard/env.#{identity}"
+
+  @doc """
+  The body of `~/.loopyard/env.<identity>`. It first `unset`s EVERY harness
+  credential key (`credential_keys/0`) so an agent on this identity can never
+  inherit the container host identity's token through `~/.profile` — if this
+  identity has no Claude credential, the harness fails to sign in (and says so)
+  rather than silently billing another account — then exports its own vars.
+  """
+  @spec identity_file_body(%{optional(String.t()) => String.t()}) :: String.t()
+  def identity_file_body(map) do
+    "unset #{Enum.join(credential_keys(), " ")}\n" <> env_file_body(map)
+  end
+
+  # The store, validated for materialization: only a store that EXISTS and is
+  # non-empty may be written into a volume (see the sync_home/1 comments).
+  defp checked_map(id) do
     case read_map(id) do
       # NEVER overwrite the container's env with an empty file just because we
       # momentarily couldn't read the store — that would strip a live harness of
@@ -255,7 +314,7 @@ defmodule Loopyard.Workstation.Env do
         {:error, :refusing_empty_env}
 
       {:ok, map} ->
-        materialize_home(id, map)
+        {:ok, map}
     end
   end
 
@@ -265,7 +324,21 @@ defmodule Loopyard.Workstation.Env do
   defp sync_home_asserted(id, map), do: materialize_home(id, map)
 
   defp materialize_home(id, map) do
-    vol = Workstation.home_volume(id)
+    # Two files: the profile-sourced `env` (every login shell), and the
+    # identity's own `env.<id>` (what a harness launch sources, uniformly with
+    # any other identity's file in this volume).
+    write_home_files(
+      id,
+      [{".loopyard/env", env_file_body(map)}, {identity_file(id), identity_file_body(map)}],
+      profile_hook: true
+    )
+  end
+
+  # Write `files` (`{rel_path, body}`, relative to the volume root) into `host`'s
+  # home volume, mode 0600, through a transient container. `profile_hook: true`
+  # also ensures ~/.profile sources ~/.loopyard/env.
+  defp write_home_files(host, files, opts \\ []) do
+    vol = Workstation.home_volume(host)
 
     # This function is the one that writes into a live $HOME volume, so it is
     # the right place to assert the isolation boundary: a name outside this
@@ -279,15 +352,22 @@ defmodule Loopyard.Workstation.Env do
       raise "refusing to write #{inspect(vol)} — outside this environment's prefix #{inspect(prefix)}"
     end
 
-    b64 = map |> env_file_body() |> Base.encode64()
+    writes =
+      Enum.map_join(files, "", fn {rel, body} ->
+        b64 = Base.encode64(body)
+        "printf '%s' '#{b64}' | base64 -d > /vol/#{rel} && chmod 600 /vol/#{rel} && "
+      end)
 
-    script =
-      "mkdir -p /vol/.loopyard && " <>
-        "printf '%s' '#{b64}' | base64 -d > /vol/.loopyard/env && " <>
-        "chmod 600 /vol/.loopyard/env && " <>
+    hook =
+      if Keyword.get(opts, :profile_hook, false) do
         "touch /vol/.profile && " <>
-        "(grep -q '.loopyard/env' /vol/.profile 2>/dev/null || " <>
-        ~s|printf '\\n%s\\n' '[ -f "$HOME/.loopyard/env" ] && . "$HOME/.loopyard/env"' >> /vol/.profile)|
+          "(grep -q '.loopyard/env' /vol/.profile 2>/dev/null || " <>
+          ~s|printf '\\n%s\\n' '[ -f "$HOME/.loopyard/env" ] && . "$HOME/.loopyard/env"' >> /vol/.profile)|
+      else
+        "true"
+      end
+
+    script = "mkdir -p /vol/.loopyard && " <> writes <> hook
 
     case Loopyard.Docker.docker([
            "run",

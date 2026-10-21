@@ -70,6 +70,9 @@ defmodule Loopyard.ChatAgent.Initializer do
     # backend/opts would run the harness process outside a container.
     assert_runtime_contained!(backend, session_opts, id)
 
+    # The agent's account: its identity's env file in the launch container.
+    Loopyard.Harness.Identity.deliver(backend, session_opts)
+
     case backend.start_session(session_opts) do
       {:ok, session} ->
         prompt_hash = :crypto.hash(:sha256, system_prompt) |> Base.encode16(case: :lower)
@@ -143,6 +146,15 @@ defmodule Loopyard.ChatAgent.Initializer do
         harness -> Keyword.put(opts, :harness, harness)
       end
 
+    # And a LIVE account switch (`ChatAgent.set_workstation/2`): the agent's
+    # identity is state, and a rebuild from the boot opts alone would hand the
+    # agent back to the account it was moved off.
+    opts =
+      case Map.get(state, :workstation_identity) do
+        id when is_binary(id) -> Keyword.put(opts, :workstation_identity, id)
+        _ -> opts
+      end
+
     params = [
       working_dir: state.working_dir,
       bind_mount: state.bind_mount,
@@ -209,8 +221,23 @@ defmodule Loopyard.ChatAgent.Initializer do
     # volume; the host's view of `working_dir` is empty.
     container_only? = is_nil(bind_mount)
 
+    # The ACCOUNT this agent runs under (per agent, not per workspace): the
+    # harness launch sources `~/.loopyard/env.<identity>` after ~/.profile
+    # (Harness.ACP) and Harness.Identity delivers that file first. Defaults to
+    # the workspace's identity, so an unstamped agent is the workspace's —
+    # unchanged; a system agent's is the one it lives in.
+    identity =
+      Keyword.get(opts, :workstation_identity) ||
+        if(workspace_id,
+          do: Loopyard.Workspace.workstation_id(workspace_id),
+          else: Loopyard.Workstation.current()
+        )
+
     base_opts = [
       cwd: working_dir,
+      workstation_identity: identity,
+      # Harness.Identity resolves the launch container's HOST identity from it.
+      workspace_id: workspace_id,
       # Which model the agent's CLI runs. A model alias ("sonnet"/"opus"/
       # "haiku"/"fable") or a full model id ("claude-fable-5"). Defaults to the
       # SDK default so unset behavior is unchanged; switch the whole instance

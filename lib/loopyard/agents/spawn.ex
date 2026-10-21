@@ -22,7 +22,9 @@ defmodule Loopyard.Agents.Spawn do
   Spawn an agent from `template_id`.
 
   Options: `:workspace_id` (required for a workspace template),
-  `:workstation_identity` (system template; default the current identity),
+  `:workstation_identity` (the ACCOUNT the agent runs under — a workspace
+  template defaults to the workspace's identity, a system template to the
+  current one),
   `:id` (respawn with a STABLE id), `:name`, `:service_name`,
   `:initial_message` (`:none` to skip), `:started_by`, plus the forwarded
   boot opts (`:backend`, `:harness`, `:model`, `:initial_messages`,
@@ -59,6 +61,14 @@ defmodule Loopyard.Agents.Spawn do
 
         id = Keyword.get(opts, :id) || new_id()
 
+        # The account: an explicit choice wins; otherwise inherit THIS
+        # workspace's workstation identity (its creds/home), not the global
+        # `current` — so agents in a workspace attached to another workstation
+        # follow that identity. Per agent, so two agents in one workspace can
+        # bill two accounts (`ChatAgent.set_workstation/2` moves one later).
+        identity =
+          Keyword.get(opts, :workstation_identity) || Loopyard.Workspace.workstation_id(ws)
+
         agent_opts =
           [
             id: id,
@@ -68,10 +78,7 @@ defmodule Loopyard.Agents.Spawn do
             workspace_id: ws_id,
             template_id: template.id,
             scope: :workspace,
-            # Inherit THIS workspace's workstation identity (its creds/home), not
-            # the global `current` — so agents in a workspace attached to another
-            # workstation follow that identity.
-            workstation_identity: Loopyard.Workspace.workstation_id(ws)
+            workstation_identity: identity
           ]
           |> maybe(:service_name, service_name)
           |> forward(opts)
@@ -86,7 +93,12 @@ defmodule Loopyard.Agents.Spawn do
           end
 
         register_opts =
-          [workspace_id: ws_id, template_id: template.id, scope: :workspace]
+          [
+            workspace_id: ws_id,
+            template_id: template.id,
+            scope: :workspace,
+            workstation_identity: identity
+          ]
           |> maybe(:service_name, service_name)
 
         ChatAgent.register_booting(id, name, working_dir, register_opts)

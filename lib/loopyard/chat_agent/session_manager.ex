@@ -486,8 +486,14 @@ defmodule Loopyard.ChatAgent.SessionManager do
   """
   def start_session_safe(state) do
     resuming? = is_binary(state.claude_session_id) and state.claude_session_id != ""
+    opts = start_opts(state)
 
-    case state.backend.start_session(start_opts(state)) do
+    # The agent's account: its identity's env file in the launch container —
+    # on EVERY (re)start, so a credential push or an account switch lands in
+    # the file the relaunch sources.
+    Loopyard.Harness.Identity.deliver(state.backend, opts)
+
+    case state.backend.start_session(opts) do
       {:ok, session} ->
         {:ok, session, safe_session_id(state.backend, session) || state.claude_session_id}
 
