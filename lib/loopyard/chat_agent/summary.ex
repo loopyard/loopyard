@@ -36,6 +36,11 @@ defmodule Loopyard.ChatAgent.Summary do
       # Which harness this agent runs on, so the picker can show the current
       # selection without reaching into session_opts from the view.
       harness: Loopyard.ChatAgent.HarnessControl.current(state),
+      # The composer's Discuss / Build setting, and whether the live harness
+      # advertises a plan mode at all (nil → the switch is hidden). Map.get:
+      # summaries are built over partial state maps and pre-field structs.
+      mode: Map.get(state, :mode) || :build,
+      plan_mode_id: Map.get(state, :plan_mode_id),
       total_input_tokens: state.total_input_tokens,
       total_output_tokens: state.total_output_tokens,
       total_cache_read_tokens: state.total_cache_read_tokens,

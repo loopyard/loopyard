@@ -96,7 +96,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
         number wearing a currency symbol. A wrong figure is worse than none. --%>
         {short_model(@agent[:model]) || "default"} · {if @estimating?, do: "~"}{compact_number(
           @total_tokens
-        )} tok
+        )} tok<span :if={@agent[:mode] == :discuss}> · Discuss</span>
       </:facts>
     </.detail_hero>
 

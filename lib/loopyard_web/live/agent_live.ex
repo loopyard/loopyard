@@ -298,6 +298,16 @@ defmodule LoopyardWeb.AgentLive do
     {:noreply, socket}
   end
 
+  # The composer's Discuss / Build switch (see WorkspaceLive's twin).
+  def handle_event("set_agent_mode", %{"mode" => mode}, socket) do
+    case Loopyard.ChatAgent.ModeControl.parse(mode) do
+      {:ok, setting} -> ChatAgent.set_mode(socket.assigns.agent_id, setting)
+      :error -> :ok
+    end
+
+    {:noreply, socket}
+  end
+
   # Approve/Deny on the approval "chat mini app" — the interactive half of the
   # create-project flow. Delivers the decision to the blocked ControlPlane tool
   # (which then fires Onboarding + spawns the workspace agent).

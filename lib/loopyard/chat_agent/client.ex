@@ -137,6 +137,10 @@ defmodule Loopyard.ChatAgent.Client do
   def set_model(id, model_id) when is_binary(model_id),
     do: GenServer.cast(via(id), {:set_model, model_id})
 
+  @doc "Flip the composer's Discuss / Build switch; see ChatAgent.ModeControl."
+  def set_mode(id, setting) when setting in [:discuss, :build],
+    do: GenServer.cast(via(id), {:set_mode, setting})
+
   @doc """
   Switch the agent to a different harness (Claude → Codex). Restarts the
   session; the conversation is carried over from Loopyard's durable log.

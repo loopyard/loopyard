@@ -559,7 +559,20 @@ answer). `LoopyardWeb.Components.FocusedView` is the shared full-screen shell
   sends / Shift+Enter newlines; mobile Enter newlines; ⌘/⌃+Enter always sends.
   Send is OPTIMISTIC (instant clear + `#send-echo` band; ack swaps in the real
   queue band; failure restores the box). The composer DOM persists across
-  reconnects — hooks must wire-once.
+  reconnects — hooks must wire-once. **Discuss / Build switch** (its own row
+  above the input, `Chat.mode_switch/1`): Discuss puts the harness in its PLAN
+  mode (ACP `session/set_mode`) — it reads and talks, can't edit; Build is the
+  mode the session booted in. Server state on the agent
+  (`ChatAgent.ModeControl`: `mode: :discuss | :build` persisted + broadcast,
+  re-applied to every new session via `session_opts[:mode]`), rendered only
+  when the live harness advertises a plan mode (`plan_mode_id` on the
+  summary; `Harness.Fake` advertises one so the LV path is tested). The send
+  path is unchanged in either mode. While Discuss is on, the harness's
+  ExitPlanMode permission request is answered "keep planning"
+  (`Connection`'s `decide_permission`, keyed on the ACP tool-call kind
+  `switch_mode`, never a tool name) — leaving plan mode is the human's flip.
+  Lives OUTSIDE the `phx-update="ignore"` wrapper so LiveView can patch it.
+  The hero's facts line reads `… · Discuss` while it's on.
 - **Building any screen**: load the `ui-build` skill FIRST (type scale,
   component-first composition, Tailwind token policy, sticky/z-index layering,
   tap targets, DOM budget, and the measure-don't-eyeball verification loop), and

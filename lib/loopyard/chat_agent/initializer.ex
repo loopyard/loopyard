@@ -96,6 +96,7 @@ defmodule Loopyard.ChatAgent.Initializer do
     :template_id,
     :backend,
     :model,
+    :mode,
     :harness,
     :container,
     :workstation_identity,
@@ -132,6 +133,14 @@ defmodule Loopyard.ChatAgent.Initializer do
     opts =
       case Keyword.get(state.session_opts || [], :model) do
         model when is_binary(model) -> Keyword.put(opts, :model, model)
+        _ -> opts
+      end
+
+    # And the composer's Discuss setting (session_opts[:mode] = the plan mode
+    # id, set by ModeControl) — a reload must come back still discussing.
+    opts =
+      case Keyword.get(state.session_opts || [], :mode) do
+        mode when is_binary(mode) -> Keyword.put(opts, :mode, mode)
         _ -> opts
       end
 
@@ -365,6 +374,14 @@ defmodule Loopyard.ChatAgent.Initializer do
           session_opts
       end
 
+    # The composer's Discuss setting rides along as the harness mode to boot
+    # into (the plan mode id, see ModeControl); absent → the harness default.
+    session_opts =
+      case Keyword.get(opts, :mode) do
+        mode when is_binary(mode) -> Keyword.put(session_opts, :mode, mode)
+        _ -> session_opts
+      end
+
     {session_opts, backend, system_prompt}
   end
 
@@ -506,6 +523,9 @@ defmodule Loopyard.ChatAgent.Initializer do
       |> put_new_binary(:container, saved[:container])
       |> put_new_binary(:workstation_identity, saved[:workstation_identity])
       |> put_new_binary(:name, saved[:name])
+      # A Discuss agent resumes still discussing: the saved plan-mode id goes
+      # out as the session's boot mode (ModeControl / Connection.maybe_set_mode).
+      |> put_new_binary(:mode, (saved[:mode] == :discuss && saved[:plan_mode_id]) || nil)
 
     {session, session_opts, backend, new_prompt_hash} =
       start_session(id, opts,

@@ -85,6 +85,10 @@ defmodule Loopyard.ChatAgent do
     # persisted.
     stream_task_pid: nil,
     model: nil,
+    # The composer's Discuss / Build switch + the live harness's plan-mode id
+    # (nil = none advertised → switch hidden). See ChatAgent.ModeControl.
+    mode: :build,
+    plan_mode_id: nil,
     total_input_tokens: 0,
     total_output_tokens: 0,
     total_cache_read_tokens: 0,
@@ -297,6 +301,9 @@ defmodule Loopyard.ChatAgent do
   @doc "Switch the agent's model (Usage-panel Model row); see ChatAgent.ModelControl."
   defdelegate set_model(id, model_id), to: Client
 
+  @doc "Flip the composer's Discuss / Build switch; see ChatAgent.ModeControl."
+  defdelegate set_mode(id, setting), to: Client
+
   @doc "Switch the agent's harness / account (see `ChatAgent.HarnessControl` / `WorkstationControl`)."
   defdelegate set_harness(id, harness_id, model \\ nil), to: Client
   defdelegate set_workstation(id, workstation_id), to: Client
@@ -361,13 +368,7 @@ defmodule Loopyard.ChatAgent do
           timestamp: DateTime.utc_now()
         }
 
-        {state, drift_msg} = append_message(state, drift_msg)
-        Persistence.persist_message(state, drift_msg)
-
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-          agent_id: id,
-          msg: drift_msg
-        })
+        {state, _drift_msg} = commit_message(state, drift_msg)
 
         # Re-persist summary after appending the drift message
         :ets.insert(@ets_table, {id, summary(state)})
@@ -468,14 +469,7 @@ defmodule Loopyard.ChatAgent do
         {:noreply, SendGuards.park_for_later(state, text)}
 
       Loopyard.Harness.Questions.pending_for_agent?(state.id) and state.status != :idle ->
-        user_msg = Thread.user_message(text)
-        {state, user_msg} = append_message(state, user_msg)
-        Persistence.persist_message(state, user_msg)
-
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-          agent_id: state.id,
-          msg: user_msg
-        })
+        {state, _user_msg} = commit_message(state, Thread.user_message(text))
 
         Loopyard.Harness.Questions.answer_with_text(state.id, Thread.display(text))
         {:noreply, state}
@@ -594,6 +588,9 @@ defmodule Loopyard.ChatAgent do
   def handle_cast({:set_model, model_id}, state) do
     {:noreply, Loopyard.ChatAgent.ModelControl.switch(state, model_id)}
   end
+
+  def handle_cast({:set_mode, setting}, state),
+    do: {:noreply, Loopyard.ChatAgent.ModeControl.switch(state, setting)}
 
   @impl true
   def handle_cast({:set_harness, harness_id, model}, state),
@@ -1528,14 +1525,7 @@ defmodule Loopyard.ChatAgent do
       # A message ABOUT a decision carries its reference as a marker line
       # (ChatAgent.Thread): shown without it, stamped `re:`, and the model
       # gets the card itself in place of the marker.
-      user_msg = Thread.user_message(text)
-      {state, user_msg} = append_message(state, user_msg)
-      Persistence.persist_message(state, user_msg)
-
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-        agent_id: state.id,
-        msg: user_msg
-      })
+      {state, _user_msg} = commit_message(state, Thread.user_message(text))
 
       # Fresh human turn → reset the transient-retry counter and any prior
       # failed-prompt banner.
@@ -1590,15 +1580,7 @@ defmodule Loopyard.ChatAgent do
     if state.backend.session_alive?(state.session) do
       state =
         Enum.reduce(list, state, fn text, st ->
-          msg = Thread.user_message(text)
-          {st, msg} = append_message(st, msg)
-          Persistence.persist_message(st, msg)
-
-          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-            agent_id: st.id,
-            msg: msg
-          })
-
+          {st, _msg} = commit_message(st, Thread.user_message(text))
           st
         end)
 
@@ -1670,6 +1652,21 @@ defmodule Loopyard.ChatAgent do
 
   # Append via the ONE shared MessageLog (id assignment + message cap).
   defp append_message(state, msg), do: MessageLog.append(state, msg)
+
+  # Append + persist + broadcast: how a message the GenServer itself produces
+  # (a user prompt it takes, a system line) enters the transcript — ONE path,
+  # so no site can forget the log or the viewers.
+  defp commit_message(state, msg) do
+    {state, msg} = append_message(state, msg)
+    Persistence.persist_message(state, msg)
+
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+      agent_id: state.id,
+      msg: msg
+    })
+
+    {state, msg}
+  end
 
   @doc false
   def summary(state), do: Summary.build(state)

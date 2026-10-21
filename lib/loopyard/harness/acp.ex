@@ -30,6 +30,14 @@ defmodule Loopyard.Harness.ACP do
   Initializer builds the spec and passes it as `:acp_mcp_servers`, which
   `start_session/1` forwards to the Connection's `session/new` `mcpServers`.
 
+  Session modes: `session/new`/`session/load` advertise the harness's modes
+  (`modes.availableModes`), `session/set_mode` switches them (`set_mode/2`),
+  and `current_mode_update` reports the harness changing mode on its own —
+  all closed; the composer's Discuss/Build switch rides on them (plan mode =
+  Discuss). While Discuss is on, an ExitPlanMode permission request is
+  answered "keep planning" (`Connection`'s `decide_permission`), so leaving
+  plan mode is the human's flip, never the model's.
+
   Known gaps (tracked on #3/#6): mapping Loopyard's tool *policy* (allowed/
   disallowed tools) onto ACP — the harness runs with its native tool defaults,
   which is the intended in-container posture (native Bash/Edit/Read against
@@ -384,6 +392,23 @@ defmodule Loopyard.Harness.ACP do
   @doc "The adapter's model list for a live session: `[%{id, name, description}]`."
   def available_models(conn) when is_pid(conn), do: Connection.available_models(conn)
   def available_models(_conn), do: []
+
+  @doc """
+  Switch the live session's mode (ACP `session/set_mode`) — the composer's
+  Discuss (plan mode) / Build (the harness's boot mode). Async.
+  """
+  def set_mode(conn, mode_id) when is_pid(conn) and is_binary(mode_id),
+    do: Connection.set_mode(conn, mode_id)
+
+  def set_mode(_conn, _mode_id), do: :ok
+
+  @doc """
+  The live session's modes: `%{current, boot, plan, available}` (see
+  `Connection.modes/1`). `plan` nil means the harness advertises no plan mode
+  and the composer hides the Discuss switch.
+  """
+  def modes(conn) when is_pid(conn), do: Connection.modes(conn)
+  def modes(_conn), do: %{current: nil, boot: nil, plan: nil, available: []}
 
   # Liveness = the HARNESS answers, not merely "our local GenServer exists".
   # The exec client can outlive a dead/wedged in-container adapter (docker

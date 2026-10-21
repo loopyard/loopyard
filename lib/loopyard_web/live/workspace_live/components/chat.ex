@@ -510,6 +510,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         <div class="w-full border-t border-zinc-200 dark:border-zinc-700/80 mb-2"></div>
         <div class="w-full wide:max-w-3xl mx-auto px-3 md:px-6">
           <.attachment_tray :if={@uploads} uploads={@uploads} />
+          <.mode_switch agent={@agent} />
           <div id="chat-form-wrapper" phx-update="ignore">
             <form
               id="chat-form"
@@ -589,6 +590,62 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   end
 
   # --- Attachment tray ---
+
+  # The composer's Discuss / Build switch — SERVER state (the agent's `mode`,
+  # persisted + broadcast, so a reload and every other viewer agree), rendered
+  # only when the live harness advertises a plan mode. Discuss puts the harness
+  # in that mode: it reads, thinks and talks, and cannot edit; Build is the mode
+  # it booted in. The send path is identical either way — the switch changes
+  # what the harness may DO with the prompt, not how it gets there.
+  #
+  # Its own row above the input, flush with Send's edge, rather than inside the
+  # input row: two labelled segments plus paperclip + send leave a 402px phone
+  # ~130px of textarea, narrower than the placeholder. It lives OUTSIDE the
+  # phx-update="ignore" wrapper (LiveView must be able to patch it). Shares the
+  # app's segmented-pill look (Nav.seg_item_class/1) rather than inventing one.
+  attr :agent, :map, required: true
+
+  defp mode_switch(assigns) do
+    assigns = assign(assigns, :discussing?, assigns.agent[:mode] == :discuss)
+
+    ~H"""
+    <div :if={@agent[:plan_mode_id]} class="flex items-center justify-end gap-3 pb-2">
+      <%!-- The consequence, said once, only while it departs from the default:
+      the reason nothing is being edited is on screen next to the control. --%>
+      <span :if={@discussing?} class="text-meta text-zinc-500 dark:text-zinc-400 truncate">
+        Plans and talks — no edits
+      </span>
+      <div
+        role="group"
+        aria-label="Agent mode"
+        class="inline-flex items-center bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded-sm flex-none"
+      >
+        <button
+          type="button"
+          phx-click="set_agent_mode"
+          phx-value-mode="discuss"
+          phx-value-id={@agent[:id]}
+          aria-pressed={to_string(@discussing?)}
+          title="Discuss — the agent plans and answers, and can't edit files"
+          class={["tap-target", LoopyardWeb.Components.Nav.seg_item_class(@discussing?)]}
+        >
+          Discuss
+        </button>
+        <button
+          type="button"
+          phx-click="set_agent_mode"
+          phx-value-mode="build"
+          phx-value-id={@agent[:id]}
+          aria-pressed={to_string(!@discussing?)}
+          title="Build — the agent can edit files and run commands"
+          class={["tap-target", LoopyardWeb.Components.Nav.seg_item_class(!@discussing?)]}
+        >
+          Build
+        </button>
+      </div>
+    </div>
+    """
+  end
 
   # The LV-rendered half of the composer's uploads: the (hidden) live file
   # input every entry point feeds, plus one chip per file — thumbnail for

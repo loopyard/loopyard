@@ -36,6 +36,40 @@ defmodule LoopyardWeb.AgentLiveTest do
     assert Process.alive?(view.pid)
   end
 
+  test "the composer's Discuss/Build switch renders off the row and its event is wired",
+       %{conn: conn, id: id} do
+    # No plan mode advertised → no switch.
+    {:ok, view, html} = live(conn, "/agents/#{id}")
+    refute html =~ "Agent mode"
+
+    # A row that advertises one gets the switch, showing the persisted setting.
+    :ets.update_element(:chat_agents, id, {2, row(id, %{plan_mode_id: "plan", mode: :discuss})})
+    send(view.pid, %Loopyard.Events.ChatAgent.StatusChanged{id: id, status: :idle})
+    assert has_element?(view, "button[phx-value-mode=discuss][aria-pressed=true]")
+
+    # The event reaches the agent API without a live GenServer crashing the LV.
+    render_click(view, "set_agent_mode", %{"id" => id, "mode" => "build"})
+    render_click(view, "set_agent_mode", %{"id" => id, "mode" => "bogus"})
+    assert Process.alive?(view.pid)
+  end
+
+  defp row(id, extra) do
+    Map.merge(
+      %{
+        id: id,
+        name: "Ops",
+        status: :idle,
+        scope: :system,
+        template_id: "system",
+        workstation_identity: "al-ident",
+        workspace_id: nil,
+        messages: [],
+        pending_messages: []
+      },
+      extra
+    )
+  end
+
   test "an unknown id sends you home", %{conn: conn} do
     assert {:error, {:live_redirect, %{to: "/"}}} = live(conn, "/agents/nope-nope")
   end

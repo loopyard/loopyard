@@ -82,6 +82,7 @@ defmodule Loopyard.Harness.ACP.Connection.Handshake do
       state
       |> Connection.session_ready(sid, result)
       |> Connection.maybe_set_model(result)
+      |> Connection.maybe_set_mode(result)
 
     {:noreply, Connection.reply_waiters(state, :ok)}
   end
@@ -120,6 +121,7 @@ defmodule Loopyard.Harness.ACP.Connection.Handshake do
       state
       |> Connection.session_ready(result["sessionId"], result)
       |> Connection.maybe_set_model(result)
+      |> Connection.maybe_set_mode(result)
 
     {:noreply, Connection.reply_waiters(state, :ok)}
   end
