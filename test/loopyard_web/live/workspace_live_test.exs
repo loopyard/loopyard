@@ -148,6 +148,23 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
       assert render(view) =~ "Test Agent"
     end
 
+    test "the sidebar offers the agent's account and switching it doesn't crash the page",
+         %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
+      {:ok, view, html} = live(conn, ws_chat_path(ws, setup_agent_id))
+
+      # The agent's current identity is always an option (so the control names
+      # where the agent is even with no credential on file).
+      assert html =~ ~s(name="workstation")
+      assert html =~ ~s|aria-label="Agent account (workstation)"|
+
+      render_change(view, "set_agent_workstation", %{
+        "agent-id" => setup_agent_id,
+        "workstation" => "no-such-workstation"
+      })
+
+      assert render(view) =~ "Test Agent"
+    end
+
     test "redirects to / for unknown workspace", %{conn: conn} do
       assert {:error, {:live_redirect, %{to: "/"}}} =
                live(conn, "/projects/nonexistent/workspaces/nonexistent")

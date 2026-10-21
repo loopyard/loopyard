@@ -12,8 +12,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
   alias LoopyardWeb.Components.Nav
 
   import LoopyardWeb.Components.Common, only: [dot: 1, control_btn: 1]
+  import LoopyardWeb.Components.Icon, only: [icon: 1]
   import LoopyardWeb.Components.Sidebar, only: [status_dot: 1, agent_display_status: 1]
   import LoopyardWeb.Live.WorkspaceLive.Components.Formatters, only: [time_ago: 1]
+  import LoopyardWeb.Live.WorkspaceLive.Components.Chat.Status, only: [workstation_label: 1]
 
   # Section-switcher model (categories / items / hrefs) — split out for the
   # module-size invariant. Chat renders; ChatNav decides what to render.
@@ -273,6 +275,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat.Header do
           <.dot color={status_dot(@agent.status)} />
           <span class="text-body font-semibold text-zinc-900 dark:text-zinc-100 truncate">
             {@agent.name}
+          </span>
+          <%!-- The ACCOUNT chip: whose credentials the harness runs under — who
+    pays for this agent. Iris = the human's presence (the same tone and
+    icon the prompt bands label the sender with), so "as Brad" reads as
+    the person, not a status. Changes from the Usage panel's Account row. --%>
+          <span
+            :if={@agent[:workstation_identity]}
+            class="inline-flex items-center gap-1 flex-none rounded-sm px-1.5 bg-violet-100 dark:bg-brand-iris-wash-dark text-body font-medium text-violet-600/80 dark:text-violet-300/70"
+            title="The workstation whose account this agent runs under"
+          >
+            <.icon name={:user} class="w-3.5 h-3.5 flex-none self-center" /> {workstation_label(
+              @agent
+            )}
           </span>
           <div class="flex-1"></div>
           <span

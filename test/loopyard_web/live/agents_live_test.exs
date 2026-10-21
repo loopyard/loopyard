@@ -35,6 +35,8 @@ defmodule LoopyardWeb.AgentsLiveTest do
          name: "Claude",
          status: :idle,
          workspace_id: "ws-nope",
+         harness: :claude,
+         workstation_identity: "rocketship",
          messages: [],
          pending_messages: [],
          last_activity_at: DateTime.utc_now()
@@ -69,6 +71,9 @@ defmodule LoopyardWeb.AgentsLiveTest do
     assert sys_at < ws_at
     # Other tests leave agents in ETS; only the shape of the count is ours.
     assert html =~ ~r/\d+ agents? · \d+ working/
+
+    # Whose account each agent runs under — who pays — on the row's meta line.
+    assert html =~ "Claude Code · Rocketship"
   end
 
   test "a status change re-renders the row", %{conn: conn, sid: sid} do

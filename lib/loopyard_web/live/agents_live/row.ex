@@ -38,6 +38,7 @@ defmodule LoopyardWeb.AgentsLive.Row do
           needs_you?: boolean(),
           loop: String.t() | nil,
           model: String.t() | nil,
+          account: String.t() | nil,
           activity: String.t(),
           last_activity_at: DateTime.t() | nil,
           path: String.t(),
@@ -67,6 +68,8 @@ defmodule LoopyardWeb.AgentsLive.Row do
         needs_you?: needs_you?,
         loop: loop_label(s[:harness]),
         model: s[:model],
+        # Whose account (credentials) it runs under — who pays for its tokens.
+        account: account_label(s[:workstation_identity]),
         activity: Birdseye.agent_activity(s),
         last_activity_at: s[:last_activity_at],
         path: path_for(s, scope, ws),
@@ -110,13 +113,13 @@ defmodule LoopyardWeb.AgentsLive.Row do
   end
 
   # Everything under the name, in one muted line: where it lives, what it
-  # runs on (the root only — the home card has no room), what it's doing and
-  # when it last did something.
+  # runs on and as whom (the root only — the home card has no room), what
+  # it's doing and when it last did something.
   defp meta_line(row, compact?) do
     [
       row.where,
       if(!compact? && row.loop,
-        do: Enum.join(Enum.reject([row.loop, row.model], &is_nil/1), " · ")
+        do: Enum.join(Enum.reject([row.loop, row.model, row.account], &is_nil/1), " · ")
       ),
       if(row.needs_you?, do: nil, else: row.activity),
       if(!compact?, do: ago(row.last_activity_at))
@@ -150,6 +153,15 @@ defmodule LoopyardWeb.AgentsLive.Row do
 
   defp loop_label(nil), do: nil
   defp loop_label(harness), do: Loopyard.Harness.Catalog.label(harness)
+
+  # The same label the chat's prompt bands and header chip use for the identity.
+  defp account_label(id) when is_binary(id) and id != "",
+    do:
+      LoopyardWeb.Live.WorkspaceLive.Components.Chat.Status.workstation_label(%{
+        workstation_identity: id
+      })
+
+  defp account_label(_), do: nil
 
   defp path_for(s, :system, _ws), do: "/agents/#{s.id}"
 

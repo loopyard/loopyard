@@ -51,6 +51,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   # Total so the sidebar matches the live status line mid-turn.
   attr :live_token_est, :integer, default: 0
 
+  # The workstations + which harnesses each can sign into
+  # (`Loopyard.Workstation.accounts/0`, a LiveView assign) — the Account row's
+  # options. Read in a handler, never in render.
+  attr :accounts, :list, default: []
+
   attr :expanded, :boolean,
     default: false,
     doc: """
@@ -115,7 +120,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       inert={!@expanded}
     >
       <div class="overflow-hidden min-h-0">
-        <.claude_usage agent={@agent} live_token_est={@live_token_est} />
+        <.claude_usage agent={@agent} live_token_est={@live_token_est} accounts={@accounts} />
 
         <%!-- Only the numbers not shown anywhere else: errors (a real signal) + how
     long it's been running / idle. The chat is the record of turns / tool
@@ -414,6 +419,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       assigns
       |> assign(:total_tokens, total_tokens)
       |> assign(:estimating?, est > 0)
+      |> assign(:account_options, account_options(assigns.agent, assigns[:accounts] || []))
 
     ~H"""
     <.section label="Usage">
@@ -444,6 +450,35 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
           </select>
         </form>
       </div>
+      <%!-- The ACCOUNT the agent runs under — which workstation's credentials
+    sign the harness in, i.e. who pays for its tokens. Per agent: two agents
+    in one workspace can bill two accounts. Picking another restarts the
+    harness under that identity (a :credentials restart — the conversation is
+    carried over from Loopyard's durable log, the native session is not). The
+    options are the workstations holding a credential for this harness, plus
+    the current one so the control always shows where the agent is. --%>
+      <div
+        :if={@account_options != []}
+        class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-5 text-body"
+      >
+        <span class="text-zinc-500 dark:text-zinc-400 flex-none">Account</span>
+        <form id={"agent-account-#{@agent.id}"} phx-change="set_agent_workstation" class="flex-none">
+          <input type="hidden" name="agent-id" value={@agent.id} />
+          <select
+            name="workstation"
+            aria-label="Agent account (workstation)"
+            class="focus-ring rounded-sm border-0 bg-transparent py-0 pl-1 pr-6 text-body text-right font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400"
+          >
+            <option
+              :for={{id, label} <- @account_options}
+              value={id}
+              selected={id == @agent[:workstation_identity]}
+            >
+              {label}
+            </option>
+          </select>
+        </form>
+      </div>
       <.info_row
         label="Total tokens"
         value={"#{if @estimating?, do: "~"}#{compact_number(@total_tokens)}"}
@@ -465,6 +500,42 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       />
     </.section>
     """
+  end
+
+  @doc """
+  The account picker's `{id, label}` options for an agent: every workstation
+  (from `Loopyard.Workstation.accounts/0`, a LiveView assign — never read in
+  render) with a credential for the agent's harness, plus the agent's current
+  identity even without one (so the control always names where the agent is;
+  the label says it has no credential). Empty for a system agent — its
+  identity is where it lives, not an account it moves between.
+  """
+  def account_options(agent, accounts) do
+    current = agent[:workstation_identity]
+
+    if Loopyard.Agents.scope(agent) == :workspace and is_binary(current) do
+      harness = Catalog.fetch(agent[:harness]).id
+
+      credentialed =
+        accounts
+        |> Enum.filter(&(harness in (&1[:harnesses] || [])))
+        |> Enum.map(& &1.id)
+
+      ids = if current in credentialed, do: credentialed, else: [current | credentialed]
+
+      Enum.map(ids, fn id ->
+        label =
+          LoopyardWeb.Live.WorkspaceLive.Components.Chat.Status.workstation_label(%{
+            workstation_identity: id
+          })
+
+        if id in credentialed,
+          do: {id, label},
+          else: {id, "#{label} · no #{Catalog.label(harness)} credential"}
+      end)
+    else
+      []
+    end
   end
 
   @doc "Shorten MCP tool name for display (strip server prefix)."

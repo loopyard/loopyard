@@ -36,6 +36,7 @@ defmodule LoopyardWeb.WorkspaceLive do
   @behaviour Loopyard.Events.WorkspaceSetup.Subscriber
   @behaviour Loopyard.Events.Workspaces.Subscriber
   @behaviour Loopyard.Events.ChangeCounts.Subscriber
+  @behaviour Loopyard.Events.Workstation.Subscriber
 
   @impl true
   def mount(%{"project_id" => project_id, "workspace_id" => workspace_id}, _session, socket) do
@@ -72,6 +73,10 @@ defmodule LoopyardWeb.WorkspaceLive do
       # Live ±N change badges in the god-mode rail.
       Loopyard.Events.ChangeCounts.subscribe()
 
+      # A credential pushed to ANY workstation changes the account picker's
+      # options (which identities can run this agent's harness).
+      Enum.each(Loopyard.Workstation.list(), &Loopyard.Events.Workstation.subscribe/1)
+
       # A workspace added/removed/status-changed in this project → refresh the
       # left switcher live (a fork someone makes appears without a reload).
       if project = extra_assigns[:project],
@@ -106,6 +111,11 @@ defmodule LoopyardWeb.WorkspaceLive do
       if connected?(socket),
         do: subscribe_iex(socket),
         else: assign(socket, :iex_session, %{level: nil})
+
+    # The account picker's options (the workstations + what each can sign
+    # into) — a few small file reads, done here and on CredentialsChanged, never
+    # in render.
+    socket = assign(socket, :accounts, Loopyard.Workstation.accounts())
 
     # Agents survive server restarts via an append-only ETF log. On a
     # fresh boot the :chat_agents ETS table is empty and list_agents
@@ -1087,6 +1097,21 @@ defmodule LoopyardWeb.WorkspaceLive do
   end
 
   @impl true
+  def handle_event("set_agent_workstation", %{"workstation" => ws_id} = params, socket) do
+    # Account picker (the Usage panel's second row): move the agent onto
+    # another workstation's credentials. The agent re-stamps itself and runs a
+    # :credentials restart (conversation carried over, native session dropped);
+    # the StatusChanged broadcast refreshes the row.
+    agent_id = params["agent-id"] || socket.assigns.selected_id
+
+    if is_binary(agent_id) and is_binary(ws_id) and ws_id != "" do
+      ChatAgent.set_workstation(agent_id, ws_id)
+    end
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("rename_agent", %{"name" => name} = params, socket) do
     # Sidebar rename passes agent id explicitly; context panel uses selected_id
     agent_id = params["id"] || socket.assigns.selected_id
@@ -1305,6 +1330,9 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   # God-mode sidebar (#55): any agent's status/tool activity, anywhere, rebuilds
   # the cross-project tree so the left rail stays live across all projects.
+
+  def handle_info(%Events.Workstation.CredentialsChanged{} = e, socket),
+    do: on_workstation_credentials_changed(e, socket)
 
   def handle_info(%Events.ChatAgentMessage.Message{} = e, socket), do: on_message(e, socket)
 
@@ -1578,6 +1606,12 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   @impl Events.ChatAgent.Subscriber
   def on_released(_event, socket), do: {:noreply, socket}
+
+  # --- Workstation subscriber callback ---
+
+  @impl Events.Workstation.Subscriber
+  def on_workstation_credentials_changed(%Events.Workstation.CredentialsChanged{}, socket),
+    do: {:noreply, assign(socket, :accounts, Loopyard.Workstation.accounts())}
 
   # --- ChatAgentMessage subscriber callbacks ---
 

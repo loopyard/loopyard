@@ -73,6 +73,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
         base_path={@base_path}
         live_token_est={ChatStatus.token_estimate(@streaming_text)}
         expanded={@agent_details_expanded}
+        accounts={Map.get(assigns, :accounts, [])}
       />
       <%!-- nil (not a status-only fallback) so service_context's `svc && …`
     short-circuits — a fallback map has no :ports and would KeyError. --%>
