@@ -320,6 +320,34 @@ new adapter boots on its own default unless the picker named one.
 `Initializer.rebuild_session_opts/1` on `:reload`), exposed as `harness` on the
 agent summary.
 
+**The ACCOUNT is per agent, too (`workstation_identity`).** A work container
+mounts ONE identity's `$HOME` (the workspace's workstation,
+`Workspace.workstation_id/1`), but which workstation's credentials a harness
+signs in with — who pays for the tokens — is the AGENT's stamp:
+`workstation_identity` rides state, the summary row and the `{:agent, …}` ETF
+record like `template_id`/`scope` do (defaulting to the workspace's identity,
+so an unstamped agent is unchanged; `Agents.Spawn` / `Onboarding.spawn_agent/2`
+take it as an opt). Delivery is files-in-`$HOME`, never argv: before every ACP
+session start `Harness.Identity.deliver/2` materializes the agent's identity
+env as `~/.loopyard/env.<identity>` in the container's home volume
+(`Env.sync_identity_into/2`; the file `unset`s every harness credential key
+before exporting its own, so a missing credential fails loudly instead of
+billing the host identity), and `Harness.ACP.docker_exec_cmd/3` exports
+`LOOPYARD_IDENTITY=<id>` and sources that file AFTER `~/.profile` so it wins —
+the token never appears in host `ps`. Two agents in one work container can
+thus run on two accounts. The sidebar's Account row (beside the harness/model
+picker, options = `Loopyard.Workstation.accounts/0` filtered by
+`Catalog.credentialed?/2`, computed in the LiveView, never in render) calls
+`ChatAgent.set_workstation/2` → `WorkstationControl` re-stamps state,
+`session_opts` AND `init_opts` (so a `:reload` can't revert it) and runs
+`restart_session(id, :credentials)`: the native session id is dropped (the new
+account can't see the old session) and the conversation reseeds from
+Loopyard's log; the harness-status block shows "Reconnecting…", the chat says
+nothing. `Workstation.reload_agents/1` (a credential push) restarts by the
+agent's stamp, not its workspace. System agents are not switchable — their
+identity is where they live. The chat header chip and the `/agents` row name
+the account.
+
 ## Fork readiness (provision-before-available)
 
 A fork is fully provisioned **before** it becomes available — "Open"
