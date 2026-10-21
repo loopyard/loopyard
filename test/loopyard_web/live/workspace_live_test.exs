@@ -76,6 +76,20 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
     File.write!(Path.join(compose_dir, "docker-compose.yml"), content)
   end
 
+  # Poll `fun` until truthy (PubSub + a cast have to land); false on timeout.
+  defp wait_for(fun, timeout \\ 1_000) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    do_wait_for(fun, deadline)
+  end
+
+  defp do_wait_for(fun, deadline) do
+    cond do
+      fun.() -> true
+      System.monotonic_time(:millisecond) > deadline -> false
+      true -> Process.sleep(10) && do_wait_for(fun, deadline)
+    end
+  end
+
   # Flush the LiveView mailbox by rendering, ensuring PubSub messages are processed.
   # We subscribe + drain to confirm delivery, then render the view.
   defp flush_lv(view) do
@@ -146,6 +160,50 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
       })
 
       assert render(view) =~ "Test Agent"
+    end
+
+    test "the composer's Discuss/Build switch persists on the agent and reaches every viewer",
+         %{conn: conn, workspace: ws, setup_agent_id: id} do
+      {:ok, view, html} = live(conn, ws_chat_path(ws, id))
+      {:ok, other, _} = live(conn, ws_chat_path(ws, id))
+
+      # The fake harness advertises a plan mode, so the switch renders — on Build.
+      assert html =~ "Agent mode"
+      assert has_element?(view, "button[phx-value-mode=discuss][aria-pressed=false]")
+      assert has_element?(view, "button[phx-value-mode=build][aria-pressed=true]")
+
+      render_click(view, "set_agent_mode", %{"id" => id, "mode" => "discuss"})
+
+      # Server state: the agent's summary (ETS) carries the setting…
+      assert wait_for(fn -> Loopyard.ChatAgent.get_state(id)[:mode] == :discuss end)
+      [{^id, %{mode: :discuss, plan_mode_id: "plan"}}] = :ets.lookup(:chat_agents, id)
+
+      # …and the broadcast flips BOTH views, the clicker and the bystander.
+      assert wait_for(fn ->
+               has_element?(other, "button[phx-value-mode=discuss][aria-pressed=true]")
+             end)
+
+      assert has_element?(view, "button[phx-value-mode=discuss][aria-pressed=true]")
+      assert render(view) =~ "Plans and talks"
+      assert render(view) =~ "· Discuss"
+
+      # Back to Build, and the consequence line goes with it.
+      render_click(view, "set_agent_mode", %{"id" => id, "mode" => "build"})
+      assert wait_for(fn -> Loopyard.ChatAgent.get_state(id)[:mode] == :build end)
+
+      assert wait_for(fn ->
+               has_element?(other, "button[phx-value-mode=build][aria-pressed=true]")
+             end)
+
+      refute render(view) =~ "Plans and talks"
+    end
+
+    test "a bogus mode value is ignored, not a crash",
+         %{conn: conn, workspace: ws, setup_agent_id: id} do
+      {:ok, view, _html} = live(conn, ws_chat_path(ws, id))
+      render_click(view, "set_agent_mode", %{"id" => id, "mode" => "plan"})
+      assert render(view) =~ "Test Agent"
+      assert Loopyard.ChatAgent.get_state(id)[:mode] == :build
     end
 
     test "redirects to / for unknown workspace", %{conn: conn} do

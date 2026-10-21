@@ -1087,6 +1087,21 @@ defmodule LoopyardWeb.WorkspaceLive do
   end
 
   @impl true
+  def handle_event("set_agent_mode", %{"mode" => mode} = params, socket) do
+    # The composer's Discuss / Build switch. Server state on the agent
+    # (ChatAgent.ModeControl): persisted, and the StatusChanged broadcast
+    # flips every viewer's control — nothing is assumed locally.
+    agent_id = params["id"] || socket.assigns.selected_id
+
+    with true <- is_binary(agent_id),
+         {:ok, setting} <- Loopyard.ChatAgent.ModeControl.parse(mode) do
+      ChatAgent.set_mode(agent_id, setting)
+    end
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("rename_agent", %{"name" => name} = params, socket) do
     # Sidebar rename passes agent id explicitly; context panel uses selected_id
     agent_id = params["id"] || socket.assigns.selected_id
