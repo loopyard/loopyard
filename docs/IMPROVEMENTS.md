@@ -122,6 +122,44 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 `Harness.ACP` is now the default backend (`config :loopyard, :default_harness: Loopyard.Harness.ACP`; test.exs stays on `Harness.Fake`; the host-execution `Harness.Claude` is deleted). Cancel (`session/cancel`), resume (`session/load`), and system-prompt threading (#17 partial) landed. The remaining items below are now **known caveats of the default**, not blockers — the two that matter most for parity are #13 (human-gated permissions) and the #17 tool-policy/mcp_servers threading.
 
+12. **A background sub-agent's report never reaches its card (adapter gap).**
+    Claude Code's `Task`/`Agent` runs in the background by default (2.1.x): the
+    Agent tool call completes at once with an "async launched" receipt, the
+    sub-agent's calls stream with `parentToolUseId`, and its final report is
+    delivered to the parent as an internal task-notification turn — never as a
+    `tool_call_update` on the Agent call. The Translator closes the card at the
+    end of the turn with a one-line "finished in the background", so the report
+    is only visible through the parent's own summary. Two ways to do better:
+    (a) ask upstream (`@agentclientprotocol/claude-agent-acp`) to emit a
+    `tool_call_update` with the report (or the task-notification text) on the
+    original toolCallId when the async agent completes — the SDK message has
+    the `agentId`, and the adapter already maps it to the call; (b) read the
+    sub-agent's transcript ourselves: the launch receipt names `outputFile`
+    (`/tmp/claude-0/<cwd>/<session>/tasks/<agentId>.output`, JSONL, inside the
+    container) and `canReadOutputFile: true` — `Connection` could `docker exec
+    cat` it when the task-notification `usage_update` arrives and attach the
+    last assistant message as the card's result. See
+    docs/ARCHITECTURE.md "Sub-agents inside the harness".
+
+12b. **A transient-turn retry reuses the DEAD harness session and wedges the agent
+    for 30 minutes.** Seen twice on 2026-10-21 (isolated instance, system agent):
+    the adapter exited (`{:exit_status, 1}`, stderr ends "context canceled")
+    seconds after an MCP-bridge-mediated result reached the parent — once right
+    after a foreground sub-agent's report, once as an `ask_user` answer returned.
+    `Connection` stops `:normal`, the turn ends with `{:closed, …}`,
+    `StreamHandler.on_stream_done` schedules `{:retry_turn_now, …}` — and
+    `ChatAgent.start_turn/2` re-drives the prompt on `state.session`, the pid of
+    the Connection that just died. `Connection.prompt_context/1` swallows the
+    `noproc` and `prompt/4` is a cast, so the turn Task sits in
+    `Harness.ACP.stream/2`'s receive for the full `@turn_timeout` (10 min),
+    halts, retries (2/3, 3/3) — ~30 min of `:thinking` with no harness process
+    and nothing in the EventLog but the first "retry 1/3". Fix: route the retry
+    through `SessionManager.ensure_alive/1` (as `send_message` does) before
+    `start_turn`, and have `Harness.ACP.stream/2` fail fast on a dead conn.
+    Separately worth a look: why the adapter dies at that moment at all — the
+    same prompt + bridge driven directly over `docker run … claude-agent-acp`
+    (three runs) never did.
+
 13. **Plumb `session/request_permission` through to a real decision.** `Connection.handle_agent_request("session/request_permission", …)` surfaces a `%Event.PermissionRequest{}` but `StreamHandler.process_event/2` has no clause for it — it falls through `process_event(_other, state)` and is **dropped**, so the UI never sees it. Meanwhile `ACP.acp_permission_mode/1` hardcodes `:auto_allow` (Connection picks the first `allow*` option). Wire the event into StreamHandler → an approval card (reuse the `Harness.Approvals` broker), and add the `:ask` permission mode (#7) so a human gates the call instead of auto-allowing. Until then, an ACP agent is bounded only by the container sandbox, not per-tool policy (see SECURITY.md → ACP adapter trust boundary).
 
 16. **Token accounting fixed; dollar cost still zeroed.** With claude-agent-acp@0.60.0 the Translator consumes `usage_update` notifications: `input_tokens` is the session's REAL context usage, so `context_utilization` moves and the 92% proactive compaction + context warnings work under ACP (this was the root enabler of the old OOM death spiral, now also broken by the mid-turn-crash compaction breaker in `chat_agent.ex`). Output tokens remain a byte-estimate and `cost_usd` stays 0.0 — the adapter doesn't price turns. Containers stamped from the pre-v2 image emit no `usage_update` and behave as before until re-stamped.

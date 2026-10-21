@@ -25,16 +25,19 @@ defmodule Loopyard.ChatAgent.ToolConfig do
     "WebFetch"
   ]
 
-  # Native tools that container-only agents must NEVER use. The
-  # `allowed_tools` allowlist alone isn't enough — with
-  # --dangerously-skip-permissions the SDK still allows native tools
-  # by default. We pass this list as `disallowed_tools` to make the
-  # block explicit and survive any future allowlist holes.
+  # Native tools that a HOST-SIDE harness must never use — the deny list the
+  # old in-process ClaudeCode backend passed as `disallowed_tools`. That
+  # backend is gone: every harness now runs IN its container over ACP, where
+  # these native tools are exactly what the agent should use (Bash/Edit/Read
+  # against the mounted volume — the container is the boundary), and ACP has
+  # no `disallowed_tools` at all (`Harness.ACP` ignores this list; see its
+  # moduledoc's known gaps). The Initializer still builds the opt for parity;
+  # nothing consumes it on the live path.
   #
-  # Bash escape was the smoking gun: agents would `cd /Users/.../loopyard`
-  # and edit the host clone, while the running container kept reading
-  # the docker volume copy. Edit/Write/Read with absolute paths did
-  # the same thing.
+  # History, for the day a host-side harness returns: Bash escape was the
+  # smoking gun — agents would `cd /Users/.../loopyard` and edit the host
+  # clone while the container kept reading the volume copy. Edit/Write/Read
+  # with absolute paths did the same thing.
   @denied_native_tools_for_container_agents [
     "Bash",
     "Edit",
@@ -44,14 +47,14 @@ defmodule Loopyard.ChatAgent.ToolConfig do
     "Grep",
     "MultiEdit",
     "NotebookEdit",
-    # Task spawns a sub-agent that shares our MCP session but has its
-    # own synthetic agent_id. Every MCP tool call the sub-agent makes
-    # is rejected by Loopyard.Tool.authorize_agent/2 ("agent_id
-    # mismatch"), silently looping until it burns tokens or gives up.
-    # Sub-agents would also violate our workspace boundary (one agent
-    # = one workspace_id). Until we design sub-agent identity properly,
-    # disable Task.
-    "Task",
+    # Task/Agent (a harness-native sub-agent) is ALLOWED in-container and is
+    # deliberately absent here. On the old in-process path a sub-agent's MCP
+    # calls failed `authorize_agent/2` (a synthetic agent_id per sub-agent);
+    # over the ACP MCP bridge identity comes from the bearer token in the
+    # session's `mcpServers` spec, which the sub-agent shares with its parent
+    # (verified live 2026-10-21: a sub-agent called a bridge tool and a native
+    # tool without an auth error). Its calls nest under the parent's card —
+    # docs/ARCHITECTURE.md "Sub-agents inside the harness".
     # The native AskUserQuestion can't reach our UI / round-trip in headless
     # mode. Route questions through the `ask_user` MCP tool instead, which shows
     # an interactive card and waits for the answer (Loopyard.Harness.Questions).
