@@ -77,6 +77,11 @@ defmodule Loopyard.DockerDaemon do
     :persistent_term.put({__MODULE__, :up}, true)
     Loopyard.EventLog.info("docker", "daemon recovered — agents resume on their own")
     reapply_inotify()
+    # Canonical projects first, synchronously: a boot with the daemon down
+    # couldn't confirm a single volume, so `Onboarding.restore/0` registered
+    # nothing and the home page sat empty. The re-run is idempotent, and
+    # revive_services/0 below iterates the registry — it must see them.
+    restore_fun().()
     revive_services()
     %{state | status: :up, fails: 0, heal_attempts: 0, announced: false}
   end
@@ -171,6 +176,22 @@ defmodule Loopyard.DockerDaemon do
     fun.()
   rescue
     _ -> :error
+  end
+
+  # Re-register what a daemon-down boot skipped. Injection seam for tests,
+  # same pattern as the probe/heal fns.
+  defp restore_fun do
+    Application.get_env(:loopyard, :docker_restore_fun, fn ->
+      try do
+        Loopyard.Onboarding.restore()
+      rescue
+        e ->
+          Loopyard.EventLog.warning(
+            "docker",
+            "canonical restore failed: " <> Exception.message(e)
+          )
+      end
+    end)
   end
 
   # Userland heal: colima VMs run as the user — no host sudo anywhere.

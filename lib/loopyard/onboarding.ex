@@ -28,6 +28,8 @@ defmodule Loopyard.Onboarding do
 
   alias Loopyard.Tools.Container.Helpers
 
+  require Logger
+
   @doc """
   Create a project (new blank, or existing via `remote:`), register it, and
   return `{:ok, project, main_workspace}` with a code-ready `main` workspace.
@@ -223,12 +225,21 @@ defmodule Loopyard.Onboarding do
   end
 
   @doc """
-  Re-register persisted canonical projects + their workspaces on boot (#19).
-  Skips any whose volumes no longer exist (project/workspace was destroyed).
+  Re-register persisted canonical projects + their workspaces (#19). Runs on
+  boot (`Application.start`) and AGAIN whenever `DockerDaemon` sees the daemon
+  come back. Skips any whose volumes no longer exist (project/workspace was
+  destroyed) — and that check asks Docker, so with the daemon down at boot
+  EVERY project looks gone and the home page is empty until the recovery
+  re-run lands. Idempotent: a project or workspace already in ETS is left
+  exactly as it is (a re-run must never reset a live workspace's `status`
+  or `workstation_id`), and nothing here writes `canonical_projects.json`.
   """
   @spec restore() :: :ok
   def restore do
-    for {project_id, entry} <- Loopyard.CanonicalStore.load(),
+    store = Loopyard.CanonicalStore.load()
+
+    for {project_id, entry} <- store,
+        is_nil(ProjectRegistry.get_project(project_id)),
         VolumeManager.volume_exists?(CanonicalRepo.volume_name(project_id)) do
       ProjectRegistry.register(%{
         id: project_id,
@@ -241,14 +252,28 @@ defmodule Loopyard.Onboarding do
         source_config: %{remote: entry["remote"]},
         added_at: DateTime.utc_now()
       })
+    end
 
-      for ws <- entry["workspaces"] || [],
-          VolumeManager.volume_exists?(VolumeManager.code_volume_name(ws["id"])) do
-        register_workspace(project_id, ws["id"], ws["branch"], is_main: ws["is_main"])
-        # Always-on per branch: bring each restored branch's work container back
-        # up after a server restart (best-effort, async).
-        start_work_async(ws["id"])
-      end
+    # Workspaces are checked independently of their project: a project row
+    # that survived (or was registered by an earlier run) can still be
+    # missing a branch the daemon couldn't confirm the first time.
+    for {project_id, entry} <- store,
+        ProjectRegistry.get_project(project_id),
+        ws <- entry["workspaces"] || [],
+        is_nil(WorkspaceRegistry.get_workspace(ws["id"])),
+        VolumeManager.volume_exists?(VolumeManager.code_volume_name(ws["id"])) do
+      register_workspace(project_id, ws["id"], ws["branch"], is_main: ws["is_main"])
+      # Always-on per branch: bring each restored branch's work container back
+      # up after a server restart (best-effort, async).
+      start_work_async(ws["id"])
+    end
+
+    if map_size(store) > 0 and
+         Enum.all?(store, fn {id, _} -> is_nil(ProjectRegistry.get_project(id)) end) do
+      Logger.warning(
+        "[Onboarding] canonical restore registered 0 of #{map_size(store)} projects — " <>
+          "Docker unreachable? They come back when the daemon does (DockerDaemon re-runs restore)."
+      )
     end
 
     :ok

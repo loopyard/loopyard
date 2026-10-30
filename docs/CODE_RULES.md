@@ -526,6 +526,8 @@ When a pattern exists, use it. Don't write your own version.
 | Write file to volume | `VolumeIO.write_file(vol, path, content)` | Rolling your own base64 + docker exec |
 | Clone repo into volume | `VolumeCloner.clone_into_volume(vol, url)` | Inline git clone + docker run |
 
+**A boot-time restore that asks Docker must be idempotent and re-run on daemon recovery.** `Onboarding.restore/0` gates every canonical project and workspace on `VolumeManager.volume_exists?/1`, which is a `docker volume inspect`. With the daemon down at boot (a stale Colima socket, a cold VM) every volume reads as missing, the restore registers nothing, and the home page shows "Add your first project" over a fully intact disk — seen live on 2026-10-30. The fix is two-sided and both halves are required: the restore skips rows that already exist in ETS (so a re-run never resets a live workspace's `status`/`workstation_id` or duplicates a branch), and `DockerDaemon.handle_up/1` re-runs it on the down→up transition, synchronously, BEFORE `revive_services/0` iterates the registry. Any new restore that consults Docker (ports, volumes, containers) follows the same shape — never let "Docker said no" be indistinguishable from "it was deleted".
+
 **Every Docker CLI call goes through `Loopyard.Docker`.** No `System.cmd("docker", ...)` anywhere else — the one exception is the `DockerDaemon` liveness probe (see "Every Docker shell-out honours the daemon gate"). Docker.docker/2 handles timeouts, telemetry, and error formatting. Docker.stream/3 handles long-running commands with callbacks. Docker.open_port/1 handles raw port needs (Observer events, terminal).
 
 ## URL variants go in the path, never in a query string

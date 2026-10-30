@@ -217,6 +217,15 @@ defmodule Loopyard.OnboardingTest do
       WorkspaceRegistry.list_workspaces(project.id) |> Enum.map(& &1.name) |> Enum.sort()
 
     assert names == ["branchx", "main"]
+
+    # Idempotent: the daemon keeper re-runs restore on every Docker recovery,
+    # so a re-run must leave live rows alone — never reset a workspace's
+    # status or identity, never duplicate a branch.
+    main_ws = Enum.find(WorkspaceRegistry.list_workspaces(project.id), & &1.is_main)
+    WorkspaceRegistry.update_workspace_status(main_ws.id, :running)
+    Onboarding.restore()
+    assert WorkspaceRegistry.get_workspace(main_ws.id).status == :running
+    assert length(WorkspaceRegistry.list_workspaces(project.id)) == 2
   end
 
   test "github sync wiring: attach a remote (persisted) + sync pushes canonical main to it" do

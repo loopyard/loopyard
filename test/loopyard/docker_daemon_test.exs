@@ -8,6 +8,7 @@ defmodule Loopyard.DockerDaemonTest do
     on_exit(fn ->
       Application.delete_env(:loopyard, :docker_probe_fun)
       Application.delete_env(:loopyard, :docker_heal_fun)
+      Application.delete_env(:loopyard, :docker_restore_fun)
       :persistent_term.put({DockerDaemon, :up}, true)
     end)
 
@@ -20,6 +21,7 @@ defmodule Loopyard.DockerDaemonTest do
     test = self()
     Application.put_env(:loopyard, :docker_probe_fun, fn -> :error end)
     Application.put_env(:loopyard, :docker_heal_fun, fn -> send(test, :healed) end)
+    Application.put_env(:loopyard, :docker_restore_fun, fn -> send(test, :restored) end)
 
     tick()
     # One strike: still optimistic.
@@ -30,13 +32,22 @@ defmodule Loopyard.DockerDaemonTest do
     _ = :sys.get_state(DockerDaemon)
     refute DockerDaemon.up?()
     assert_receive :healed, 1_000
+    # Nothing to re-register while the daemon is still down.
+    refute_received :restored
 
-    # Probe comes back → up flips silently; heal budget resets.
+    # Probe comes back → up flips silently; heal budget resets — and the
+    # canonical restore re-runs, because a daemon-down boot registered nothing.
     Application.put_env(:loopyard, :docker_probe_fun, fn -> :ok end)
     tick()
     state = :sys.get_state(DockerDaemon)
     assert DockerDaemon.up?()
     assert state.heal_attempts == 0
+    assert_receive :restored, 1_000
+
+    # Steady-state up ticks don't re-run it: only the down→up transition does.
+    tick()
+    _ = :sys.get_state(DockerDaemon)
+    refute_received :restored
   end
 
   test "heal budget is bounded — then one decisive announcement, no hot loop" do
