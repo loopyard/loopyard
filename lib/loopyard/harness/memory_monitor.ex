@@ -68,18 +68,24 @@ defmodule Loopyard.Harness.MemoryMonitor do
   # --- sweep ---
 
   @doc """
-  One sweep: read container memory once, restart every IDLE agent whose work
-  container is over the soft limit. Public for a manual `mix loopyard.rpc` poke.
+  One sweep: read container memory once, restart the agents of every work
+  container that is over the soft limit AND QUIET. Public for a manual
+  `mix loopyard.rpc` poke.
+
+  The reading is per CONTAINER, and a container is shared by every agent in
+  the workspace — so the unit of the decision is the workspace, not the agent.
+  While any agent there is mid-turn the memory is in use, not bloat: restarting
+  its idle neighbours frees little, and the next sweep (60s later, still over
+  the limit) would restart them again, forever. Wait until all of them are idle.
   """
   def sweep do
     usage = container_memory_bytes()
     soft = soft_limit_bytes()
 
-    for summary <- live_idle_agents(),
-        ws = summary[:workspace_id],
-        is_binary(ws),
+    for {ws, agents} <- reclaimable(agent_summaries()),
         bytes = usage[WorkContainer.container_name(ws)],
-        is_integer(bytes) and bytes > soft do
+        is_integer(bytes) and bytes > soft,
+        summary <- agents do
       reclaim(summary, bytes, soft)
     end
 
@@ -113,10 +119,21 @@ defmodule Loopyard.Harness.MemoryMonitor do
     end
   end
 
-  # Only agents that are alive AND idle — never interrupt an active turn.
-  defp live_idle_agents do
+  @doc """
+  The workspaces whose agents may be restarted to reclaim memory, as
+  `[{workspace_id, [summary]}]`: only those where EVERY agent is idle — never
+  interrupt an active turn, and never churn idle agents beside a busy one.
+  """
+  @spec reclaimable([map()]) :: [{String.t(), [map()]}]
+  def reclaimable(summaries) do
+    summaries
+    |> Enum.filter(&is_binary(&1[:workspace_id]))
+    |> Enum.group_by(& &1[:workspace_id])
+    |> Enum.filter(fn {_ws, agents} -> Enum.all?(agents, &(&1[:status] == :idle)) end)
+  end
+
+  defp agent_summaries do
     Loopyard.ChatAgent.list_agent_summaries()
-    |> Enum.filter(fn a -> a[:status] == :idle end)
   rescue
     _ -> []
   end

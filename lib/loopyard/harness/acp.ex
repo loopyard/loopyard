@@ -186,9 +186,21 @@ defmodule Loopyard.Harness.ACP do
     # `proc_match` keeps the sweep scoped to THIS harness's process tree: a
     # Codex adapter must not reap a live Claude adapter (or vice versa) when
     # both are running in the same work container.
+    #
+    # And `owned` scopes it to THIS AGENT. A work container is shared by every
+    # agent in the workspace, and a sibling's healthy long-running adapter is
+    # exactly "old" — unscoped, each agent's (re)start kill -9'd every other
+    # agent's harness, and the disposable-harness recovery hid it as a quiet
+    # recycle. Each launch stamps its process tree with LOOPYARD_AGENT (below),
+    # so the sweep takes only processes carrying this agent's stamp, plus
+    # UNSTAMPED ones (orphans from before the stamp existed).
+    agent = agent_stamp(Keyword.get(launch_opts, :agent))
+
     reap =
       ~S|now=$(cut -d. -f1 /proc/uptime); for d in /proc/[0-9]*; do pid=${d##*/}; | <>
-        ~s|if [ "$pid" != "$$" ] && grep -qa #{proc_match} "$d/cmdline" 2>/dev/null; then | <>
+        ~s|if [ "$pid" != "$$" ] && grep -qa #{proc_match} "$d/cmdline" 2>/dev/null| <>
+        owned_clause(agent) <>
+        "; then " <>
         ~S|st=$(cut -d" " -f22 "$d/stat" 2>/dev/null); if [ -n "$st" ]; then | <>
         "age=$(( now - st/100 )); if [ \"$age\" -gt #{@reap_min_age_s} ]; then " <>
         ~S|kill -9 "$pid" 2>/dev/null; fi; fi; fi; done; |
@@ -213,13 +225,56 @@ defmodule Loopyard.Harness.ACP do
         brief_export(spec, Keyword.get(launch_opts, :brief))
 
     inner =
-      reap <>
+      instance_marker_cmd() <>
+        reap <>
         ~S|. "$HOME/.profile" 2>/dev/null; | <>
         identity_source(Keyword.get(launch_opts, :identity)) <>
-        exports <> launch
+        exports <> agent_export(agent) <> launch
 
     "docker exec -i #{container} sh -c '#{inner}'"
   end
+
+  @doc """
+  A token unique to THIS Loopyard instance (its home directory + Docker
+  resource prefix), carried as an inert no-op at the head of every harness
+  launch script so the host-side `docker exec` client is recognizable in `ps`.
+
+  It is what lets boot reap ITS OWN stale exec clients (`Application.start`)
+  without touching anyone else's: the old host-wide pattern matched every
+  Loopyard on the machine, so a test-suite run or a second instance killed the
+  live server's harnesses — and it never matched Codex.
+  """
+  @spec instance_marker() :: String.t()
+  def instance_marker do
+    seed = Path.expand(Loopyard.Workspace.home_dir()) <> "\n" <> Loopyard.Docker.prefix()
+    tag = :crypto.hash(:sha256, seed) |> Base.encode16(case: :lower) |> binary_part(0, 12)
+    "loopyard-instance=" <> tag
+  end
+
+  defp instance_marker_cmd, do: ": " <> instance_marker() <> "; "
+
+  # The agent id is interpolated into a single-quoted `sh -c`; refuse anything
+  # outside the id charset rather than quote it.
+  defp agent_stamp(nil), do: nil
+
+  defp agent_stamp(agent) when is_binary(agent) do
+    unless agent =~ ~r/\A[A-Za-z0-9_-]+\z/ do
+      raise ArgumentError, "invalid agent id for a harness launch: #{inspect(agent)}"
+    end
+
+    "LOOPYARD_AGENT=" <> agent
+  end
+
+  # No agent (a caller that predates the stamp): sweep by harness alone, as before.
+  defp owned_clause(nil), do: ""
+
+  defp owned_clause(stamp) do
+    ~s( && { grep -qa "#{stamp}" "$d/environ" 2>/dev/null) <>
+      ~S( || ! grep -qa "LOOPYARD_AGENT=" "$d/environ" 2>/dev/null; })
+  end
+
+  defp agent_export(nil), do: ""
+  defp agent_export(stamp), do: "export " <> stamp <> "; "
 
   # PER-AGENT IDENTITY. ~/.profile sources the container's HOST identity env
   # (the workspace's workstation — the home volume the work container mounts).
@@ -327,7 +382,9 @@ defmodule Loopyard.Harness.ACP do
                 docker_exec_cmd(container, Keyword.get(opts, :harness),
                   brief: brief,
                   # The account this agent runs under (see identity_source/1).
-                  identity: Keyword.get(opts, :workstation_identity)
+                  identity: Keyword.get(opts, :workstation_identity),
+                  # Whose process tree this is — scopes the orphan sweep.
+                  agent: Keyword.get(opts, :agent_id)
                 )
             )
 

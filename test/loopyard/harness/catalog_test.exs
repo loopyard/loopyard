@@ -59,6 +59,48 @@ defmodule Loopyard.Harness.CatalogTest do
       assert claude =~ ~s|grep -qa claude "$d/cmdline"|
     end
 
+    test "the orphan sweep is scoped to the launching AGENT, so siblings survive" do
+      # Every agent in a workspace shares one work container, and a sibling's
+      # healthy adapter is "old" by the age guard — an unscoped sweep kill -9'd
+      # it on every (re)start of any other agent.
+      cmd = ACP.docker_exec_cmd("work-1", :claude, agent: "abc123")
+
+      # Take a process only if it carries THIS agent's stamp, or no stamp at all
+      # (an orphan from before stamps existed)…
+      assert cmd =~ ~s|grep -qa "LOOPYARD_AGENT=abc123" "$d/environ"|
+      assert cmd =~ ~s(|| ! grep -qa "LOOPYARD_AGENT=" "$d/environ")
+      # …and stamp this launch's own tree, before the adapter is exec'd.
+      assert cmd =~ "export LOOPYARD_AGENT=abc123; "
+      stamp_at = :binary.match(cmd, "export LOOPYARD_AGENT") |> elem(0)
+      exec_at = :binary.match(cmd, "exec \"$h\"") |> elem(0)
+      assert stamp_at < exec_at
+
+      # Without an agent the sweep is by harness alone (the old behaviour).
+      refute ACP.docker_exec_cmd("work-1", :claude) =~ "LOOPYARD_AGENT"
+
+      # The id goes into a single-quoted sh -c: nothing outside its charset.
+      assert_raise ArgumentError, fn ->
+        ACP.docker_exec_cmd("work-1", :claude, agent: "x'; rm -rf / #")
+      end
+    end
+
+    test "every launch carries this instance's marker, and boot reaps by it alone" do
+      marker = ACP.instance_marker()
+      assert marker =~ ~r/\Aloopyard-instance=[0-9a-f]{12}\z/
+
+      # An inert no-op at the head of the script: visible in host `ps`,
+      # harness-agnostic (Codex clients are reaped too).
+      for harness <- [:claude, :codex] do
+        assert ACP.docker_exec_cmd("work-1", harness) =~ "sh -c ': #{marker}; "
+      end
+
+      # Boot must reap only ITS OWN stale clients — never by adapter name,
+      # which matched every Loopyard on the machine.
+      app = File.read!("lib/loopyard/application.ex")
+      assert app =~ "Loopyard.Harness.ACP.instance_marker()"
+      refute app =~ ~s|["-f", "claude-|
+    end
+
     test "harness-specific env is exported after ~/.profile so it wins" do
       cmd = ACP.docker_exec_cmd("work-1", :codex)
 

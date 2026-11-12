@@ -12,15 +12,20 @@ defmodule Loopyard.Application do
     # Web Push VAPID keys: load-or-mint + hand to :ex_nudge (see WebPush).
     Loopyard.WebPush.ensure_keys()
 
-    # Reap ACP exec clients orphaned by a previous VM. `docker exec -i …
-    # claude-agent-acp` clients survive BEAM death (quiet pipes never EPIPE),
-    # pile up across restarts, and hold kernel resources (they saturated the
-    # Colima VM's inotify budget once — every session then hung at
-    # session/new). At this point in boot NO supervisor has spawned a session
-    # yet, so every matching client on the host is ours and stale. Silent
-    # no-op when there are none (pkill exit 1). The pattern matches both the
-    # renamed adapter and the legacy claude-code-acp launch line.
-    _ = System.cmd("pkill", ["-f", "claude-(agent|code)-acp"], stderr_to_stdout: true)
+    # Reap harness exec clients orphaned by a previous VM OF THIS INSTANCE.
+    # `docker exec -i … <adapter>` clients survive BEAM death (quiet pipes
+    # never EPIPE), pile up across restarts, and hold kernel resources (they
+    # saturated the Colima VM's inotify budget once — every session then hung
+    # at session/new). At this point in boot NO supervisor has spawned a
+    # session yet, so every client carrying OUR instance marker is ours and
+    # stale. Scoped by that marker (`Harness.ACP.instance_marker/0`, an inert
+    # no-op in every launch script) and nothing else: the pattern used to be
+    # the Claude adapter's name, which killed the harnesses of every other
+    # Loopyard on the machine whenever anything booted the app (a test run, a
+    # second instance) and never matched a Codex client at all. Silent no-op
+    # when there are none (pkill exit 1).
+    _ =
+      System.cmd("pkill", ["-f", Loopyard.Harness.ACP.instance_marker()], stderr_to_stdout: true)
 
     children = [
       # --- Infrastructure layer (survives web reloads) ---

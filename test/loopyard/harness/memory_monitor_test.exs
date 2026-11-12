@@ -32,6 +32,24 @@ defmodule Loopyard.Harness.MemoryMonitorTest do
     end
   end
 
+  describe "reclaimable/1" do
+    test "a workspace is reclaimable only when every agent in its container is idle" do
+      summaries = [
+        %{id: "a1", workspace_id: "quiet", status: :idle},
+        %{id: "a2", workspace_id: "quiet", status: :idle},
+        # One agent mid-turn: the container's memory is in USE. Restarting its
+        # idle neighbour frees little and would repeat every sweep.
+        %{id: "b1", workspace_id: "busy", status: :idle},
+        %{id: "b2", workspace_id: "busy", status: :thinking},
+        # System agents have no work container to measure.
+        %{id: "s1", workspace_id: nil, status: :idle}
+      ]
+
+      assert [{"quiet", agents}] = MemoryMonitor.reclaimable(summaries)
+      assert Enum.map(agents, & &1.id) |> Enum.sort() == ["a1", "a2"]
+    end
+  end
+
   describe "unit_multiplier/1" do
     defp mult(u), do: apply(MemoryMonitor, :unit_multiplier, [u])
 
