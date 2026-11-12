@@ -963,20 +963,36 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
     end
 
     @tag timeout: 15_000
-    test "context panel always shows the agent hero and a way to open detail",
+    test "context panel shows the agent hero with its controls open, and the hero folds them",
          %{conn: conn, agent_id: id, workspace: ws} do
-      {:ok, _view, html} = live(conn, ws_chat_path(ws, id))
+      {:ok, view, html} = live(conn, ws_chat_path(ws, id))
 
-      # The hero (name + live state) is what ALWAYS renders — Activity /
-      # Usage / Docker now live behind the collapsed "Details" fold, so
-      # asserting them here would be asserting the fold is open, not that
-      # the panel rendered.
+      # The hero (name + live state) always renders.
       assert html =~ "Context Test"
 
       # The whole hero is the disclosure control, so its accessible NAME is the
       # agent identity (better than a generic "Show details"); `aria-expanded`
-      # is what states the fold. Collapsed is the default.
-      assert html =~ ~s(aria-expanded="false")
+      # is what states the fold. OPEN is the default: the detail holds the
+      # harness/model and account pickers, and a collapsed default hid them
+      # behind a grab bar (on a phone the detail screen opened blank).
+      assert html =~ ~s(aria-expanded="true")
+      refute html =~ ~s(aria-expanded="false")
+      assert html =~ ~s|aria-label="Agent harness and model"|
+      assert html =~ "Add an account…"
+
+      # Folding is still one tap, and it's server state.
+      assert render_click(view, "toggle_agent_details", %{}) =~ ~s(aria-expanded="false")
+    end
+
+    test "the Account menu's \"Add an account…\" goes to the workstations page",
+         %{conn: conn, agent_id: id, workspace: ws} do
+      {:ok, view, _html} = live(conn, ws_chat_path(ws, id))
+
+      assert {:error, {:live_redirect, %{to: "/workstations"}}} =
+               render_change(view, "set_agent_workstation", %{
+                 "agent-id" => id,
+                 "workstation" => "+"
+               })
     end
   end
 end

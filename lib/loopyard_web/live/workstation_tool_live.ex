@@ -12,8 +12,8 @@ defmodule LoopyardWeb.WorkstationToolLive do
 
   alias Loopyard.Terminal
   alias Loopyard.Workstation
-  alias Loopyard.Events.Workstation.CredentialsChanged
-  alias Loopyard.Workstation.{Container, Env, Integration}
+  alias Loopyard.Events.Workstation.{CredentialsChanged, SignInChanged}
+  alias Loopyard.Workstation.{Container, Env, Integration, SignIn}
 
   @behaviour Loopyard.Events.Workstation.Subscriber
 
@@ -21,9 +21,23 @@ defmodule LoopyardWeb.WorkstationToolLive do
   def handle_info(%CredentialsChanged{} = e, socket),
     do: on_workstation_credentials_changed(e, socket)
 
+  def handle_info(%SignInChanged{} = e, socket),
+    do: on_workstation_sign_in_changed(e, socket)
+
   @impl Loopyard.Events.Workstation.Subscriber
   def on_workstation_credentials_changed(%CredentialsChanged{}, socket) do
     {:noreply, recheck(socket)}
+  end
+
+  # The guided sign-in's progress. Server state (`Workstation.SignIn`), so a
+  # second window on this page — or a reload mid-flow — shows the same step.
+  @impl Loopyard.Events.Workstation.Subscriber
+  def on_workstation_sign_in_changed(%SignInChanged{tool: tool} = e, socket) do
+    if tool == socket.assigns.ig.id do
+      {:noreply, assign(socket, :sign_in, %{phase: e.phase, url: e.url, error: e.error})}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
@@ -82,10 +96,19 @@ defmodule LoopyardWeb.WorkstationToolLive do
           |> assign(:console_container, nil)
           |> assign(:console_error, nil)
           |> assign(:term_nonce, 0)
+          |> assign(:sign_in, sign_in_status(socket, ws, tool))
 
         socket = if connected?(socket), do: boot(socket, ig, ws), else: socket
         {:ok, socket}
     end
+  end
+
+  # Where a guided sign-in stands, read on connect so a reload mid-flow lands
+  # on the same step (an in-memory call — no Docker).
+  defp sign_in_status(socket, ws, tool) do
+    if connected?(socket) and SignIn.supported?(tool),
+      do: SignIn.status(ws, tool),
+      else: %{phase: :idle, url: nil, error: nil}
   end
 
   # Kick off the async probes off the mount body — keeping the slow
@@ -150,6 +173,37 @@ defmodule LoopyardWeb.WorkstationToolLive do
     {:noreply, recheck(socket)}
   end
 
+  # --- Guided sign-in (Workstation.SignIn drives the vendor CLI) ---
+
+  def handle_event("sign_in_start", _params, socket) do
+    %{ig: ig, current_id: ws} = socket.assigns
+    # Progress (and a failure to start) arrives as SignInChanged.
+    _ = SignIn.begin(ws, ig.id)
+    {:noreply, socket}
+  end
+
+  def handle_event("sign_in_code", %{"code" => code}, socket) do
+    %{ig: ig, current_id: ws} = socket.assigns
+
+    case SignIn.submit_code(ws, ig.id, code) do
+      :ok ->
+        {:noreply, socket}
+
+      {:error, :invalid_code} ->
+        {:noreply, put_flash(socket, :error, "Paste the code exactly as #{ig.label} shows it.")}
+
+      {:error, _} ->
+        {:noreply,
+         put_flash(socket, :error, "That sign-in is no longer waiting — start it again.")}
+    end
+  end
+
+  def handle_event("sign_in_cancel", _params, socket) do
+    %{ig: ig, current_id: ws} = socket.assigns
+    SignIn.cancel(ws, ig.id)
+    {:noreply, socket}
+  end
+
   # Re-run the connected? probe. Shared by the manual button and the PubSub
   # arrival so both land on exactly one code path.
   defp recheck(socket) do
@@ -159,6 +213,12 @@ defmodule LoopyardWeb.WorkstationToolLive do
     |> assign(:status, :checking)
     |> start_async(:status, fn -> Integration.connected?(ig, ws) end)
   end
+
+  # "Sign in" until this workstation holds a credential; after that the same
+  # button swaps the account, so say so.
+  defp sign_in_label(ig, _status, :failed), do: "Try #{ig.label} sign-in again"
+  defp sign_in_label(ig, :connected, _phase), do: "Sign in to a different #{ig.label} account"
+  defp sign_in_label(ig, _status, _phase), do: "Sign in to #{ig.label}"
 
   # Fill doc placeholders: $LOOPYARD → `__ORIGIN__` (swapped for the real browser
   # origin client-side by the OriginText hook), $WS → the workstation.
@@ -191,7 +251,86 @@ defmodule LoopyardWeb.WorkstationToolLive do
           <p class="text-body text-zinc-500 dark:text-zinc-400 leading-relaxed">{@ig.blurb}</p>
         </div>
 
-        <%!-- DEFAULT: run it on your Mac --%>
+        <%!-- GUIDED SIGN-IN: the vendor's own login, driven for you. One
+        step on screen at a time; the token never reaches this page. --%>
+        <.section
+          :if={@ig[:sign_in]}
+          title={"Sign in with #{@ig.label}"}
+          hint={"Approve in #{@ig.label}'s own sign-in page, paste the code it gives you, done. Works from any device — no terminal."}
+        >
+          <div :if={@sign_in.phase in [:idle, :done, :failed]} class="space-y-2">
+            <p
+              :if={@sign_in.phase == :failed}
+              role="alert"
+              class="text-body text-rose-600 dark:text-rose-400"
+            >
+              {@sign_in.error}
+            </p>
+            <p
+              :if={@sign_in.phase == :done}
+              class="text-body text-emerald-700 dark:text-emerald-400"
+            >
+              Signed in. Agents on this account reload themselves.
+            </p>
+            <.button variant={:primary} phx-click="sign_in_start">
+              {sign_in_label(@ig, @status, @sign_in.phase)}
+            </.button>
+          </div>
+
+          <p
+            :if={@sign_in.phase == :starting}
+            class="text-body text-zinc-500 dark:text-zinc-400 animate-pulse"
+          >
+            Starting the sign-in…
+          </p>
+
+          <div :if={@sign_in.phase == :awaiting_code} class="space-y-6">
+            <div class="space-y-2">
+              <h3 class="text-meta font-medium text-zinc-700 dark:text-zinc-200">
+                1. Approve in {@ig.label}
+              </h3>
+              <.button variant={:primary} href={@sign_in.url}>Open {@ig.label} sign-in ↗</.button>
+              <p class="text-meta text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                It signs in whichever {@ig.label} account that browser is using. Adding a second
+                account? Switch accounts there before you approve.
+              </p>
+            </div>
+            <form id="sign-in-code" phx-submit="sign_in_code" class="space-y-2">
+              <h3 class="text-meta font-medium text-zinc-700 dark:text-zinc-200">
+                2. Paste the code it shows you
+              </h3>
+              <div class="flex gap-2">
+                <input
+                  type="text"
+                  name="code"
+                  autocomplete="off"
+                  autocapitalize="off"
+                  spellcheck="false"
+                  placeholder="paste the code"
+                  aria-label={"Code from #{@ig.label}"}
+                  class="flex-1 min-w-0 rounded-sm border border-zinc-200 dark:border-zinc-700 bg-transparent px-3 py-2 text-body font-mono placeholder:font-sans placeholder:text-zinc-400 focus-ring"
+                />
+                <.button variant={:primary} type="submit" class="flex-none">Finish</.button>
+              </div>
+            </form>
+            <button
+              type="button"
+              phx-click="sign_in_cancel"
+              class="focus-ring text-meta text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+
+          <p
+            :if={@sign_in.phase == :exchanging}
+            class="text-body text-zinc-500 dark:text-zinc-400 animate-pulse"
+          >
+            Checking the code with {@ig.label}…
+          </p>
+        </.section>
+
+        <%!-- Run it on your Mac (the default where there's no guided sign-in) --%>
         <.section
           title="Run this on your Mac"
           hint="On the machine where you're already logged in — it pipes the credential into this workstation."

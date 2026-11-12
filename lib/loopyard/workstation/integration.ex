@@ -54,6 +54,11 @@ defmodule Loopyard.Workstation.Integration do
       # the CLAUDE_CODE_OAUTH_TOKEN box below. No trusted-machine browser, no
       # `~/.claude` files, none of the short-lived-credential 401 treadmill.
       console: "claude setup-token",
+      # The guided, in-app version of that same command (`Workstation.SignIn`
+      # drives it: shows you the URL, takes the code, stores the token under
+      # `env`). `token_prefix` is how the token is recognized in the CLI's
+      # output. An integration without this key has no guided sign-in.
+      sign_in: %{command: "claude setup-token", token_prefix: "sk-ant-oat01-"},
       check: {:env, "CLAUDE_CODE_OAUTH_TOKEN"},
       lands: "CLAUDE_CODE_OAUTH_TOKEN — durable 1-year token; agents reload themselves"
     },

@@ -144,8 +144,27 @@ defmodule LoopyardWeb.Components.Workstation do
   attr :variant, :atom, default: :secondary, values: [:primary, :secondary]
   attr :type, :string, default: "button"
   attr :class, :string, default: ""
+
+  attr :href, :string,
+    default: nil,
+    doc: "Render the same control as an external link (opens a new tab)."
+
   attr :rest, :global, include: ~w(name value disabled form)
   slot :inner_block, required: true
+
+  def button(%{href: href} = assigns) when is_binary(href) do
+    ~H"""
+    <a
+      href={@href}
+      target="_blank"
+      rel="noopener noreferrer"
+      class={[button_class(@variant), @class]}
+      {@rest}
+    >
+      {render_slot(@inner_block)}
+    </a>
+    """
+  end
 
   def button(assigns) do
     ~H"""

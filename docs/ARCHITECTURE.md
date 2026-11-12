@@ -37,6 +37,8 @@ Loopyard.Supervisor (:one_for_one, max_restarts: 20, max_seconds: 10)
   │                 Workspace.Setup)
   ├── DynamicSupervisor (TerminalSupervisor)
   ├── Task.Supervisor (TaskSupervisor — all fire-and-forget Tasks go here)
+  ├── Workstation.SignIn (guided integration sign-ins: drives the vendor CLI's headless
+  │                       login in a throwaway container, stores the token on the workstation)
   ├── DynamicSupervisor (AgentSupervisor — agents with no workspace, e.g. the operator)
   ├── WorkspaceSupervisor (DynamicSupervisor)
   │   └── WorkspaceGroup (Supervisor, :one_for_all, max_restarts: 10 / 60s)

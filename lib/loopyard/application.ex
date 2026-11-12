@@ -62,6 +62,10 @@ defmodule Loopyard.Application do
       {DynamicSupervisor, name: Loopyard.TerminalSupervisor, strategy: :one_for_one},
       {Task.Supervisor, name: Loopyard.TaskSupervisor},
       Loopyard.WorkspaceSupervisor,
+      # Guided integration sign-ins ("Sign in to Claude") — one process, at
+      # most one flow per {workstation, tool}. After PubSub (it publishes),
+      # the Janitor (it tracks its container) and the TaskSupervisor.
+      Loopyard.Workstation.SignIn,
       # System agents' groups (one per workstation identity), started on demand.
       Loopyard.Agents.SystemSupervisor,
       Loopyard.PortRegistry,

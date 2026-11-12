@@ -348,6 +348,21 @@ agent's stamp, not its workspace. System agents are not switchable — their
 identity is where they live. The chat header chip and the `/agents` row name
 the account.
 
+**Signing an account in is guided, in-app (`Workstation.SignIn`).** The Claude
+integration page (`/workstations/:id/claude`) leads with **Sign in to Claude**:
+`SignIn.begin/2` runs the vendor's own headless login (`claude setup-token`, the
+`:sign_in` spec on the `Integration` entry — the module names no vendor) under
+a PTY in a throwaway `--rm` container of the base image, reads the authorize
+URL out of the TUI transcript and shows it as a link; the human approves on any
+device and pastes the code back; `submit_code/3` types it into the CLI, reads
+the one-year token (by `token_prefix`) and `Env.put/3`s it, which reloads that
+identity's agents. Phases ride `Events.Workstation.SignInChanged` (phase + URL
+only — never the code or the token; the transcript buffer is dropped the moment
+the token is read and `format_status/1` redacts it). A second Claude account =
+a second workstation, signed in the same way; the chat's Account menu ends with
+"Add an account…" which goes to `/workstations`. The browser decides WHICH
+account signs in, so the page says to switch accounts there first.
+
 ## Fork readiness (provision-before-available)
 
 A fork is fully provisioned **before** it becomes available — "Open"

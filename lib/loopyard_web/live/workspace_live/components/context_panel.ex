@@ -8,6 +8,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   use Phoenix.Component
 
   alias Loopyard.Harness.Catalog
+  alias LoopyardWeb.Live.WorkspaceLive.AgentPicker
 
   import LoopyardWeb.Components.SideNav,
     only: [section: 1, info_row: 1, detail_hero: 1, action_bar: 1]
@@ -60,10 +61,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     default: false,
     doc: """
     Whether the detail below the hero (Usage / Activity / Docker + the
-    Restart/Remove footer) is shown. Collapsed by default: the hero already
-    carries what you glance at — who, state, model, tokens, cost — and the rest
-    is reference you open deliberately. ONE flag for the whole sidebar, so the
-    choice persists as you switch between agents rather than resetting per item.
+    Restart/Remove footer) is shown. The LiveView opens it by default: Usage
+    holds the harness/model and account pickers, and collapsed-by-default hid
+    them where nobody looked. ONE flag for the whole sidebar, so collapsing it
+    persists as you switch between agents rather than resetting per item.
     """
 
   def context_sections(assigns) do
@@ -476,6 +477,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
             >
               {label}
             </option>
+            <%!-- The way IN to a second account lives where you pick one:
+            it opens the workstations page (create an identity, sign it in). --%>
+            <option value={AgentPicker.add_account_value()}>Add an account…</option>
           </select>
         </form>
       </div>

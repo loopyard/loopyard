@@ -209,7 +209,8 @@ defmodule LoopyardWeb.WorkspaceLive do
      # Collapsed by default — the hero carries what you glance at (who, state,
      # model, tokens, cost); Usage/Activity/Docker and the destructive buttons
      # are reference you open deliberately.
-     |> assign(:agent_details_expanded, false)
+     # Open by default — it holds the pickers (see ContextPanel's :expanded).
+     |> assign(:agent_details_expanded, true)
      |> assign(:volume_tab, :info)
      |> assign(:file_tree, nil)
      |> assign(:file_content, nil)
@@ -1077,19 +1078,7 @@ defmodule LoopyardWeb.WorkspaceLive do
     do: AgentPicker.set_workstation(params, socket)
 
   @impl true
-  def handle_event("set_agent_mode", %{"mode" => mode} = params, socket) do
-    # The composer's Discuss / Build switch. Server state on the agent
-    # (ChatAgent.ModeControl): persisted, and the StatusChanged broadcast
-    # flips every viewer's control — nothing is assumed locally.
-    agent_id = params["id"] || socket.assigns.selected_id
-
-    with true <- is_binary(agent_id),
-         {:ok, setting} <- Loopyard.ChatAgent.ModeControl.parse(mode) do
-      ChatAgent.set_mode(agent_id, setting)
-    end
-
-    {:noreply, socket}
-  end
+  def handle_event("set_agent_mode", params, socket), do: AgentPicker.set_mode(params, socket)
 
   @impl true
   def handle_event("rename_agent", %{"name" => name} = params, socket) do
@@ -1313,6 +1302,9 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   def handle_info(%Events.Workstation.CredentialsChanged{} = e, socket),
     do: on_workstation_credentials_changed(e, socket)
+
+  def handle_info(%Events.Workstation.SignInChanged{} = e, socket),
+    do: on_workstation_sign_in_changed(e, socket)
 
   def handle_info(%Events.ChatAgentMessage.Message{} = e, socket), do: on_message(e, socket)
 
@@ -1592,6 +1584,11 @@ defmodule LoopyardWeb.WorkspaceLive do
   @impl Events.Workstation.Subscriber
   def on_workstation_credentials_changed(%Events.Workstation.CredentialsChanged{}, socket),
     do: {:noreply, assign(socket, :accounts, Loopyard.Workstation.accounts())}
+
+  # Progress belongs to the workstation page; the outcome is CredentialsChanged.
+  @impl Events.Workstation.Subscriber
+  def on_workstation_sign_in_changed(%Events.Workstation.SignInChanged{}, socket),
+    do: {:noreply, socket}
 
   # --- ChatAgentMessage subscriber callbacks ---
 

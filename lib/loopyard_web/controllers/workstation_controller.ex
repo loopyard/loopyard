@@ -21,7 +21,7 @@ defmodule LoopyardWeb.WorkstationController do
     case Workstation.create(id) do
       :ok ->
         conn
-        |> put_flash(:info, "Created #{id} — you're now operating as it.")
+        |> put_flash(:info, "Created #{id}. Sign it in to Claude to use it as an account.")
         |> redirect(to: "/workstations/#{id}")
 
       {:error, :exists} ->

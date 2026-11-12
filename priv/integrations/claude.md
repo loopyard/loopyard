@@ -2,10 +2,28 @@
 
 Run Claude Code in the box on your Claude subscription (Pro/Max/Team) — no API key.
 
-## Reconnect from your phone (`claude setup-token`)
+## Sign in (the button at the top of this page)
 
-The path that needs **no laptop**. When Anthropic expires your login while you're
-out, you can re-auth entirely from your phone:
+**Sign in to Claude** runs Claude's own headless login for you and walks it in
+three steps, from any device:
+
+1. Tap **Sign in to Claude**. Loopyard starts `claude setup-token` in a throwaway
+   container and shows you its sign-in link.
+2. Open the link, approve. Claude signs in **whichever account that browser is
+   using** — to add a second account, switch accounts there first.
+3. Paste the code Claude shows you. Loopyard hands it to the CLI, stores the
+   one-year token as `CLAUDE_CODE_OAUTH_TOKEN` on this workstation, and the
+   agents on this account reload themselves.
+
+The token never reaches your browser, and there is no terminal to drive.
+
+**More than one Claude account:** a workstation holds one. Create a workstation
+per account ([Workstations]($LOOPYARD/workstations)), sign each in here, then
+choose the account per agent in the chat sidebar's **Account** menu.
+
+## By hand, from the terminal (`claude setup-token`)
+
+The same flow the button drives, for when you want to watch it:
 
 1. Tap **▶ claude setup-token** under *Use the terminal* below. It runs in the box
    and prints an **authorization URL**.

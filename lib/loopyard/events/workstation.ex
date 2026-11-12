@@ -14,9 +14,9 @@ defmodule Loopyard.Events.Workstation do
   """
   @telemetry [:loopyard, :events, :publish]
 
-  alias Loopyard.Events.Workstation.CredentialsChanged
+  alias Loopyard.Events.Workstation.{CredentialsChanged, SignInChanged}
 
-  @events [CredentialsChanged]
+  @events [CredentialsChanged, SignInChanged]
 
   def events, do: @events
 
@@ -31,4 +31,9 @@ defmodule Loopyard.Events.Workstation do
   end
 
   def publish(%CredentialsChanged{}), do: :ok
+
+  def publish(%SignInChanged{workstation_id: id} = e) when is_binary(id) do
+    :telemetry.execute(@telemetry, %{count: 1}, %{topic: topic(id), event: SignInChanged})
+    Phoenix.PubSub.broadcast(Loopyard.PubSub, topic(id), e)
+  end
 end

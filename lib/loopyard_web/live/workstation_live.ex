@@ -220,7 +220,9 @@ defmodule LoopyardWeb.WorkstationLive do
         <div class="space-y-1">
           <h1 class="text-title font-semibold tracking-tight">Workstations</h1>
           <p class="text-body text-zinc-500 dark:text-zinc-400">
-            An identity is a home folder of credentials — every agent you spin up inherits it.
+            An identity is a home folder of credentials: its own Claude account, its own
+            GitHub login. Make one per account or client, sign it in, then choose it per
+            agent in the chat's Account menu.
           </p>
         </div>
 
@@ -247,7 +249,7 @@ defmodule LoopyardWeb.WorkstationLive do
 
         <.section
           title="New workstation"
-          hint="A fresh identity — connect its own tools, set up its own creds."
+          hint="A fresh identity. Name it for the account it will hold (rocketship, personal), then sign in to Claude on its page."
         >
           <form action="/workstations/create" method="post" class="flex items-center gap-2">
             <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
