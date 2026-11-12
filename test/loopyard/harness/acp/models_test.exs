@@ -39,6 +39,24 @@ defmodule Loopyard.Harness.ACP.Connection.ModelsTest do
       assert Models.model_name(models, "opus") == "Opus 5"
     end
 
+    test "a pinned id whose name is missing or echoes the id is never labelled from prose" do
+      # Still observed live after the fix above: an agent's model read
+      # "Newer version available". The earlier fix only covered entries that
+      # HAVE a real name; a pinned entry without one fell through to the
+      # description's leading segment.
+      notice = "Newer version available · select Opus for Opus 5"
+
+      echoed = [
+        %{"modelId" => "claude-opus-4-8", "name" => "claude-opus-4-8", "description" => notice}
+      ]
+
+      unnamed = [%{"modelId" => "claude-opus-4-8", "description" => notice}]
+
+      # The id comes back; `ContextPanel.short_model/1` maps it to "Opus 4.8".
+      assert Models.model_name(echoed, "claude-opus-4-8") == "claude-opus-4-8"
+      assert Models.model_name(unnamed, "claude-opus-4-8") == "claude-opus-4-8"
+    end
+
     test "codex-acp: a plain-sentence description does NOT become the label" do
       # Observed live: taking the leading segment of "Latest frontier agentic
       # coding model." put the whole sentence where the model name goes.
@@ -54,8 +72,8 @@ defmodule Loopyard.Harness.ACP.Connection.ModelsTest do
     end
 
     test "falls back to the description when there is no name" do
-      models = [%{"modelId" => "m1", "description" => "Some Model"}]
-      assert Models.model_name(models, "m1") == "Some Model"
+      models = [%{"modelId" => "fast", "description" => "Some Model"}]
+      assert Models.model_name(models, "fast") == "Some Model"
     end
 
     test "falls back to the name when there is no description" do

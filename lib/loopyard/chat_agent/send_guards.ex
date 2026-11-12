@@ -97,7 +97,7 @@ defmodule Loopyard.ChatAgent.SendGuards do
       card = %{
         role: :auth_fix,
         status: :pending,
-        workstation_id: Loopyard.Workstation.current(),
+        workstation_id: Map.get(state, :workstation_identity) || Loopyard.Workstation.current(),
         timestamp: DateTime.utc_now()
       }
 

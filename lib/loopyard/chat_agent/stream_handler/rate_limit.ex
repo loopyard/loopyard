@@ -278,7 +278,9 @@ defmodule Loopyard.ChatAgent.StreamHandler.RateLimit do
         auth_msg = %{
           role: :auth_fix,
           status: :pending,
-          workstation_id: Loopyard.Workstation.current(),
+          # The AGENT's account — the one whose sign-in expired — not the
+          # global default, which may be a different identity entirely.
+          workstation_id: Map.get(state, :workstation_identity) || Loopyard.Workstation.current(),
           timestamp: DateTime.utc_now()
         }
 

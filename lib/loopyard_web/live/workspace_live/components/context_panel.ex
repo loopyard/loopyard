@@ -223,9 +223,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     """
   end
 
-  # The operating workstation, for links out of a problem state. Falls back to
-  # "brad"-style default rather than crashing the panel if the store is wedged.
-  defp safe_workstation do
+  # The workstation whose sign-in the agent runs on — the one to reconnect.
+  # An agent stamped before accounts were per-agent falls back to the default
+  # identity (and to a literal rather than a crash if the store is wedged).
+  defp agent_workstation(%{workstation_identity: id}) when is_binary(id), do: id
+
+  defp agent_workstation(_agent) do
     Loopyard.Workstation.current()
   rescue
     _ -> "default"
@@ -271,7 +274,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
         bad(
           "Sign-in expired",
           "your Claude login expired — agents are paused until it's reconnected",
-          {"Reconnect Claude", "/workstations/#{safe_workstation()}/claude"}
+          {"Reconnect Claude", "/workstations/#{agent_workstation(agent)}/claude"}
         )
 
       Map.get(agent, :rate_limit_status, :ok) != :ok or status == :rate_limited ->

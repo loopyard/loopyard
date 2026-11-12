@@ -94,6 +94,14 @@ defmodule Loopyard.Harness.ACP.Connection.Models do
           name && String.downcase(name) != String.downcase(id) ->
             name
 
+          # A PINNED id (it carries a version: "claude-opus-4-8", "gpt-5.6")
+          # is never labelled from prose. An entry for one whose name is
+          # missing or just echoes the id still has the upgrade notice in its
+          # description, and its leading segment is "Newer version available".
+          # Hand back the id — the UI already maps known ids to their names.
+          pinned?(id) ->
+            name || (desc && id)
+
           desc && String.contains?(desc, "·") ->
             desc |> String.split("·") |> hd() |> String.trim()
 
@@ -107,6 +115,9 @@ defmodule Loopyard.Harness.ACP.Connection.Models do
   end
 
   def model_name(_models, _id), do: nil
+
+  # A bare alias ("opus", "default") has no digit; a pinned model id does.
+  defp pinned?(id), do: String.match?(id, ~r/\d/)
 
   defp entry_name(%{"name" => n}) when is_binary(n) and n != "", do: n
   defp entry_name(_), do: nil
