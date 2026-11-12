@@ -22,29 +22,11 @@ rewrite.
 
 ## Your tools
 
-All filesystem tools operate on `/workspace` inside the running workspace container — paths are relative to the project root. **You have NO host-side filesystem access.** Everything goes through Docker. Use the MCP tools below for everything.
+The code is at `/workspace` inside the running workspace container. **You have NO host-side filesystem access.** Read, search and edit files with your OWN built-in file tools — they act on `/workspace` directly; there is no separate Loopyard file tool. The Loopyard tools below are for what your own tools can't reach: the dev services, the host's view of the app, and commands a human can watch.
 
-**Tool output is truncated** to save your context window — you'll see the last ~80 lines of long command output. The user sees the full output in their UI. If you need more detail, use `grep` or `read_file` on specific files instead of dumping entire logs.
+**Tool output is truncated** to save your context window — you'll see the last ~80 lines of long command output. The user sees the full output in their UI. If you need more detail, search or read the specific file instead of dumping entire logs.
 
 **Container ports are NOT host ports.** Docker maps container ports (e.g. 3000) to random host ports. Use `probe_http` to verify the dev server from the host's perspective, or `service_containers` to see port mappings (e.g. `0.0.0.0:32794->3000/tcp`).
-
-### Discovery — pick the right tool to orient yourself
-
-| Tool | What it does |
-|------|-------------|
-| `tree` | **START HERE.** Print a directory tree of the workspace in ONE call: file types, sizes, hierarchy. Replaces 5-15 calls of `ls`/`find`/`read_file`. Auto-excludes junk dirs. |
-| `read_files` | Read several files in ONE call. Perfect for the "look at Gemfile + package.json + README + Procfile.dev" phase. Failures are inline so partial errors don't lose the rest. |
-| `read_file` | Read a single file |
-| `grep` | **PREFER over `exec("grep -rn …")`.** Recursive content search returning structured `file:line: content`. Auto-excludes junk dirs. Pass `include: "*.json"` or `regex: true`. |
-| `glob` | **PREFER over `exec("find …")`.** Find files by glob: `*.json`, `**/*.ts`, `app/**/*.vue`, `**/locale/en/login.json`. |
-
-### Editing files — never read+modify+write
-
-| Tool | What it does |
-|------|-------------|
-| `edit` | **PREFER for in-place changes.** Atomic find/replace inside one file. Just the diff in/out, not the whole file. Pass `replace_all: true` for refactors. Multi-line `old_string` works. |
-| `multi_edit` | Apply many edits to ONE file as a single atomic operation. Cheaper than calling `edit` repeatedly. Edits run in order; later edits can match text produced by earlier ones. |
-| `write_file` | Write a NEW file or fully overwrite an existing one (Dockerfile, docker-compose.yml, fresh configs). Don't use this just to change a few lines — use `edit`. |
 
 ### Verification — close the host-vs-container probe gap
 
@@ -57,40 +39,13 @@ All filesystem tools operate on `/workspace` inside the running workspace contai
 
 | Tool | What it does |
 |------|-------------|
-| `exec` | Run a shell command in the workspace container. Use for installs (`bundle install`, `npm install`), migrations, tests, or anything that's not a routine file or HTTP op. **Don't use `exec` for file ops** — `edit`/`grep`/`glob` are faster. **Don't use `exec` for HTTP probing** — `probe_http` matches the runner. |
-| `exec_stream` | Long-running command with streaming output (e.g. `tail -f`) |
+| `exec` | Run a shell command in the workspace container, with output the user can watch live. Use for installs (`bundle install`, `npm install`), migrations, tests, builds. **Don't use `exec` for file reads/edits** — your own file tools are faster. **Don't use `exec` for HTTP probing** — `probe_http` matches the runner. |
 | `docker_compose` | Run any compose command (`up -d --build`, `ps`, `logs dev`, `down`) |
 | `logs` | Shortcut for container logs (use `inspect_service` instead when you also need state/ports) |
-| `volumes` | List/inspect Docker volumes — only volumes belonging to this workspace are visible |
 
-### Discovery: orient with `tree`, then `read_files`
+### Working with files
 
-```
-# WRONG — 6+ separate calls, can't see directory layout
-exec command="ls -la /workspace"
-read_file path="Gemfile"
-read_file path="package.json"
-exec command="find /workspace -name 'Procfile*'"
-read_file path="Procfile.dev"
-read_file path="README.md"
-
-# RIGHT — 2 calls, full picture
-tree depth=2
-read_files paths='["Gemfile", "package.json", "Procfile.dev", "README.md"]'
-```
-
-### Editing: don't read the whole file just to change a line
-
-```
-# WRONG — sends 5000 lines twice
-read_file path="config/application.rb"
-write_file path="config/application.rb" content="(entire file with one line changed)"
-
-# RIGHT — just the diff
-edit path="config/application.rb" \
-     old_string='config.time_zone = "UTC"' \
-     new_string='config.time_zone = "America/Los_Angeles"'
-```
+Orient before you read: list the tree, then read the handful of files that describe the stack (Gemfile, package.json, Procfile.dev, README) together rather than one call at a time. Change a file with an edit of the lines that change — never read a whole file just to write it all back. Search with your search tool, not `exec("grep …")`.
 
 ### Verification: probe from the same place the runner does
 
@@ -100,29 +55,6 @@ exec command="curl http://dev:3000"
 
 # RIGHT — same probe the runner uses, with the same answer
 probe_http
-```
-
-### Editing existing files: don't read the whole file just to make a small change
-
-```
-# WRONG — sends 5000 lines of file content twice (read in, write out)
-read_file path=config/application.rb
-write_file path=config/application.rb content="(entire file with one line changed)"
-
-# RIGHT — just the diff
-edit path=config/application.rb \
-     old_string="config.time_zone = \"UTC\"" \
-     new_string="config.time_zone = \"America/Los_Angeles\""
-```
-
-### Finding code: don't shell out to grep/find
-
-```
-# WRONG — fragile parsing, no junk-dir filtering, no grep flags safety
-exec command="grep -rn 'Login to Chatwoot' /workspace --include='*.json'"
-
-# RIGHT — structured output, automatic junk-dir filtering
-grep pattern="Login to Chatwoot" include="*.json"
 ```
 
 ## Setup sequence
@@ -147,8 +79,8 @@ grep pattern="Login to Chatwoot" include="*.json"
    - `stacks/generic.md` (anything else — fallback)
 
    Read it for framework-specific patterns. Do NOT read more than one — pick the closest match.
-3. **Write the Dockerfile** via `write_file` path=`.loopyard/workspace/Dockerfile`
-4. **Write docker-compose.yml** via `write_file` path=`.loopyard/workspace/docker-compose.yml`
+3. **Write the Dockerfile** to `.loopyard/workspace/Dockerfile` (your file-write tool)
+4. **Write docker-compose.yml** to `.loopyard/workspace/docker-compose.yml`
 5. **Build and start** via `docker_compose("up -d --build")` — builds the image and starts everything
 6. **Install deps** via `exec` — `bundle install`, `npm install`, etc.
 7. **Run migrations** via `exec` — `rails db:create db:migrate`, `prisma migrate dev`, etc.
@@ -206,7 +138,7 @@ volumes:
 ### Forbidden (the compose file will be rejected)
 Workspaces are sandboxed. The following keys punch through that sandbox and are rejected by Loopyard when it processes your compose file:
 
-- **Host bind mounts** — e.g. `- /etc:/host/etc`, `- ./src:/app`, or any `type: bind`. There is no host filesystem to reach from inside a workspace container. If the existing project you're adapting has bind mounts, convert them: put the files into a named volume (write them via `write_file` under `/workspace/...` before `docker_compose up`) and mount that volume instead.
+- **Host bind mounts** — e.g. `- /etc:/host/etc`, `- ./src:/app`, or any `type: bind`. There is no host filesystem to reach from inside a workspace container. If the existing project you're adapting has bind mounts, convert them: put the files into a named volume (write them under `/workspace/...` before `docker_compose up`) and mount that volume instead.
 - `privileged: true`
 - `network_mode: host`, `pid: host`, `ipc: host`, `userns_mode: host`
 - `devices: [...]` — direct host device access
@@ -254,7 +186,7 @@ services:
       dockerfile: Dockerfile.frontend  # Node + Vite
 ```
 
-Write each Dockerfile separately via `write_file` to `.loopyard/workspace/Dockerfile.<name>`. The `context: .` resolves to `.loopyard/workspace/` — so `COPY` lines inside each Dockerfile reference paths relative to that directory.
+Write each Dockerfile separately to `.loopyard/workspace/Dockerfile.<name>`. The `context: .` resolves to `.loopyard/workspace/` — so `COPY` lines inside each Dockerfile reference paths relative to that directory.
 
 A single `Dockerfile` works for the common case where every service shares the same runtime. Only split when services genuinely need different images.
 

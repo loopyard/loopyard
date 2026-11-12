@@ -63,7 +63,8 @@ defmodule Loopyard.Tools.Container do
     Container.ProposeRename,
     Container.ProposeIntegrate,
     Container.ProposeDeleteWorkspace,
-    Container.RecallConversation
+    Container.RecallConversation,
+    Container.ReadWorkspace
   ]
 
   def __tool_server__ do

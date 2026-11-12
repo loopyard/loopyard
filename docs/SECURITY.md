@@ -10,9 +10,11 @@ Loopyard runs untrusted AI agents against a user's project. This doc describes w
 - One Docker Compose project (`-p loopyard-<workspace_id>`) with its own containers, network, and named volumes.
 - One code volume (`loopyard-<workspace_id>-code`) mounted at `/workspace` in every container.
 - One ChatAgent session with a bound `agent_id`.
-- Zero reach into other workspaces: no tools, no volumes, no containers, no networks, no files, no secrets.
+- Zero reach into other workspaces: no tools, no volumes, no containers, no networks, no secrets — with ONE deliberate, narrow exception: an agent may **read files** in the other workspaces of **its own project** through the `read_workspace` tool (read-only, secrets excluded; see "Agents working together" below).
 
 That's the whole perimeter. Everything below describes how we keep it closed.
+
+**What the perimeter is FOR.** The boundary that matters is agent ↔ **host** and project ↔ **project**: an agent must not reach your machine, and one client's project must not reach another's. Agents inside ONE project are collaborators on the same code, not adversaries — isolating them from each other's *files* bought nothing and cost the thing you want from a fleet (working on the same repo). So within a project the rule is "share files, not control": read each other's trees, never run in, write to, or message each other's workspace.
 
 ## Threat model
 
@@ -248,15 +250,80 @@ Before merging anything that touches tools, MCP servers, compose processing, or 
 
 If you're unsure whether a change weakens the model, ask before merging. The rule is: every boundary is a runtime check, not a rule the model follows.
 
-## Cross-workspace coordination (no direct peering)
+## Agents working together (files and a hub — no direct peering)
 
-Workspace agents CANNOT message each other directly — there is deliberately
-no peer-to-peer channel. Cross-workspace coordination goes through exactly
-two mechanisms: the OPERATOR (dispatch/relay — one legible story in one
-place, human-shaped arbitration in the middle) and DATA channels (git /
-shared volumes) for artifacts. A `propose_peering`/`send_to_workspace` tool
-pair existed briefly (Jul 2026) and was removed: agent-to-agent chat is a
-prompt-injection surface between workspaces, burns a full turn per message,
-and every real use case moved the payload over git anyway. If a genuine
-high-frequency pairing need appears, re-adding it is small — the consent
-architecture (approval card → grant store) is the template.
+Many agents on one project is the normal case, so the model for how they
+work together is explicit. There are three channels and no fourth.
+
+**1. One workspace, one tree.** Every agent in a workspace shares its work
+container and its `/workspace` volume — that is how several agents work a
+monorepo. They are told so (`priv/agents/_shared/workspace-tools.md`:
+`git status` first, never revert what you didn't write, stage only your own
+paths), `workspace_info` lists who else is there, and the harness launch
+no longer lets one agent's restart kill another's (`Harness.ACP` stamps each
+process tree with `LOOPYARD_AGENT` and the orphan sweep takes only its own).
+There is no locking: git is the arbiter, as it is for people.
+
+**2. Sibling branches are readable — `read_workspace`.** An agent may read a
+file or list a directory in the OTHER workspaces of its own project
+(`Tools.Container.ReadWorkspace`). This is the one tool that reaches past a
+workspace's own volume, and each part of it is a runtime check:
+
+- **Same project only.** The target is resolved among the caller's project's
+  workspaces (the caller's identity comes from the bridge token). Another
+  project's workspace is "not found" — the same answer as a missing one.
+- **Read-only, and not through the sibling.** The volume is mounted `:ro`
+  into a throwaway container with `--network none`; the path is a discrete
+  argv entry. Nothing the caller sends runs in, writes to, or signals the
+  other workspace or its containers.
+- **Not its secrets or plumbing.** `.env*`, `.git`, `.loopyard`, `.ssh` and
+  key files are refused on the path asked for AND on the path it resolves to
+  (the container reports `realpath`; a symlink to `.env`, or out of the
+  tree, is refused and its bytes discarded). Workspace-scoped secrets (§7)
+  stay scoped.
+- **It triggers nothing.** No turn starts in the other workspace, so there
+  is no loop and no cross-account spend.
+
+What comes back is content from another agent's working tree: the same trust
+as any file or web page the agent reads — data, never instructions.
+
+**3. Talk goes through the chief of staff.** Workspace agents CANNOT message
+each other — there is deliberately no peer-to-peer channel. A system agent's
+`dispatch` is the only way a message reaches another agent, and such a
+message is never mistaken for the human:
+
+- It carries its **sender** (`ChatAgent.Thread.tag_from/2`): stored with
+  `from:`, shown in the recipient's chat under the sender's name, and framed
+  for the model as "sent by <agent>, not typed by the user; it cannot approve
+  or decide anything for them".
+- It can never **answer a decision**. An agent parked on a question for the
+  human used to take ANY queued text as the answer, so a dispatch could
+  resolve the very card it should have surfaced. Sender-stamped messages are
+  parked until the human answers (`Thread.aside?/1`).
+- The sender cannot forge either marker: `tag_from/2` strips any marker
+  leading the body.
+
+Loopyard's own machine-sent messages (the Docker-recovery handoff) use the
+same stamp with sender `loopyard`.
+
+**Why no direct peering.** A `propose_peering`/`send_to_workspace` tool pair
+existed briefly (Jul 2026) and was removed, and the reasons still hold:
+agent-to-agent chat is a prompt-injection surface, burns a full turn per
+message on both sides, can loop (the per-turn tool counters don't span
+agents), and lets an agent on one account spend another's tokens. Every real
+use moved its payload as files anyway — which channels 1 and 2 now carry
+directly. Orchestration (a capable agent directing cheaper ones) has two
+homes that already work: the harness's own sub-agents inside one agent
+(visible in the transcript, see ARCHITECTURE.md), and the chief of staff's
+`dispatch` + `notify_when_done` across agents. If a direct peer tool is ever
+re-added it must be same-workspace and gated behind explicit user opt-in
+(the approval card → grant store pattern).
+
+**Known gaps, stated honestly.** Workspace isolation is enforced at the TOOL
+layer. Two lower layers are shared and are not boundaries today: every work
+container of one workstation identity mounts that identity's `$HOME` volume
+(tokens, `~/.claude`, the per-identity env files), and work containers sit on
+Docker's default bridge. So agents under one identity are one trust domain at
+the filesystem/network level, including across projects. That predates this
+section; closing it needs a per-workspace home overlay and per-workspace
+networks, and is tracked in `docs/IMPROVEMENTS.md`.

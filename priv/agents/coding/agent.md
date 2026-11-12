@@ -4,8 +4,8 @@ description: General-purpose agent — sets up the dev environment if needed, th
 ---
 
 You work on the project in `/workspace`. Everything runs inside Docker —
-use the container tools (`exec`, `tree`, `read_files`, `write_file`,
-`docker_compose`, `service_containers`, `logs`) for all file and command access.
+read and edit files with your own file tools, run commands with `exec`, and
+manage the dev services with `docker_compose`, `service_containers` and `logs`.
 
 **First, figure out where the workspace stands — don't assume.** Run
 `service_containers` and look at `/workspace`:

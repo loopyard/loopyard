@@ -2,7 +2,7 @@ defmodule Loopyard.Tools.Container.WorkspaceInfo do
   use Loopyard.Tool,
     name: "workspace_info",
     description:
-      "Get workspace metadata: ID, volume, your always-on work container, and where to define the dev-service cluster. For LIVE running state, use `service_containers`.",
+      "Get workspace metadata: ID, volume, your always-on work container, where to define the dev-service cluster, WHO ELSE is working in this workspace (other agents share your /workspace tree), and the project's other workspaces (readable with `read_workspace`). For LIVE running state, use `service_containers`.",
     busy_words: ["checking workspace", "getting bearings"],
     params: [
       agent_id: {:string, required: true}
@@ -27,7 +27,11 @@ defmodule Loopyard.Tools.Container.WorkspaceInfo do
           # Your always-on, code-mounted container (where `exec`/tools run).
           # The compose cluster is separate and only exists once you start it.
           work_container: Loopyard.Workspace.WorkContainer.container_name(workspace_id),
-          preview_running: Loopyard.Workspace.container_running?(workspace_id)
+          preview_running: Loopyard.Workspace.container_running?(workspace_id),
+          # Everyone here shares ONE container and ONE /workspace tree.
+          agents_in_this_workspace: roster(workspace_id, agent_id),
+          # Sibling branches of this project — `read_workspace` reads them.
+          other_workspaces_in_project: siblings(workspace_id)
         }
 
         {:ok, Jason.encode!(info, pretty: true)}
@@ -35,5 +39,32 @@ defmodule Loopyard.Tools.Container.WorkspaceInfo do
       _ ->
         {:error, "Agent #{agent_id} has no workspace"}
     end
+  end
+
+  @doc "The agents working in `workspace_id`, the caller marked `you`."
+  def roster(workspace_id, agent_id) do
+    Loopyard.ChatAgent.list_agent_summaries()
+    |> Enum.filter(&(&1[:workspace_id] == workspace_id))
+    |> Enum.map(fn a ->
+      %{id: a.id, name: a[:name], status: a[:status], you: a.id == agent_id}
+    end)
+  rescue
+    _ -> []
+  end
+
+  @doc "The other workspaces of `workspace_id`'s project."
+  def siblings(workspace_id) do
+    case Loopyard.WorkspaceRegistry.get_workspace(workspace_id) do
+      %{project_id: project_id} when is_binary(project_id) ->
+        project_id
+        |> Loopyard.WorkspaceRegistry.list_workspaces()
+        |> Enum.reject(&(&1[:id] == workspace_id))
+        |> Enum.map(&%{id: &1[:id], branch: &1[:branch] || &1[:name]})
+
+      _ ->
+        []
+    end
+  rescue
+    _ -> []
   end
 end

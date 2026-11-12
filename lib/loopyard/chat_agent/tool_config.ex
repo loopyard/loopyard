@@ -70,9 +70,13 @@ defmodule Loopyard.ChatAgent.ToolConfig do
   Agents are scoped to a single workspace. They do NOT get the Agents
   toolkit (spawn/message/stop other agents) — that was a usability and
   security disaster: agents would auto-spawn siblings and cross
-  workspace boundaries. If an agent-to-agent tool comes back, it MUST
-  be restricted to the same workspace and gated behind explicit user
-  opt-in.
+  workspace boundaries. Collaboration is FILES plus the chief of staff:
+  agents in one workspace share its tree, `read_workspace` reads a sibling
+  branch of the same project (read-only), and messages between agents go
+  only through a system agent's `dispatch` (sender-stamped, never able to
+  answer a human's decision). If a direct agent-to-agent tool ever comes
+  back, it MUST be restricted to the same workspace and gated behind
+  explicit user opt-in.
   """
   def default_tools do
     [Loopyard.Tools.Container, Loopyard.Tools.Secrets, Loopyard.Tools.AgentFiles]
@@ -126,7 +130,12 @@ defmodule Loopyard.ChatAgent.ToolConfig do
     # Durable memory: read your own conversation history (harness-portable — the
     # conversation lives in Loopyard, not the harness session). Read-only,
     # token-scoped to the calling agent's own transcript.
-    Container.RecallConversation
+    Container.RecallConversation,
+    # The data channel between sibling branches: read-only file access to the
+    # OTHER workspaces of the caller's own project (never another project's,
+    # never its secrets, never through the sibling's container). Agents share
+    # files, not chat — see docs/SECURITY.md → "Agents working together".
+    Container.ReadWorkspace
   ]
 
   @doc "Tool modules exposed to an in-container ACP harness over the HTTP MCP bridge."
