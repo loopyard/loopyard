@@ -4,6 +4,12 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 ## Simplicity (less to read, less to misunderstand)
 
+0. **The in-process MCP path is dead; delete it (Nov 2026 review).** `Initializer` still builds `mcp_servers`/`allowed_tools`/`disallowed_tools` that nothing reads (`Harness.ACP` takes only `:acp_mcp_servers`). Left behind: the Anubis adapter in `lib/loopyard/tool.ex`, ten file tools (`read_file`, `edit`, `grep`, `glob`, `tree`, `file_info`, `multi_edit`, `write_file`, `read_files`, `exec_stream`, ~1,000 lines) plus `Volumes` and `ProposeRename`, referenced only by tests. The agent prompt no longer names them (fixed); the code needs the `removing-code` pass — `WriteFile`'s compose-placeholder rewrite is described in CLAUDE.md but no agent can trigger it, so decide where that rewrite should live before deleting.
+0. **The saga journal's crash recovery performs no rollback.** `Saga.Journal.dispatch_rollback` only appends a record and emits telemetry — the rollback closures died with the VM. `:resume_forward` is unimplemented and `:manual` has no callers; all three `Saga.run` sites pass `:rollback`. ~700 lines for a log line. Keep in-memory `Saga.run` rollback, mark incomplete sagas abandoned on boot, delete the strategies and correct the moduledoc.
+0. **Two "agent box" paths.** `Tools.Container.Helpers.resolve_container` runs MCP `exec` in a compose service named `workspace` when one is up, and `setup_guide.md` still templates one — but the harness always runs in `WorkContainer`. Pick one.
+0. **Two project models.** Canonical-volume projects (`Onboarding`/`CanonicalStore`) sit beside `Source.Local`/Mutagen/`ProjectStore`/the `Workspace.Setup` saga (~1,500 lines), with `bind_mount`/`host_access` references for a mode forced off on every path. Decide whether Local survives; if not, most of that goes.
+0. **Small dead pieces.** `Operator.Policy` (+ `Policy.Default`, the documented-but-unused `:operator_policy` knob); `Operator.Jobs.mark_read/dismiss/list` (tests only); `ToolConfig.acp_operator_tools` and the `:operator` token scope (tokens expire in 7 days; the rename was Sept 2); `Agents.migrate!` stat-ing files on every `default_id` call; `WorkspaceTree.needs_you` re-deriving "waiting" from brokers, which the Notifications rule forbids.
+
 1. **Split workspace_live.ex (the last over-cap module).** The Jul 2026 audit
    split cards/chat/operator_live/stream_handler/acp-connection back under the
    800 default and brought chat_agent.ex under its 1700 allowance; only
@@ -15,6 +21,15 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 2. **Continue splitting workspace_live handler clusters (if they grow).** Git diff and file browser are out (`DiffLoader`, `FileBrowser`). Sync and cluster-control clusters were reviewed and judged too thin to earn modules — section comments are enough. Revisit if either grows meaningfully.
 
 ## Robustness (handles edge cases gracefully)
+
+**From the Nov 2026 architecture review (verified by reading code; none run):**
+
+0. **Rate limits and auth are per agent, not per account.** Each agent discovers its account's limit by failing a turn, posts its own line and arms its own retry (`chat_agent/stream_handler/rate_limit.ex`), so N agents on one account fail N times and all retry at the same reset instant. An account-level limit table consulted by `SendGuards` would park the others on the first hit. With it, the chief of staff could fail agents over to another account automatically (it has `agent action=switch`; what's missing is the trigger and a stated policy for WHICH account goes first — e.g. "subsidy account, then personal").
+0. **Every fleet read copies every transcript.** The `:chat_agents` row holds up to 1000 messages (`chat_agent/summary.ex`), `list_agent_summaries/0` is a `tab2list`, and `WorkspaceTree.global`, `Notifications.Reconcile`, `MemoryMonitor`, the Reconciler and `resolve_agent` all call it. Fine at 4 agents; at 40 it is the first thing that will hurt. Interim: a heads-only `:ets.select` for callers that don't need messages. Proper: messages in their own table.
+0. **One identity's `$HOME` is shared by all its workspaces, and work containers share Docker's default bridge.** Tokens, `~/.claude` and the per-identity env files are readable and writable by any agent under that identity, across projects; the per-workspace network claim covers compose clusters only. Workspace isolation is therefore a TOOL-layer property (SECURITY.md → "Known gaps"). Closing it: a per-workspace home overlay with credentials mounted read-only, and `--network` per workspace on `WorkContainer`.
+0. **A removed agent's in-container processes are never reaped.** The orphan sweep is now owner-scoped, so a deleted agent's stamped `claude` child (if its exec client died uncleanly) outlives it until the container restarts. `Lifecycle.remove_agent` should sweep by that agent's `LOOPYARD_AGENT` stamp.
+0. **System agents share one workstation container.** The owner-scoped sweep covers them, but `MemoryMonitor` only measures work containers; two system agents (Operator + a chief of staff) get no memory safety valve.
+
 
 0. **An image bump never reaches a running container.** `WorkContainer.@image`
    (and the workstation container, same image) only applies at `docker run`;

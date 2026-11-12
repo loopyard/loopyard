@@ -159,6 +159,21 @@ A workspace is a git branch in its own env. *Most* interaction is just "read/wri
 
 The base image carries git/bash/curl/node + the harness adapter — *not* the project's own toolchain (elixir, the app's deps, postgres). Running the project's tests/build or the app itself still needs the project image, i.e. the **preview env**. Cheap container = code + git + harness; preview = run the app.
 
+### Many agents in one container
+
+A work container is shared by every agent of its workspace: one `/workspace`
+tree, one process namespace. That is what makes several agents on one repo
+work — and it means anything that acts on "the harness's processes" must know
+WHOSE. Each launch exports `LOOPYARD_AGENT=<agent id>` before it execs the
+adapter, so the adapter and its `claude` child carry it in `/proc/<pid>/environ`;
+the launch-time orphan sweep takes only processes with its own stamp (or none —
+orphans from before stamps). `Harness.MemoryMonitor` reads memory per CONTAINER
+and reclaims only when every agent in it is idle. On the host, each launch
+script begins with an inert `: loopyard-instance=<hash>;`, and boot reaps stale
+exec clients by that marker alone. How agents then collaborate — a shared
+tree, readable sibling branches, talk through the chief of staff — is
+SECURITY.md → "Agents working together".
+
 ### Sub-agents inside the harness
 
 Claude Code's native `Task`/`Agent` tool spawns a **sub-agent inside the same

@@ -39,7 +39,9 @@ defmodule Loopyard.Agents.TemplateTest do
 
   test "shared blocks load in the template's order and are non-empty" do
     [tools, decisions] = Template.blocks(Template.coding())
-    assert tools =~ "loopyard-container MCP tools"
+    # Files are the harness's own tools; Loopyard adds what those can't reach.
+    assert tools =~ "your own built-in file tools"
+    assert tools =~ "the loopyard `exec` tool"
     assert decisions =~ "THE READER IS STATELESS"
 
     [decisions2, phone] = Template.blocks(Template.system())

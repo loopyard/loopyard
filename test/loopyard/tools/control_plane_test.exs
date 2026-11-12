@@ -100,6 +100,127 @@ defmodule Loopyard.Tools.ControlPlaneTest do
     end
   end
 
+  describe "a fleet with several agents and several accounts" do
+    alias Loopyard.Tools.ControlPlane.{Agent, Overview}
+
+    setup do
+      project_id = register_project("cp-fleet-#{System.unique_integer([:positive])}")
+      ws_id = register_workspace(project_id, "cp-fleet-ws-#{System.unique_integer([:positive])}")
+
+      # Two agents in ONE workspace (fabricated summaries — pure ETS).
+      a = fake_agent(ws_id, "Builder", :idle)
+      b = fake_agent(ws_id, "Reviewer", :rate_limited)
+
+      # A second account that can run Claude, and one that can't run anything.
+      signed_in = "acct-in-#{System.unique_integer([:positive])}"
+      empty = "acct-empty-#{System.unique_integer([:positive])}"
+      :ok = Loopyard.Workstation.create(signed_in)
+      :ok = Loopyard.Workstation.create(empty)
+      :ok = Loopyard.Workstation.Env.put("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-test", signed_in)
+
+      on_exit(fn ->
+        File.rm_rf(Loopyard.Workstation.dir(signed_in))
+        File.rm_rf(Loopyard.Workstation.dir(empty))
+      end)
+
+      %{ws_id: ws_id, a: a, b: b, signed_in: signed_in, empty: empty}
+    end
+
+    test "a workspace with two agents is refused by name and lists their ids", ctx do
+      assert {:error, msg} = ControlPlane.resolve_agent(ctx.ws_id)
+      assert msg =~ "2 agents"
+      assert msg =~ "Builder [#{ctx.a}]"
+      assert msg =~ "Reviewer [#{ctx.b}] (rate_limited)"
+
+      # By agent id it's exact — no guess to make.
+      assert {:ok, %{id: id}} = ControlPlane.resolve_agent(ctx.b)
+      assert id == ctx.b
+
+      # Dispatch inherits the refusal instead of landing on an arbitrary one.
+      assert {:error, _} =
+               Dispatch.execute(%{agent_id: "op", target: ctx.ws_id, message: "go"}, %{})
+    end
+
+    test "overview names each agent by id with what it runs on and who pays", ctx do
+      assert {:ok, out} = Overview.execute(%{agent_id: "op"}, %{})
+      assert out =~ "Builder [#{ctx.a}] (idle · Claude Code claude-opus-5 · account brad)"
+      assert out =~ "Reviewer [#{ctx.b}] (rate_limited"
+      # The switch options: which accounts can run which harness.
+      assert out =~ "Accounts: "
+      assert out =~ "#{ctx.signed_in} — Claude Code"
+      assert out =~ "#{ctx.empty} — no harness credential"
+    end
+
+    test "switch moves an agent to an account that can run its harness", ctx do
+      assert {:ok, msg} =
+               Agent.execute(
+                 %{agent_id: "op", target: ctx.b, action: "switch", account: ctx.signed_in},
+                 %{}
+               )
+
+      assert msg =~ "account #{ctx.signed_in}"
+      assert msg =~ "picks its conversation back up"
+    end
+
+    test "switch refuses an account that doesn't exist or can't sign that harness in", ctx do
+      assert {:error, msg} =
+               Agent.execute(
+                 %{agent_id: "op", target: ctx.b, action: "switch", account: "nope"},
+                 %{}
+               )
+
+      assert msg =~ "No account 'nope'"
+
+      assert {:error, msg} =
+               Agent.execute(
+                 %{agent_id: "op", target: ctx.b, action: "switch", account: ctx.empty},
+                 %{}
+               )
+
+      assert msg =~ "no Claude Code credential"
+      # It says who CAN, so the next call is the right one.
+      assert msg =~ ctx.signed_in
+    end
+
+    test "switch validates the model selection and needs something to do", ctx do
+      assert {:error, msg} =
+               Agent.execute(
+                 %{agent_id: "op", target: ctx.a, action: "switch", model: "sonnet"},
+                 %{}
+               )
+
+      assert msg =~ "harness:model"
+
+      assert {:error, msg} =
+               Agent.execute(%{agent_id: "op", target: ctx.a, action: "switch"}, %{})
+
+      assert msg =~ "Nothing to switch"
+
+      assert {:ok, msg} =
+               Agent.execute(
+                 %{
+                   agent_id: "op",
+                   target: ctx.a,
+                   action: "switch",
+                   model: "claude:claude-sonnet-5"
+                 },
+                 %{}
+               )
+
+      assert msg =~ "Claude Code claude-sonnet-5"
+    end
+
+    test "the operator can't switch itself", ctx do
+      assert {:error, msg} =
+               Agent.execute(
+                 %{agent_id: ctx.a, target: ctx.a, action: "switch", account: ctx.signed_in},
+                 %{}
+               )
+
+      assert msg =~ "operator itself"
+    end
+  end
+
   describe "DeleteProject" do
     test "unknown target is a clean error and posts NO approval card" do
       operator_id = "cp-op-#{System.unique_integer([:positive])}"
@@ -200,6 +321,30 @@ defmodule Loopyard.Tools.ControlPlaneTest do
     })
 
     on_exit(fn -> Loopyard.WorkspaceRegistry.delete(id) end)
+    id
+  end
+
+  # A fabricated agent summary row — what every fleet read (overview,
+  # resolve_agent) consumes. No GenServer: casts to it are no-ops.
+  defp fake_agent(ws_id, name, status) do
+    id = "cp-agent-#{System.unique_integer([:positive])}"
+
+    :ets.insert(:chat_agents, {
+      id,
+      %{
+        id: id,
+        name: name,
+        status: status,
+        workspace_id: ws_id,
+        harness: :claude,
+        model: "claude-opus-5",
+        workstation_identity: "brad",
+        messages: [],
+        errors: 0
+      }
+    })
+
+    on_exit(fn -> :ets.delete(:chat_agents, id) end)
     id
   end
 

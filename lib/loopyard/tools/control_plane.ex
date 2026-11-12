@@ -162,9 +162,11 @@ defmodule Loopyard.Tools.ControlPlane do
 
   @doc """
   Resolve an operator-supplied target string to a workspace agent summary.
-  Accepts an agent id, a workspace id, or a workspace name (case-insensitive),
-  and returns that workspace's agent (the first one). Used by `peek_workspace`
-  and `dispatch` so the operator can name a target however is natural.
+  Accepts an agent id, a workspace id, or a workspace name (case-insensitive).
+  A workspace with exactly ONE agent resolves to it; with several it is
+  refused with their ids — it used to return "the first one", so with two
+  agents in a workspace a dispatch or a restart landed on an arbitrary one.
+  Used by `peek_workspace`, `dispatch` and `agent`.
   """
   def resolve_agent(target) when is_binary(target) do
     t = String.trim(target)
@@ -182,8 +184,17 @@ defmodule Loopyard.Tools.ControlPlane do
         case resolve_workspace(t) do
           {:ok, ws_id} ->
             case Enum.filter(summaries, &(&1[:workspace_id] == ws_id)) do
-              [] -> {:error, "Workspace '#{target}' has no running agent. Use overview to check."}
-              [agent | _] -> {:ok, agent}
+              [] ->
+                {:error, "Workspace '#{target}' has no running agent. Use overview to check."}
+
+              [agent] ->
+                {:ok, agent}
+
+              several ->
+                {:error,
+                 "Workspace '#{target}' has #{length(several)} agents — name ONE by its id: " <>
+                   Enum.map_join(several, ", ", &"#{&1[:name]} [#{&1.id}] (#{&1[:status]})") <>
+                   "."}
             end
 
           {:error, msg} ->

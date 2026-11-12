@@ -10,7 +10,9 @@ defmodule Loopyard.Tools.ControlPlane.Overview do
     name: "overview",
     description:
       "The whole Loopyard picture in ONE compact read: every project, its " <>
-        "workspaces, each workspace's agents + live status, and its open ports. " <>
+        "workspaces, each workspace's agents (id, live status, harness · model, " <>
+        "and the ACCOUNT each one bills), its open ports, and which accounts can " <>
+        "run which harness. " <>
         "Read-only, no approval — your first call to answer 'what projects/" <>
         "workspaces exist, what's running, what ports are open'. For one " <>
         "workspace's details or chat, use peek_workspace.",
@@ -19,8 +21,10 @@ defmodule Loopyard.Tools.ControlPlane.Overview do
       agent_id: {:string, required: true}
     ]
 
+  alias Loopyard.Harness.Catalog
+
   def execute(_params, _assigns) do
-    {:ok, format(Loopyard.WorkspaceTree.global())}
+    {:ok, format(Loopyard.WorkspaceTree.global()) <> accounts()}
   rescue
     e -> {:error, "Couldn't build the overview: #{inspect(e)}"}
   end
@@ -42,10 +46,63 @@ defmodule Loopyard.Tools.ControlPlane.Overview do
     agents =
       case ws.agents do
         [] -> "no agents"
-        as -> Enum.map_join(as, ", ", &"#{&1.name} (#{&1.status})")
+        as -> Enum.map_join(as, ", ", &agent/1)
       end
 
     "  - #{ws.name} [#{ws.id}]: #{agents}#{ports(ws.id)}#{flags(ws)}"
+  end
+
+  # Each agent by the handle every other tool takes (its id), with what the
+  # chief of staff needs to keep it moving: state, what it runs on, who pays.
+  defp agent(node) do
+    a = summary(node.id) || %{}
+    status = a[:status] || node[:status]
+
+    facts =
+      [
+        status,
+        a[:auth_error] && "sign-in expired",
+        "#{Catalog.label(a[:harness])} #{a[:model] || "default"}",
+        a[:workstation_identity] && "account #{a[:workstation_identity]}"
+      ]
+      |> Enum.filter(& &1)
+      |> Enum.join(" · ")
+
+    "#{node.name} [#{node.id}] (#{facts})"
+  end
+
+  defp summary(id) do
+    case :ets.lookup(:chat_agents, id) do
+      [{_, %{} = s}] -> s
+      _ -> nil
+    end
+  rescue
+    _ -> nil
+  end
+
+  # Which accounts exist and what each can sign in to — the options for
+  # `agent action=switch account=…`.
+  defp accounts do
+    case Loopyard.Workstation.accounts() do
+      [] ->
+        ""
+
+      list ->
+        default = Loopyard.Workstation.current()
+
+        "\n\nAccounts: " <>
+          Enum.map_join(list, "; ", fn %{id: id, harnesses: hs} ->
+            can =
+              case hs do
+                [] -> "no harness credential"
+                _ -> Enum.map_join(hs, ", ", &Catalog.label/1)
+              end
+
+            "#{id}#{if id == default, do: " (default)"} — #{can}"
+          end)
+    end
+  rescue
+    _ -> ""
   end
 
   # Ports come straight from the registry (WorkspaceTree only fills port URLs when

@@ -16,9 +16,46 @@ defmodule Loopyard.ChatAgent.PromptTest do
       prompt = Prompt.build_system_prompt("test-id", workspace_id: "ws-1")
       assert prompt =~ "test-id"
       assert prompt =~ "Workspace: ws-1"
-      assert prompt =~ "loopyard-container"
+      assert prompt =~ "always-on, lightweight container"
       # The one self-determining agent tells itself to assess before acting.
       assert prompt =~ "service_containers"
+    end
+
+    test "names only tools the in-container bridge actually serves" do
+      prompt = Prompt.build_system_prompt("test-id", workspace_id: "ws-1")
+
+      # The prompt told agents to use `file_info`/`read_file`/`edit`/`grep`/
+      # `glob`/`tree` "for ALL work" long after the bridge stopped serving
+      # them (the in-container harness has its own file tools). Every
+      # backticked name that IS a Loopyard tool anywhere must be one an agent
+      # can actually call.
+      served =
+        Loopyard.ChatAgent.ToolConfig.acp_control_plane_tools()
+        |> MapSet.new(& &1.__tool_name__())
+
+      every_tool =
+        (Loopyard.Tools.Container.__tool_server__().tools ++
+           Loopyard.Tools.Secrets.__tool_server__().tools ++
+           Loopyard.Tools.AgentFiles.__tool_server__().tools)
+        |> MapSet.new(& &1.__tool_name__())
+
+      mentioned =
+        ~r/`([a-z_]+)`/
+        |> Regex.scan(prompt)
+        |> Enum.map(&List.last/1)
+        |> Enum.filter(&MapSet.member?(every_tool, &1))
+        |> Enum.uniq()
+
+      assert "exec" in mentioned and "read_workspace" in mentioned
+      assert Enum.reject(mentioned, &MapSet.member?(served, &1)) == []
+    end
+
+    test "tells a workspace agent it may share the tree, and how collaboration works" do
+      prompt = Prompt.build_system_prompt("test-id", workspace_id: "ws-1")
+      assert prompt =~ "You may not be alone"
+      assert prompt =~ "never revert"
+      assert prompt =~ "You cannot message another agent"
+      assert prompt =~ "`read_workspace`"
     end
 
     test "carries the setup playbook in its catalog" do

@@ -348,6 +348,16 @@ agent's stamp, not its workspace. System agents are not switchable — their
 identity is where they live. The chat header chip and the `/agents` row name
 the account.
 
+**The default identity is an explicit choice, and a workspace remembers its own.**
+`Workstation.current()` is the DEFAULT identity — what a new workspace and the
+home-page Operator start on. It moves ONLY through "Make default" on a
+workstation's page (`WorkstationLive` `make_default`); merely opening a
+workstation page changes nothing (it used to `set_current` on mount, so opening
+a second account to sign it in re-pointed everything). Each workspace's
+`workstation_id` is persisted in `canonical_projects.json` and restored
+(`Onboarding.persist/1` / `restore/0`); a fork inherits its source's. Never
+re-derive a workspace's identity from the default at boot.
+
 **Signing an account in is guided, in-app (`Workstation.SignIn`).** The Claude
 integration page (`/workstations/:id/claude`) leads with **Sign in to Claude**:
 `SignIn.begin/2` runs the vendor's own headless login (`claude setup-token`, the
@@ -362,6 +372,54 @@ the token is read and `format_status/1` redacts it). A second Claude account =
 a second workstation, signed in the same way; the chat's Account menu ends with
 "Add an account…" which goes to `/workstations`. The browser decides WHICH
 account signs in, so the page says to switch accounts there first.
+
+## Many agents working together (files and a hub — docs/SECURITY.md)
+
+The perimeter that matters is agent ↔ host and project ↔ project. Agents
+inside ONE project are collaborators; they share FILES, and talk only through
+the chief of staff. Three channels, no fourth:
+
+- **One workspace, one tree.** Every agent in a workspace shares its work
+  container and `/workspace`. The shared doctrine
+  (`priv/agents/_shared/workspace-tools.md`) tells them so — `git status`
+  first, never revert what you didn't write, stage only your own paths — and
+  `workspace_info` lists the roster. Two things make this actually safe:
+  `Harness.ACP.docker_exec_cmd/3` stamps each launch's process tree with
+  `LOOPYARD_AGENT=<id>` and its orphan sweep takes only that stamp (plus
+  unstamped legacy orphans) — unscoped, every agent's (re)start `kill -9`'d
+  its siblings' harnesses; and `Harness.MemoryMonitor` reclaims a container
+  only when EVERY agent in it is idle. Any new sweep or reclaim that runs
+  inside a work container must be owner-scoped the same way.
+- **Sibling branches are readable: `read_workspace`**
+  (`Tools.Container.ReadWorkspace`). Same project only (anything else is "not
+  found"), a `:ro` mount in a throwaway `--network none` container (never an
+  exec in the sibling), `.env*`/`.git`/`.loopyard`/`.ssh`/key files refused on
+  the path asked for AND on its `realpath`. It triggers no turn. The ONE tool
+  that reaches past a workspace's own volume — change it with SECURITY.md open.
+- **Talk goes through a system agent's `dispatch`,** and such a message is
+  never the human: `ChatAgent.Thread.tag_from/2` adds a `[[from:<sender>]]`
+  marker (same trick as the decision `[[re:…]]` marker — it rides the message
+  STRING through queue, batch and replay), stripped on append and stamped
+  `from:` on the message. The transcript labels it with the sender
+  (`Transcript` `prev_from`, `Messages.chat_msg`), `frame_prompt/1` tells the
+  model who is speaking and that it cannot decide for the user, and
+  `Thread.aside?/1` PARKS it when the recipient is waiting on a human decision
+  (it used to be delivered as the answer). Loopyard's own machine-sent messages
+  use sender `loopyard` (`Thread.system_sender/0`). Any new code that puts a
+  message in an agent's inbox on something other than a human's behalf MUST
+  tag it.
+
+There is deliberately no agent-to-agent chat tool (built and removed Jul 2026:
+injection surface, a full turn per message, loops, cross-account spend).
+Orchestration has two homes: the harness's own sub-agents inside one agent,
+and the chief of staff across agents.
+
+**The boot reap is instance-scoped.** `Application.start` kills stale harness
+exec clients by `Harness.ACP.instance_marker/0` (a hash of `LOOPYARD_HOME` +
+the Docker prefix, carried as an inert `: loopyard-instance=…;` at the head of
+every launch script) — never by adapter name, which killed every other
+Loopyard's harnesses on the machine whenever anything booted the app (a test
+run, a second instance) and missed Codex entirely.
 
 ## Fork readiness (provision-before-available)
 
@@ -494,7 +552,15 @@ pull-on-demand — tool COUNT is cheap, tool OUTPUT is the context cost: `overvi
 `peek_workspace`, `system_status` (NEVER a host shell), `recent_activity`,
 `ports`, `dispatch` (→ `enqueue_message`), `notify_when_done`, `agent`,
 `workspace`, the approval-gated create/delete/rename tools, `exec` (in ITS
-container). `Loopyard.Operator.Digest` still rides `Events.Activity` for the
+container). `overview` names each agent by ID with its state, harness · model
+and the ACCOUNT it bills, plus an Accounts line (who can run which harness);
+a workspace with several agents must be addressed by agent id
+(`resolve_agent/1` refuses the bare name and lists them — it used to pick
+"the first"). `agent action=switch` moves an agent onto another `account`
+and/or `harness:model` through the same entry points the sidebar pickers use
+(validated: the account must exist and hold a credential for the harness) —
+the chief of staff's lever for a rate-limited or signed-out account;
+`action=new` takes `account`/`model` too. `Loopyard.Operator.Digest` still rides `Events.Activity` for the
 `recent_activity` pull (replaced by the Notifications store's finished items in
 time).
 
