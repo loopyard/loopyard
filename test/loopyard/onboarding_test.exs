@@ -202,6 +202,24 @@ defmodule Loopyard.OnboardingTest do
     # Persisted to disk.
     assert Map.has_key?(CanonicalStore.load(), project.id)
 
+    # Each workspace's IDENTITY is persisted with it: move the main workspace
+    # onto a second account, fork from it (the fork inherits), and make sure a
+    # restart can't re-derive either from whatever the default is that day.
+    default = Loopyard.Workstation.current()
+    acct = "acct-#{uid()}"
+    :ok = Loopyard.Workstation.create(acct)
+    on_exit(fn -> File.rm_rf(Loopyard.Workstation.dir(acct)) end)
+
+    main = Enum.find(WorkspaceRegistry.list_workspaces(project.id), & &1.is_main)
+    WorkspaceRegistry.insert(main.id, %{main | workstation_id: acct})
+    {:ok, child} = Onboarding.fork_from_workspace(project.id, main.id, "branchy")
+    assert child.workstation_id == acct
+    {:ok, from_base} = Onboarding.fork(project.id, "main", "branchz")
+    assert from_base.workstation_id == acct
+
+    stored = CanonicalStore.load()[project.id]["workspaces"]
+    assert Enum.find(stored, &(&1["id"] == child.id))["workstation_id"] == acct
+
     # Simulate a restart: drop this project's ETS rows.
     for w <- WorkspaceRegistry.list_workspaces(project.id), do: WorkspaceRegistry.delete(w.id)
     :ets.delete(:project_registry, project.id)
@@ -216,7 +234,13 @@ defmodule Loopyard.OnboardingTest do
     names =
       WorkspaceRegistry.list_workspaces(project.id) |> Enum.map(& &1.name) |> Enum.sort()
 
-    assert names == ["branchx", "main"]
+    assert names == ["branchx", "branchy", "branchz", "main"]
+
+    restored = WorkspaceRegistry.list_workspaces(project.id)
+    assert Enum.find(restored, &(&1.id == child.id)).workstation_id == acct
+    assert Enum.find(restored, &(&1.id == main.id)).workstation_id == acct
+    # A workspace recorded before identities were stored falls back to the default.
+    assert Enum.find(restored, &(&1.name == "branchx")).workstation_id == default
 
     # Idempotent: the daemon keeper re-runs restore on every Docker recovery,
     # so a re-run must leave live rows alone — never reset a workspace's
@@ -225,7 +249,7 @@ defmodule Loopyard.OnboardingTest do
     WorkspaceRegistry.update_workspace_status(main_ws.id, :running)
     Onboarding.restore()
     assert WorkspaceRegistry.get_workspace(main_ws.id).status == :running
-    assert length(WorkspaceRegistry.list_workspaces(project.id)) == 2
+    assert length(WorkspaceRegistry.list_workspaces(project.id)) == 4
   end
 
   test "github sync wiring: attach a remote (persisted) + sync pushes canonical main to it" do

@@ -51,11 +51,13 @@ defmodule LoopyardWeb.WorkstationLive do
      |> assign(:current_id, Loopyard.Workstation.current())}
   end
 
-  # The page operates on the workstation in the URL. Visiting it makes it the
-  # identity you're operating as (what new agents inherit).
+  # The page operates on the workstation in the URL. LOOKING at one changes
+  # nothing: the default identity (what new workspaces and the Operator use)
+  # moves only by the explicit "Make default" action. It used to follow the
+  # last page anyone opened — global state changed by a page view, so opening a
+  # second account's page to sign it in silently re-pointed every new
+  # workspace, and after a restart every restored one, at that account.
   defp mount_workstation(ws, socket) do
-    _ = Loopyard.Workstation.set_current(ws)
-
     socket =
       if connected?(socket) do
         subscribe_iex(socket)
@@ -66,6 +68,7 @@ defmodule LoopyardWeb.WorkstationLive do
     socket =
       socket
       |> assign(:current_id, ws)
+      |> assign(:default_id, Loopyard.Workstation.current())
       |> assign(:workstation_ids, Loopyard.Workstation.list())
       |> assign(:console_container, nil)
       |> assign(:console_error, nil)
@@ -168,6 +171,12 @@ defmodule LoopyardWeb.WorkstationLive do
      |> put_flash(:info, "Removed #{key} — Restart the machine to apply.")}
   end
 
+  def handle_event("make_default", _params, socket) do
+    ws = socket.assigns.current_id
+    _ = Loopyard.Workstation.set_current(ws)
+    {:noreply, assign(socket, :default_id, Loopyard.Workstation.current())}
+  end
+
   def handle_event("restart_machine", _params, socket) do
     # Recreate the workstation container from scratch — for when the shell wedges.
     # Kill the terminal session first so a fresh `docker exec` lands on the new
@@ -234,13 +243,13 @@ defmodule LoopyardWeb.WorkstationLive do
               title={id}
               desc={
                 if id == @current_id,
-                  do: "The identity you're operating as.",
-                  else: "Open to switch to it."
+                  do: "The default: new workspaces and the Operator start here.",
+                  else: "Open to connect its tools or sign it in."
               }
             >
               <:trailing :if={id == @current_id}>
                 <span class="inline-flex items-center gap-1.5 text-meta text-sky-600 dark:text-sky-400">
-                  <span class="w-1.5 h-1.5 rounded-full bg-sky-500"></span> current
+                  <span class="w-1.5 h-1.5 rounded-full bg-sky-500"></span> default
                 </span>
               </:trailing>
             </.nav_row>
@@ -288,6 +297,16 @@ defmodule LoopyardWeb.WorkstationLive do
             All workstations
           </.link>
         </div>
+
+        <%!-- The DEFAULT identity is an explicit choice, never a side effect of
+        opening a page. Agents keep whatever account they were given. --%>
+        <.section
+          :if={@current_id != @default_id}
+          title="Not the default"
+          hint={"New workspaces and the Operator start on #{@default_id}. Agents already running keep the account you picked for them."}
+        >
+          <.button phx-click="make_default">Make {@current_id} the default</.button>
+        </.section>
 
         <.section
           title="Connect your tools"

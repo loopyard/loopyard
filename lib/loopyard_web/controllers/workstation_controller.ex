@@ -1,9 +1,10 @@
 defmodule LoopyardWeb.WorkstationController do
   @moduledoc """
-  Bare-URL redirect to the current identity's page, and creating new identities.
-  Each workstation lives at its own URL (`/workstations/:id`); *visiting* one makes
-  it the one you're operating as. The "current" identity (a file, not a browser
-  session) is what bare `/workstation(s)` resolves to and what new agents inherit.
+  Bare-URL redirect to the default identity's page, and creating new identities.
+  Each workstation lives at its own URL (`/workstations/:id`). The DEFAULT
+  identity (a file, not a browser session) is what bare `/workstation` resolves
+  to and what new workspaces start on; it changes only through the explicit
+  "Make default" action on a workstation's page — never by visiting one.
   """
   use LoopyardWeb, :controller
 
@@ -14,7 +15,7 @@ defmodule LoopyardWeb.WorkstationController do
     redirect(conn, to: "/workstations/#{Workstation.current()}")
   end
 
-  @doc "Create a new identity (seeds its build context) and go operate as it."
+  @doc "Create a new identity (seeds its build context) and open its page."
   def create(conn, %{"ws_id" => raw}) do
     id = raw |> to_string() |> String.trim()
 

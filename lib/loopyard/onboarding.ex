@@ -94,7 +94,12 @@ defmodule Loopyard.Onboarding do
 
     with {:ok, _ws_vol} <-
            CanonicalRepo.fork(project_id, ws_id, base, branch, project_remote(project_id)) do
-      ws = register_workspace(project_id, ws_id, branch, is_main: false)
+      ws =
+        register_workspace(project_id, ws_id, branch,
+          is_main: false,
+          workstation_id: branch_workstation(project_id, base)
+        )
+
       persist(project_id)
       start_work_async(ws_id)
       {:ok, ws}
@@ -126,7 +131,15 @@ defmodule Loopyard.Onboarding do
              project_remote(project_id)
            ) do
       progress.("Registering the workspace…")
-      ws = register_workspace(project_id, ws_id, branch, is_main: false)
+
+      # A fork stays on its source's account: the branch is the same client's
+      # work, whatever identity happens to be the default today.
+      ws =
+        register_workspace(project_id, ws_id, branch,
+          is_main: false,
+          workstation_id: source_workstation(source_ws_id)
+        )
+
       persist(project_id)
       progress.("Starting the environment…")
       start_work_async(ws_id)
@@ -262,7 +275,11 @@ defmodule Loopyard.Onboarding do
         ws <- entry["workspaces"] || [],
         is_nil(WorkspaceRegistry.get_workspace(ws["id"])),
         VolumeManager.volume_exists?(VolumeManager.code_volume_name(ws["id"])) do
-      register_workspace(project_id, ws["id"], ws["branch"], is_main: ws["is_main"])
+      register_workspace(project_id, ws["id"], ws["branch"],
+        is_main: ws["is_main"],
+        workstation_id: stored_workstation(ws["workstation_id"])
+      )
+
       # Always-on per branch: bring each restored branch's work container back
       # up after a server restart (best-effort, async).
       start_work_async(ws["id"])
@@ -396,9 +413,41 @@ defmodule Loopyard.Onboarding do
       "remote" => project.source_config[:remote],
       "workspaces" =>
         Enum.map(workspaces, fn ws ->
-          %{"id" => ws.id, "branch" => ws.branch, "is_main" => ws.is_main}
+          %{
+            "id" => ws.id,
+            "branch" => ws.branch,
+            "is_main" => ws.is_main,
+            # Which identity's home (and default account) the workspace runs
+            # under. Without it every boot re-derived this from the global
+            # default, so "which account does this project bill" was whatever
+            # the default happened to be at the last restart.
+            "workstation_id" => ws[:workstation_id]
+          }
         end)
     })
+  end
+
+  # A stored identity that no longer exists (renamed, removed) or was never
+  # recorded falls back to the default — `register_workspace/4` resolves nil.
+  defp stored_workstation(id) when is_binary(id),
+    do: if(Loopyard.Workstation.exists?(id), do: id)
+
+  defp stored_workstation(_), do: nil
+
+  defp source_workstation(ws_id) do
+    case WorkspaceRegistry.get_workspace(ws_id) do
+      %{workstation_id: id} when is_binary(id) -> id
+      _ -> nil
+    end
+  end
+
+  defp branch_workstation(project_id, branch) do
+    workspaces = WorkspaceRegistry.list_workspaces(project_id)
+
+    source =
+      Enum.find(workspaces, &(&1[:branch] == branch)) || Enum.find(workspaces, & &1[:is_main])
+
+    source && source[:workstation_id]
   end
 
   defp register_workspace(project_id, ws_id, branch, opts) do

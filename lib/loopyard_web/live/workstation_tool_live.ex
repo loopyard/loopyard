@@ -56,8 +56,6 @@ defmodule LoopyardWeb.WorkstationToolLive do
          |> push_navigate(to: "/workstations/#{ws}")}
 
       true ->
-        # Operating-as follows the workstation in the URL.
-        _ = Workstation.set_current(ws)
         ig = Integration.get(tool)
         # `__ORIGIN__` is swapped for `window.location.origin` client-side (see the
         # Clip / OriginText hooks in app.js) so the command targets the host the
