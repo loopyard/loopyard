@@ -174,6 +174,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Transcript do
   def item_contexts(messages, expanded_results) do
     tail_from = expand_tail_from(messages)
     roles = messages |> Enum.map(& &1.role) |> List.to_tuple()
+    # Who SENT each message, when it wasn't the human (ChatAgent.Thread `from:`)
+    # — consecutive prompts group under one label only while the sender holds.
+    senders = messages |> Enum.map(& &1[:from]) |> List.to_tuple()
     n = tuple_size(roles)
     {children_by_parent, results_by_id} = lineage(messages)
 
@@ -214,6 +217,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Transcript do
         entry = %{
           prev_role: if(idx > 0, do: elem(roles, idx - 1)),
           next_role: if(idx < n - 1, do: elem(roles, idx + 1)),
+          prev_from: if(idx > 0, do: elem(senders, idx - 1)),
           call: call,
           nested: nested?,
           children: children,

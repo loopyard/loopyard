@@ -12,7 +12,7 @@ defmodule Loopyard.Tools.ControlPlane.Dispatch do
     name: "dispatch",
     description:
       "Hand a task to a workspace's agent — sends `message` into that " <>
-        "workspace's chat as if the user asked it there. Use after deciding a " <>
+        "workspace's chat, labelled as coming from you. Use after deciding a " <>
         "workspace should do something. `target` is a workspace id/name or an " <>
         "agent id. Queues if the agent is busy and sends when it's free.",
     busy_words: ["handing it off"],
@@ -26,7 +26,15 @@ defmodule Loopyard.Tools.ControlPlane.Dispatch do
 
   def execute(%{agent_id: operator_id, target: target, message: message}, _assigns) do
     with {:ok, agent} <- Loopyard.Tools.ControlPlane.resolve_agent(target),
-         :ok <- Loopyard.ChatAgent.enqueue_message(agent.id, message) do
+         # Stamped with the SENDER: the recipient's chat shows it under this
+         # agent's name (not the human's), the model is told who is speaking,
+         # and it can never be taken as the human's answer to a pending
+         # decision (ChatAgent.Thread).
+         :ok <-
+           Loopyard.ChatAgent.enqueue_message(
+             agent.id,
+             Loopyard.ChatAgent.Thread.tag_from(message, operator_id)
+           ) do
       # Add/refresh this workspace's job in the operator's worker queue.
       Loopyard.Operator.Jobs.note_dispatch(agent[:workspace_id], agent.id)
       # Drop a live "mini app" tile into the operator's own chat — a window INTO
@@ -53,7 +61,7 @@ defmodule Loopyard.Tools.ControlPlane.Dispatch do
   # The mini-app card: a role: :embed message referencing the delegated agent.
   # `Cards.agent_embed` renders it live (reads the agent's status) and it survives
   # the :chat detail level, so the executive sees the delegation, not the plumbing.
-  defp emit_mini_app(operator_id, agent) when is_binary(operator_id) do
+  defp emit_mini_app(operator_id, agent) do
     ws_id = agent[:workspace_id]
     ws = ws_id && Loopyard.WorkspaceRegistry.get_workspace(ws_id)
 
@@ -70,6 +78,4 @@ defmodule Loopyard.Tools.ControlPlane.Dispatch do
   rescue
     _ -> :ok
   end
-
-  defp emit_mini_app(_, _), do: :ok
 end

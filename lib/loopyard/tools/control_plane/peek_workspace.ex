@@ -56,11 +56,23 @@ defmodule Loopyard.Tools.ControlPlane.PeekWorkspace do
   defp render_one(m) do
     who =
       case m[:role] do
-        :user -> "User"
-        :assistant -> "Agent"
-        :tool -> "Tool" <> if(m[:tool], do: "(#{m[:tool]})", else: "")
-        :error -> "Error"
-        _ -> "System"
+        # A prompt the human didn't type names its real sender.
+        :user ->
+          if from = m[:from],
+            do: "From " <> Loopyard.ChatAgent.Thread.sender_name(from),
+            else: "User"
+
+        :assistant ->
+          "Agent"
+
+        :tool ->
+          "Tool" <> if(m[:tool], do: "(#{m[:tool]})", else: "")
+
+        :error ->
+          "Error"
+
+        _ ->
+          "System"
       end
 
     "#{who}: #{cap(m[:content])}"

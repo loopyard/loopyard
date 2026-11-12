@@ -117,7 +117,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     # area: the "You" label + the sticky header show on the FIRST only, and the
     # bands butt together (tight padding, no gap) so they read as a single block,
     # not N separate cards.
-    first? = prev_role(assigns) != :user
+    # A prompt another agent (or Loopyard) sent carries `from:`: it wears the
+    # SENDER's name, and never groups under the human's label.
+    from = assigns.msg[:from]
+    label = if from, do: Loopyard.ChatAgent.Thread.sender_name(from), else: assigns.user_label
+    assigns = assign(assigns, :user_label, label)
+    first? = prev_role(assigns) != :user or get_in(assigns, [:ctx, :prev_from]) != from
 
     assigns =
       assign(assigns,

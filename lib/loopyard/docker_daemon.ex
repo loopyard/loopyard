@@ -286,10 +286,15 @@ defmodule Loopyard.DockerDaemon do
       if agent do
         Loopyard.ChatAgent.enqueue_message(
           agent.id,
-          "Docker was restarted and your dev cluster came back — except these " <>
-            "services, which are crash-looping (likely an app-level issue: " <>
-            "stale deps, migrations, config). Diagnose from the logs below and " <>
-            "bring them up.\n\n#{diagnosis}"
+          # From Loopyard, not the human: labelled so in the chat, and it must
+          # never land as the answer to a question the agent parked on them.
+          Loopyard.ChatAgent.Thread.tag_from(
+            "Docker was restarted and your dev cluster came back — except these " <>
+              "services, which are crash-looping (likely an app-level issue: " <>
+              "stale deps, migrations, config). Diagnose from the logs below and " <>
+              "bring them up.\n\n#{diagnosis}",
+            Loopyard.ChatAgent.Thread.system_sender()
+          )
         )
 
         Loopyard.EventLog.warning(

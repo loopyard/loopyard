@@ -459,13 +459,12 @@ defmodule Loopyard.ChatAgent do
       # message as a normal user turn-input so it's visible, then
       # resolve the question.
       #
-      # EXCEPT a message ABOUT a decision (ChatAgent.Thread marker): that's a
-      # question for the agent, not the answer to its card — never deliver it
-      # as the answer. Parked inside its own ask the agent can't take a prompt
-      # either, so it queues and goes out when the turn ends (card answered,
-      # or the ask times out).
+      # EXCEPT an ASIDE (ChatAgent.Thread): talk ABOUT a decision, or a message
+      # another agent / Loopyard sent — never the human's answer to the card.
+      # Parked inside its own ask the agent can't take a prompt either, so it
+      # queues and goes out when the turn ends (card answered, or ask timeout).
       Loopyard.Harness.Questions.pending_for_agent?(state.id) and state.status != :idle and
-          not is_nil(elem(Thread.split(text), 1)) ->
+          Thread.aside?(text) ->
         {:noreply, SendGuards.park_for_later(state, text)}
 
       Loopyard.Harness.Questions.pending_for_agent?(state.id) and state.status != :idle ->

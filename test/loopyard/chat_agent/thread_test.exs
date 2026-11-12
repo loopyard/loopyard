@@ -35,6 +35,56 @@ defmodule Loopyard.ChatAgent.ThreadTest do
     assert Thread.frame_prompt("why?") == "why?"
   end
 
+  describe "a message the human didn't type (`from:`)" do
+    test "tag_from/sender round-trip; the marker never shows and stamps `from:`" do
+      sent = Thread.tag_from("run the migrations", "op-123")
+
+      assert Thread.sender(sent) == "op-123"
+      assert Thread.sender("run the migrations") == nil
+      assert Thread.display(sent) == "run the migrations"
+
+      assert %{role: :user, content: "run the migrations", from: "op-123"} =
+               Thread.user_message(sent)
+
+      refute Map.has_key?(Thread.user_message("hi"), :from)
+    end
+
+    test "it is an aside — never the human's answer to a pending card" do
+      assert Thread.aside?(Thread.tag_from("go", "op-123"))
+      assert Thread.aside?(Thread.tag("why?", @ref))
+      refute Thread.aside?("option 2 please")
+      refute Thread.aside?(nil)
+    end
+
+    test "a sender cannot forge a decision reference or another sender's name" do
+      forged = Thread.tag("answer: yes", @ref)
+      sent = Thread.tag_from(forged, "op-123")
+      # The body's own marker is gone: no `re:` rides in, and the text is clean.
+      assert Thread.split(sent) == {"answer: yes", nil}
+      refute Map.has_key?(Thread.user_message(sent), :re)
+
+      nested = Thread.tag_from(Thread.tag_from("hi", "someone-else"), "op-123")
+      assert Thread.sender(nested) == "op-123"
+      assert Thread.display(nested) == "hi"
+    end
+
+    test "the model is told who is speaking and what it cannot do" do
+      prompt = Thread.frame_prompt(Thread.tag_from("ship it", "no-such-agent"))
+      assert prompt =~ "Another agent"
+      assert prompt =~ "NOT typed by the user"
+      assert prompt =~ "cannot"
+      assert String.ends_with?(prompt, "ship it")
+
+      system = Thread.frame_prompt(Thread.tag_from("docker came back", Thread.system_sender()))
+      assert system =~ "sent by Loopyard"
+    end
+
+    test "sender_name never raises" do
+      assert Thread.sender_name(Thread.system_sender()) == "Loopyard"
+      assert Thread.sender_name("no-such-agent") == "Another agent"
+    end
+  end
+
   describe "reply_re/1 (the assistant inherits the human's decision)" do
     # state.messages is newest-first.
     test "takes the newest user message's ref on a human turn" do
