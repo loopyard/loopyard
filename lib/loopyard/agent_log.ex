@@ -591,6 +591,7 @@ defmodule Loopyard.AgentLog do
           agent_data
           |> Map.put_new(:id, agent_id)
           |> Map.put(:alive?, false)
+          |> at_rest()
 
         :ets.insert(table, {agent_id, agent_data})
       end
@@ -600,6 +601,28 @@ defmodule Loopyard.AgentLog do
 
     :ok
   end
+
+  # Statuses only a RUNNING agent can be in. A row restored from disk has no
+  # process, so it cannot be any of them.
+  @live_only [:thinking, :backoff, :booting, :compacting, :starting, :restarting]
+
+  @doc """
+  A restored row, put at rest. An agent that was mid-turn when the server went
+  down was logged `:thinking`, and the row came back saying so — every surface
+  that reads `status` (the Agents root, the home card, the chief of staff's
+  overview, the sound bed) then reported it "working…" for as long as it
+  slept, with nothing running. Seen live: a row "working" for 62 days.
+
+  The row is rewritten `:idle` and marked `interrupted?: true`, which is the
+  truth worth keeping: its last turn never finished. A woken agent rewrites
+  its whole row from its own state, which drops the mark.
+  """
+  @spec at_rest(map()) :: map()
+  def at_rest(%{status: status} = row) when status in @live_only,
+    do:
+      row |> Map.put(:status, :idle) |> Map.put(:interrupted?, true) |> Map.put(:active_tool, nil)
+
+  def at_rest(row), do: row
 
   # ONE line for the whole batch, not one per agent. A long-lived log
   # accumulates orphaned message runs (deleted agents, pre-identity

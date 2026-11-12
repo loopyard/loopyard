@@ -348,6 +348,47 @@ defmodule Loopyard.AgentLogTest do
       assert length(data.messages) == 1
     end
 
+    test "an agent logged mid-turn comes back at rest and marked interrupted", %{
+      log_path: log_path,
+      ets_table: table
+    } do
+      # The server went down while a1 was thinking. Nothing is running after
+      # the replay, so the row must not say it is — it sat "working…" on the
+      # Agents root for as long as it slept.
+      AgentLog.append(
+        {:agent, "a1", %{name: "Busy", status: :thinking, active_tool: "Bash"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append({:agent, "a2", %{name: "Quiet", status: :idle}},
+        log_path: log_path,
+        version: @version
+      )
+
+      {:ok, _state} = AgentLog.replay(log_path: log_path, version: @version, ets_table: table)
+
+      [{"a1", busy}] = :ets.lookup(table, "a1")
+      assert busy.status == :idle
+      assert busy.interrupted? == true
+      assert busy.active_tool == nil
+      assert busy.alive? == false
+
+      [{"a2", quiet}] = :ets.lookup(table, "a2")
+      assert quiet.status == :idle
+      refute Map.has_key?(quiet, :interrupted?)
+    end
+
+    test "at_rest/1 leaves a status a sleeping agent can truthfully hold" do
+      for status <- [:idle, :rate_limited, :auth_expired, :stopped, :crashed] do
+        assert AgentLog.at_rest(%{status: status}) == %{status: status}
+      end
+
+      for status <- [:thinking, :backoff, :booting, :compacting, :starting, :restarting] do
+        assert %{status: :idle, interrupted?: true} = AgentLog.at_rest(%{status: status})
+      end
+    end
+
     test "populates multiple agents in ETS", %{log_path: log_path, ets_table: table} do
       AgentLog.append({:agent, "agent-1", %{name: "Agent 1"}},
         log_path: log_path,

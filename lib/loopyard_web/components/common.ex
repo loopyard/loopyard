@@ -310,6 +310,8 @@ defmodule LoopyardWeb.Components.Common do
   def status_word(:needs_you), do: "Needs you"
   def status_word(:done), do: "Ready"
   def status_word(:broken), do: "Broken"
+  def status_word(:limited), do: "At plan limit"
+  def status_word(:interrupted), do: "Interrupted"
   def status_word(_), do: "Asleep"
 
   @doc "Text colour for `status_word/1`, matching `state_light/1`'s tones."
@@ -319,6 +321,12 @@ defmodule LoopyardWeb.Components.Common do
   def status_class(:needs_you), do: "text-orange-700 dark:text-orange-400"
   def status_class(:done), do: "text-emerald-600 dark:text-emerald-400"
   def status_class(:broken), do: "text-red-600 dark:text-red-400"
+
+  # Amber is the brand's transitional caution: stopped, not failed, and it
+  # will move again (a plan window resets; an interrupted turn can be re-run).
+  def status_class(s) when s in [:limited, :interrupted],
+    do: "text-amber-700 dark:text-amber-400"
+
   def status_class(_), do: "text-zinc-400 dark:text-zinc-500"
 
   @doc """
@@ -353,6 +361,7 @@ defmodule LoopyardWeb.Components.Common do
   def state_light(:needs_you), do: "bg-orange-500"
   def state_light(:done), do: "bg-emerald-500"
   def state_light(:broken), do: "bg-red-500"
+  def state_light(s) when s in [:limited, :interrupted], do: "bg-amber-500"
   def state_light(_), do: "bg-zinc-400"
 
   @doc """

@@ -38,7 +38,7 @@ defmodule LoopyardWeb.AgentsLive do
     waiting = Loopyard.Notifications.open(:decisions) |> MapSet.new(& &1.agent_id)
     rows = Agents.summaries() |> Row.rows(waiting)
 
-    assign(socket, rows: rows, working: Row.working_count(rows))
+    assign(socket, rows: rows, fleet_line: Row.fleet_line(rows))
   end
 
   @impl true
@@ -73,9 +73,9 @@ defmodule LoopyardWeb.AgentsLive do
       <div class="flex-1 min-w-0 min-h-0 overflow-y-auto">
         <div class="mx-auto w-full max-w-3xl px-4 md:px-6 py-4">
           <%!-- The one line that says how the fleet is, then the rows. --%>
-          <div class="flex items-center gap-3 mb-2">
-            <p class="text-body text-zinc-500 dark:text-zinc-400">
-              {length(@rows)} {plural(length(@rows), "agent")} · {@working} working
+          <div class="flex flex-wrap items-center gap-x-3 mb-2">
+            <p class="min-w-0 text-body text-zinc-500 dark:text-zinc-400">
+              {@fleet_line}
             </p>
             <.link
               :if={@live_action != :new}
@@ -140,7 +140,4 @@ defmodule LoopyardWeb.AgentsLive do
     </AppShell.shell>
     """
   end
-
-  defp plural(1, word), do: word
-  defp plural(_, word), do: word <> "s"
 end

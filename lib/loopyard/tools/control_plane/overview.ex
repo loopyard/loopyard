@@ -62,6 +62,8 @@ defmodule Loopyard.Tools.ControlPlane.Overview do
       [
         status,
         a[:auth_error] && "sign-in expired",
+        # Restored mid-turn and not woken since (AgentLog.at_rest/1).
+        a[:interrupted?] == true && "interrupted: its last turn never finished",
         "#{Catalog.label(a[:harness])} #{a[:model] || "default"}",
         a[:workstation_identity] && "account #{a[:workstation_identity]}"
       ]

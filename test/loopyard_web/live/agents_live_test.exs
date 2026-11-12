@@ -69,8 +69,8 @@ defmodule LoopyardWeb.AgentsLiveTest do
     {sys_at, _} = :binary.match(html, "/agents/#{sid}")
     {ws_at, _} = :binary.match(html, "/agents/#{wid}")
     assert sys_at < ws_at
-    # Other tests leave agents in ETS; only the shape of the count is ours.
-    assert html =~ ~r/\d+ agents? · \d+ working/
+    # Other tests leave agents in ETS; only the shape of the line is ours.
+    assert html =~ ~r/\d+ agents? · .*\d+ working/
 
     # Whose account each agent runs under — who pays — on the row's meta line.
     assert html =~ "Claude Code · Rocketship"
@@ -90,6 +90,55 @@ defmodule LoopyardWeb.AgentsLiveTest do
     {row_at, _} = :binary.match(html, "/agents/#{sid}")
     # The row's state light: working (violet, pulsing) → ready (green).
     assert String.slice(html, row_at, 1500) =~ "bg-emerald-500"
+  end
+
+  test "a row says what the agent is doing beside its name, and what it runs on beneath", %{
+    conn: conn,
+    sid: sid
+  } do
+    {:ok, _view, html} = live(conn, "/agents")
+    {row_at, _} = :binary.match(html, "/agents/#{sid}")
+    row = String.slice(html, row_at, 1800)
+
+    assert row =~ "Working"
+    # The model by its short name, not the raw id.
+    assert row =~ "Opus 4.8"
+    refute row =~ "claude-opus-4-8"
+    # The facts line wraps on a phone instead of losing its end.
+    assert row =~ "line-clamp-2"
+  end
+
+  test "an agent restored mid-turn reads Interrupted, sorts up, and is not counted as working",
+       %{conn: conn, sid: sid, wid: wid} do
+    [{^wid, row}] = :ets.lookup(:chat_agents, wid)
+    :ets.insert(:chat_agents, {wid, Loopyard.AgentLog.at_rest(%{row | status: :thinking})})
+
+    {:ok, _view, html} = live(conn, "/agents")
+
+    assert html =~ "Interrupted"
+    assert html =~ ~r/\d+ interrupted/
+    # It wants a human's eye, so it leads the system agent that is merely working.
+    {ws_at, _} = :binary.match(html, "/agents/#{wid}")
+    {sys_at, _} = :binary.match(html, "/agents/#{sid}")
+    assert ws_at < sys_at
+    assert String.slice(html, ws_at, 1500) =~ "bg-amber-500"
+  end
+
+  test "a signed-out agent and one at its plan limit say so in words", %{
+    conn: conn,
+    sid: sid,
+    wid: wid
+  } do
+    [{^sid, sys}] = :ets.lookup(:chat_agents, sid)
+    [{^wid, ws}] = :ets.lookup(:chat_agents, wid)
+    :ets.insert(:chat_agents, {sid, %{sys | status: :auth_expired}})
+    :ets.insert(:chat_agents, {wid, %{ws | status: :rate_limited}})
+
+    {:ok, _view, html} = live(conn, "/agents")
+
+    assert html =~ "Signed out"
+    assert html =~ "At plan limit"
+    assert html =~ ~r/\d+ at a plan limit/
   end
 
   test "/agents/new shows the form with the system templates", %{conn: conn} do

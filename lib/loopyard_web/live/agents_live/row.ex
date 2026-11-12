@@ -14,10 +14,19 @@ defmodule LoopyardWeb.AgentsLive.Row do
   a BOLD NAME with its status beneath. Wherever agents are listed they wear
   this shape, so "a list of agents" is recognisable before you read a word.
 
-  Everything below the name is one muted line: where it lives, what it runs
-  on, what it's doing, how long ago. Uppercase group headings used to carry
-  the where; a row that states its own where needs no heading, and the list
-  stays flat — which is what the Agents root is for.
+  The name's line ends with what the agent is DOING and when it last did
+  something — the two facts a fleet is scanned for. They used to trail a single
+  truncated line of where · harness · model · account, so on a phone the row
+  read "Property Tax Analysis · main · Claude Co…" and the state was the part
+  cut off. Below the name, muted: where it lives, what it runs on and as whom;
+  it wraps to a second line on a narrow screen instead of losing its end.
+  Uppercase group headings used to carry the where; a row that states its own
+  where needs no heading, and the list stays flat — which is what the Agents
+  root is for.
+
+  Rows that need a human or have stopped moving (needs you, broken, at a plan
+  limit, interrupted) sort to the top; the rest keep the registry's order
+  (system agents first), so a row never jumps just because it started working.
 
   `rows/1` shapes summaries into what the row renders (ETS + registries
   only, no GenServer calls — this runs on mount paths).
@@ -25,8 +34,12 @@ defmodule LoopyardWeb.AgentsLive.Row do
   use Phoenix.Component
 
   alias LoopyardWeb.Components.{Birdseye, Common}
+  alias LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel
 
   @working [:thinking, :backoff, :compacting, :booting, :starting, :restarting]
+
+  # States that want a human's eye, in the order they sort.
+  @attention [:needs_you, :broken, :limited, :interrupted]
 
   @type row :: %{
           id: String.t(),
@@ -36,6 +49,7 @@ defmodule LoopyardWeb.AgentsLive.Row do
           state: atom(),
           status: atom(),
           needs_you?: boolean(),
+          word: String.t() | nil,
           loop: String.t() | nil,
           model: String.t() | nil,
           account: String.t() | nil,
@@ -53,21 +67,24 @@ defmodule LoopyardWeb.AgentsLive.Row do
   def rows(summaries, waiting \\ MapSet.new()) do
     names = workspace_names()
 
-    Enum.map(summaries, fn s ->
+    summaries
+    |> Enum.map(fn s ->
       scope = Loopyard.Agents.scope(s)
       ws = Map.get(names, s[:workspace_id], %{})
       needs_you? = MapSet.member?(waiting, s.id)
+      state = state_for(s, needs_you?)
 
       %{
         id: s.id,
         name: s[:name] || "Agent",
         scope: scope,
         where: where(scope, ws),
-        state: state_for(s, needs_you?),
+        state: state,
+        word: word_for(state, s),
         status: s[:status],
         needs_you?: needs_you?,
         loop: loop_label(s[:harness]),
-        model: s[:model],
+        model: ContextPanel.short_model(s[:model]),
         # Whose account (credentials) it runs under — who pays for its tokens.
         account: account_label(s[:workstation_identity]),
         activity: Birdseye.agent_activity(s),
@@ -76,7 +93,37 @@ defmodule LoopyardWeb.AgentsLive.Row do
         group: where(scope, ws)
       }
     end)
+    # Stable: only the attention rows move, in @attention's order.
+    |> Enum.sort_by(&attention_rank(&1.state))
   end
+
+  defp attention_rank(state),
+    do: Enum.find_index(@attention, &(&1 == state)) || length(@attention)
+
+  @doc """
+  The fleet in one line: how many agents, then every state that has any, the
+  ones wanting a human first — "6 agents · 1 needs you · 1 interrupted · 2 working".
+  """
+  @spec fleet_line([row()]) :: String.t()
+  def fleet_line(rows) do
+    counts = Enum.frequencies_by(rows, & &1.state)
+
+    parts =
+      for {state, label} <- [
+            needs_you: "needs you",
+            broken: "broken",
+            limited: "at a plan limit",
+            interrupted: "interrupted",
+            working: "working"
+          ],
+          n = counts[state],
+          do: "#{n} #{label}"
+
+    Enum.join(["#{length(rows)} #{plural(length(rows), "agent")}" | parts], " · ")
+  end
+
+  defp plural(1, word), do: word
+  defp plural(_, word), do: word <> "s"
 
   attr :row, :map, required: true
   attr :compact, :boolean, default: false, doc: "the home card's tighter row"
@@ -95,34 +142,37 @@ defmodule LoopyardWeb.AgentsLive.Row do
         aria-hidden="true"
       ></span>
       <span class="min-w-0 flex-1">
-        <span class="block truncate text-lead font-semibold text-zinc-900 dark:text-zinc-50">
-          {@row.name}
+        <span class="flex items-baseline gap-2">
+          <span class="min-w-0 flex-1 truncate text-lead font-semibold text-zinc-900 dark:text-zinc-50">
+            {@row.name}
+          </span>
+          <span class="flex-none text-meta whitespace-nowrap text-zinc-500 dark:text-zinc-400">
+            <span :if={@row.word} class={["font-semibold", Common.status_class(@row.state)]}>
+              {@row.word}
+            </span>
+            <span :if={@row.word && ago(@row.last_activity_at)} aria-hidden="true">·</span>
+            {ago(@row.last_activity_at)}
+          </span>
         </span>
-        <span class="block truncate text-meta text-zinc-500 dark:text-zinc-400">
+        <span class={[
+          "block text-meta text-zinc-500 dark:text-zinc-400",
+          (@compact && "truncate") || "line-clamp-2 md:line-clamp-1"
+        ]}>
           {meta_line(@row, @compact)}
         </span>
-      </span>
-      <span
-        :if={@row.needs_you?}
-        class="flex-none text-meta font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-400 whitespace-nowrap"
-      >
-        Needs you
       </span>
     </.link>
     """
   end
 
-  # Everything under the name, in one muted line: where it lives, what it
-  # runs on and as whom (the root only — the home card has no room), what
-  # it's doing and when it last did something.
+  # Under the name, muted: where it lives, then (the root only — the home card
+  # has no room) what it runs on and as whom.
   defp meta_line(row, compact?) do
     [
       row.where,
       if(!compact? && row.loop,
         do: Enum.join(Enum.reject([row.loop, row.model, row.account], &is_nil/1), " · ")
-      ),
-      if(row.needs_you?, do: nil, else: row.activity),
-      if(!compact?, do: ago(row.last_activity_at))
+      )
     ]
     |> Enum.reject(&(&1 in [nil, ""]))
     |> Enum.join(" · ")
@@ -146,10 +196,31 @@ defmodule LoopyardWeb.AgentsLive.Row do
       needs_you? -> :needs_you
       s[:status] in @working -> :working
       s[:status] == :auth_expired or s[:quarantined] -> :broken
+      s[:status] == :rate_limited -> :limited
+      # Restored from disk mid-turn and not woken since (AgentLog.at_rest/1).
+      s[:interrupted?] == true -> :interrupted
       s[:status] == :idle -> :done
       true -> :asleep
     end
   end
+
+  # The state in the row's own words — nil for a resting one, which the dot
+  # already covers (Common.notable_state?/1). A working agent names the tool
+  # it's in when it has one.
+  defp word_for(:needs_you, _s), do: "Needs you"
+  defp word_for(:limited, _s), do: "At plan limit"
+  defp word_for(:interrupted, _s), do: "Interrupted"
+  defp word_for(:broken, %{status: :auth_expired}), do: "Signed out"
+  defp word_for(:broken, _s), do: "Broken"
+
+  defp word_for(:working, s) do
+    case Birdseye.agent_activity(s) do
+      "working…" -> "Working"
+      tool -> tool
+    end
+  end
+
+  defp word_for(_state, _s), do: nil
 
   defp loop_label(nil), do: nil
   defp loop_label(harness), do: Loopyard.Harness.Catalog.label(harness)

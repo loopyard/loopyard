@@ -81,6 +81,9 @@ defmodule LoopyardWeb.Components.Birdseye do
           _ -> "working…"
         end
 
+      Map.get(agent, :interrupted?) == true ->
+        "interrupted"
+
       status == :idle ->
         "idle"
 
