@@ -220,6 +220,16 @@ defmodule Loopyard.OnboardingTest do
     stored = CanonicalStore.load()[project.id]["workspaces"]
     assert Enum.find(stored, &(&1["id"] == child.id))["workstation_id"] == acct
 
+    # Make "branchx" look like it was recorded before identities were stored.
+    entry = CanonicalStore.load()[project.id]
+
+    legacy =
+      Enum.map(entry["workspaces"], fn ws ->
+        if ws["branch"] == "branchx", do: Map.delete(ws, "workstation_id"), else: ws
+      end)
+
+    CanonicalStore.put(project.id, %{entry | "workspaces" => legacy})
+
     # Simulate a restart: drop this project's ETS rows.
     for w <- WorkspaceRegistry.list_workspaces(project.id), do: WorkspaceRegistry.delete(w.id)
     :ets.delete(:project_registry, project.id)
@@ -239,8 +249,14 @@ defmodule Loopyard.OnboardingTest do
     restored = WorkspaceRegistry.list_workspaces(project.id)
     assert Enum.find(restored, &(&1.id == child.id)).workstation_id == acct
     assert Enum.find(restored, &(&1.id == main.id)).workstation_id == acct
-    # A workspace recorded before identities were stored falls back to the default.
+    # A workspace recorded before identities were stored falls back to the
+    # default — and is then PINNED to it on disk, so changing the default
+    # later can't move it.
     assert Enum.find(restored, &(&1.name == "branchx")).workstation_id == default
+    pinned = CanonicalStore.load()[project.id]["workspaces"]
+    assert Enum.find(pinned, &(&1["branch"] == "branchx"))["workstation_id"] == default
+    # The backfill adds a field; it never touches the list.
+    assert length(pinned) == 4
 
     # Idempotent: the daemon keeper re-runs restore on every Docker recovery,
     # so a re-run must leave live rows alone — never reset a workspace's

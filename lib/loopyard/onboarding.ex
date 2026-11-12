@@ -245,7 +245,9 @@ defmodule Loopyard.Onboarding do
   EVERY project looks gone and the home page is empty until the recovery
   re-run lands. Idempotent: a project or workspace already in ETS is left
   exactly as it is (a re-run must never reset a live workspace's `status`
-  or `workstation_id`), and nothing here writes `canonical_projects.json`.
+  or `workstation_id`). The ONLY thing it writes back is a missing
+  `workstation_id` on an entry that already exists (`backfill_identities/1`)
+  — never the workspace LIST, which a daemon-down run sees as empty.
   """
   @spec restore() :: :ok
   def restore do
@@ -284,6 +286,8 @@ defmodule Loopyard.Onboarding do
       # up after a server restart (best-effort, async).
       start_work_async(ws["id"])
     end
+
+    backfill_identities(store)
 
     if map_size(store) > 0 and
          Enum.all?(store, fn {id, _} -> is_nil(ProjectRegistry.get_project(id)) end) do
@@ -425,6 +429,28 @@ defmodule Loopyard.Onboarding do
           }
         end)
     })
+  end
+
+  # Workspaces recorded before identities were stored have none on disk, so
+  # they'd follow the DEFAULT on every boot — and flip accounts the day the
+  # default changes. Pin each to the identity it is running under now. Adds a
+  # field to entries that exist; never adds, drops or reorders a workspace.
+  defp backfill_identities(store) do
+    updated =
+      Map.new(store, fn {project_id, entry} ->
+        workspaces =
+          Enum.map(entry["workspaces"] || [], fn ws ->
+            case {ws["workstation_id"], WorkspaceRegistry.get_workspace(ws["id"])} do
+              {nil, %{workstation_id: id}} when is_binary(id) -> Map.put(ws, "workstation_id", id)
+              _ -> ws
+            end
+          end)
+
+        {project_id, Map.put(entry, "workspaces", workspaces)}
+      end)
+
+    if updated != store, do: Loopyard.CanonicalStore.write(updated)
+    :ok
   end
 
   # A stored identity that no longer exists (renamed, removed) or was never
