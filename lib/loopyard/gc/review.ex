@@ -17,7 +17,14 @@ defmodule Loopyard.GC.Review do
       not registered on THIS server: a deleted workspace's leftovers, an old
       test run's, or — the reason this is never automatic — a workspace that
       belongs to ANOTHER Loopyard sharing this Docker daemon, or to this one
-      before its registry finished loading. Code volumes hold uncommitted work.
+      before its registry finished loading. Containers, images and EMPTY
+      volumes only: nothing in this group holds a byte of anyone's work, so
+      it may go in bulk.
+    * `:unknown_data` — the same unregistered ids' volumes that have something
+      in them: code (uncommitted and unpushed work included), a database, a
+      cache. Loopyard cannot tell which, so they go one at a time, never in
+      bulk. (The first real run of this page found months-old workspaces with
+      unpushed commits here; one bulk button would have taken them.)
     * `:other_volumes` — unattached volumes with other names. Real data, one
       at a time, never in bulk.
 
@@ -31,7 +38,7 @@ defmodule Loopyard.GC.Review do
       under the TEST prefix is a test run's leftover and is offered; nothing
       real runs under that prefix.)
     * A volume a running container mounts, whoever owns it.
-    * The `:unknown` group at all when no id is registered — an empty registry
+    * Either `:unknown` group at all when no id is registered — an empty registry
       means "not loaded", not "nothing is mine". (`GC.Runner.known_ids/0`
       returns none when no WORKSPACE or PROJECT is known, even if workstations
       are, for the same reason.)
@@ -53,10 +60,11 @@ defmodule Loopyard.GC.Review do
           stopped_containers: [row()],
           unused_images: [row()],
           unknown: [row()],
+          unknown_data: [row()],
           other_volumes: [row()]
         }
 
-  @groups [:stopped_containers, :unused_images, :unknown, :other_volumes]
+  @groups [:stopped_containers, :unused_images, :unknown, :unknown_data, :other_volumes]
 
   @doc "The group keys, in display order."
   def group_keys, do: @groups
@@ -103,6 +111,10 @@ defmodule Loopyard.GC.Review do
           unknown_images(images, ours?, known?, auto?)
       end
 
+    # A volume with something in it is somebody's code, database or cache.
+    # It never rides along with a bulk removal.
+    {unknown_data, unknown} = Enum.split_with(unknown, &(&1.kind == :volume and &1.size > 0))
+
     %{
       stopped_containers:
         by_size(
@@ -123,6 +135,7 @@ defmodule Loopyard.GC.Review do
               do: row(:image, ref, i.size, image_note(i))
         ),
       unknown: by_size(unknown),
+      unknown_data: by_size(unknown_data),
       other_volumes:
         by_size(
           for v <- volumes,

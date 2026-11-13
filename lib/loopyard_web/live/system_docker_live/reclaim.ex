@@ -44,15 +44,25 @@ defmodule LoopyardWeb.SystemDockerLive.Reclaim do
       confirm: "Remove every unused image listed here? They are pulled or rebuilt when needed."
     },
     unknown: %{
-      title: "Leftovers this server doesn't recognise",
+      title: "Empty leftovers this server doesn't recognise",
       warning:
         "Named like Loopyard's, but for a workspace that is not registered here: usually a " <>
-          "deleted workspace or an old test run. If another Loopyard uses this Docker, they " <>
-          "may be ITS workspaces. A code volume holds uncommitted work. This cannot be undone.",
+          "deleted workspace or an old test run. Containers, images and empty volumes only; " <>
+          "nothing here holds code or data. If another Loopyard uses this Docker, they may " <>
+          "be ITS containers.",
       bulk: "Remove all of these leftovers",
       confirm:
-        "Remove every leftover listed here, code volumes included? If another Loopyard " <>
-          "shares this Docker these may be its workspaces. This cannot be undone."
+        "Remove every leftover listed here? If another Loopyard shares this Docker these " <>
+          "may be its containers. This cannot be undone."
+    },
+    unknown_data: %{
+      title: "Leftover code and data this server doesn't recognise",
+      warning:
+        "Volumes from a workspace that is not registered here, with something in them: code " <>
+          "(uncommitted and unpushed work included), a database or a cache. Loopyard can't " <>
+          "tell which, and this cannot be undone, so they go one at a time.",
+      bulk: nil,
+      confirm: nil
     },
     other_volumes: %{
       title: "Other unattached volumes",
@@ -63,6 +73,23 @@ defmodule LoopyardWeb.SystemDockerLive.Reclaim do
       confirm: nil
     }
   }
+
+  @doc """
+  `load/0` after a removal. The caller has just asked the disk monitor to
+  re-measure; wait for that probe so the "free of" line shows the space the
+  removal made, not the reading from before it.
+  """
+  def load_fresh do
+    wait_for_disk()
+    load()
+  end
+
+  defp wait_for_disk do
+    if Process.whereis(Loopyard.Docker.DiskMonitor), do: Loopyard.Docker.DiskMonitor.sync()
+    :ok
+  catch
+    :exit, _ -> :ok
+  end
 
   @doc "One survey: the automatic tier's status and the reviewable groups."
   def load do

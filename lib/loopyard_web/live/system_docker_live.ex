@@ -131,7 +131,7 @@ defmodule LoopyardWeb.SystemDockerLive do
      socket
      |> assign(:reclaim_busy, nil)
      |> put_flash(:info, Reclaim.result_line(result))
-     |> start_async(:reclaim, &Reclaim.load/0)}
+     |> start_async(:reclaim, &Reclaim.load_fresh/0)}
   end
 
   def handle_async(:reclaim_run, other, socket) do

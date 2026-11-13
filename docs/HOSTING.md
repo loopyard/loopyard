@@ -146,12 +146,16 @@ The rest is yours to decide, and it is one tap from a phone. The inbox alert's
 - **Stopped containers** that are not Loopyard's. Their volumes are kept;
   removing them also releases the images only they were holding.
 - **Unused images.** Pulled or rebuilt when next needed.
-- **Leftovers this server doesn't recognise**: `loopyard-<id>…` containers,
-  volumes and images whose id is not registered here. Usually a deleted
-  workspace or an old test run. If another Loopyard shares this Docker they may
-  be ITS workspaces, which is why this is never automatic. A running container
-  under the live prefix, and anything a running container mounts, is never
-  offered.
+- **Empty leftovers this server doesn't recognise**: `loopyard-<id>…`
+  containers, images and EMPTY volumes whose id is not registered here. Usually
+  a deleted workspace or an old test run. If another Loopyard shares this
+  Docker they may be ITS containers, which is why this is never automatic. A
+  running container under the live prefix, and anything a running container
+  mounts, is never offered.
+- **Leftover code and data this server doesn't recognise**, one at a time: the
+  same unregistered ids' volumes that have something in them. A code volume can
+  be the only copy of uncommitted or unpushed work, so there is no "remove all"
+  for these.
 - **Other unattached volumes**, one at a time. This is other tools' data.
 
 Nothing is forced (Docker refuses anything in use, and the page says what it

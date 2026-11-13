@@ -11,7 +11,14 @@ defmodule LoopyardWeb.SystemDockerReclaimTest do
     do: %{kind: kind, name: name, size: size, note: opts[:note], force: opts[:force] || false}
 
   defp survey(groups, auto \\ []) do
-    base = %{stopped_containers: [], unused_images: [], unknown: [], other_volumes: []}
+    base = %{
+      stopped_containers: [],
+      unused_images: [],
+      unknown: [],
+      unknown_data: [],
+      other_volumes: []
+    }
+
     {:ok, %{auto: auto, groups: Map.merge(base, groups)}}
   end
 
@@ -42,7 +49,8 @@ defmodule LoopyardWeb.SystemDockerReclaimTest do
       survey(%{
         stopped_containers: [row(:container, "great_yalow", 2_640_000, note: "2b01faeedd31")],
         unused_images: [row(:image, "node:24-trixie", 1_240_000_000)],
-        unknown: [row(:volume, "loopyard-62ddecea_dind-data", 8_700_000_000)],
+        unknown: [row(:container, "loopyard-62ddecea-dev-1", 202_000_000)],
+        unknown_data: [row(:volume, "loopyard-62ddecea_dind-data", 8_700_000_000)],
         other_volumes: [row(:volume, "observatory_system", 14_500_000_000)]
       })
     )
@@ -54,14 +62,18 @@ defmodule LoopyardWeb.SystemDockerReclaimTest do
     assert html =~ "great_yalow"
     assert html =~ "Their volumes are kept"
     assert html =~ "node:24-trixie"
-    assert html =~ "may be ITS workspaces"
+    assert html =~ "may be ITS containers"
+    assert html =~ "uncommitted and unpushed work included"
     assert html =~ "8.7 GB"
     assert html =~ "observatory_system"
 
     assert has_element?(view, "#reclaim-stopped_containers button[phx-click=reclaim_group]")
     assert has_element?(view, "#reclaim-unknown button[phx-click=reclaim_group][data-confirm]")
-    # Other tools' data goes one at a time.
+    # Other tools' data goes one at a time, and so does any leftover volume
+    # with something in it: it may be the only copy of somebody's work.
     refute has_element?(view, "#reclaim-other_volumes button[phx-click=reclaim_group]")
+    refute has_element?(view, "#reclaim-unknown_data button[phx-click=reclaim_group]")
+    assert has_element?(view, "#reclaim-unknown_data button[phx-click=reclaim_one][data-confirm]")
 
     assert has_element?(
              view,
@@ -87,7 +99,7 @@ defmodule LoopyardWeb.SystemDockerReclaimTest do
       agent,
       survey(%{
         unknown: [
-          row(:volume, "loopyard-62ddecea-code", 500),
+          row(:volume, "loopyard-62ddecea-code", 0),
           row(:container, "loopyard-62ddecea-dev-1", 5)
         ]
       })
@@ -101,7 +113,7 @@ defmodule LoopyardWeb.SystemDockerReclaimTest do
       agent,
       survey(%{
         unknown: [
-          row(:volume, "loopyard-62ddecea-code", 500),
+          row(:volume, "loopyard-62ddecea-code", 0),
           row(:container, "loopyard-62ddecea-dev-1", 5),
           row(:image, "loopyard-62ddecea-dev:latest", 600)
         ]
@@ -141,6 +153,9 @@ defmodule LoopyardWeb.SystemDockerReclaimTest do
     render_click(view, "reclaim_one", %{"group" => "nope", "name" => "observatory_system"})
     # No bulk for other tools' volumes, whatever the client sends.
     render_click(view, "reclaim_group", %{"group" => "other_volumes"})
+    render_async(view)
+    # Nor for leftover volumes that hold something.
+    render_click(view, "reclaim_group", %{"group" => "unknown_data"})
     html = render_async(view)
 
     assert removed(agent) == []

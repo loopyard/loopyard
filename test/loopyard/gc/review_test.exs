@@ -91,17 +91,31 @@ defmodule Loopyard.GC.ReviewTest do
         images: [img("loopyard-62ddecea-dev", "latest", containers: 1)]
       })
 
-    assert names(g.unknown) == [
-             "loopyard-62ddecea_dind-data",
-             "loopyard-62ddecea-code",
-             "loopyard-62ddecea-dev:latest",
-             "loopyard-62ddecea-dev-1"
-           ]
+    # The bulk group never holds a byte of anyone's work: the container and
+    # the image only.
+    assert names(g.unknown) == ["loopyard-62ddecea-dev:latest", "loopyard-62ddecea-dev-1"]
+    # The volumes with something in them are their own one-at-a-time group.
+    assert names(g.unknown_data) == ["loopyard-62ddecea_dind-data", "loopyard-62ddecea-code"]
 
     # Containers go first, so the volume and image they hold are free by then.
     assert g.unknown |> Review.removal_order() |> hd() |> Map.fetch!(:kind) == :container
-    assert Enum.all?(g.unknown, &(&1.force == false))
+    assert Enum.all?(g.unknown ++ g.unknown_data, &(&1.force == false))
     assert g.stopped_containers == [] and g.unused_images == [] and g.other_volumes == []
+  end
+
+  test "an EMPTY unregistered volume stays in the bulk group; one with content does not" do
+    g =
+      groups(%{
+        containers: [],
+        volumes: [
+          vol("loopyard-0be6-code", size: 0),
+          vol("loopyard-a866-code", size: 787_000_000)
+        ],
+        images: []
+      })
+
+    assert names(g.unknown) == ["loopyard-0be6-code"]
+    assert names(g.unknown_data) == ["loopyard-a866-code"]
   end
 
   test "a RUNNING container under the live prefix is never offered, nor what it mounts" do
@@ -116,7 +130,8 @@ defmodule Loopyard.GC.ReviewTest do
 
     # Its unmounted compose volume is still a leftover candidate; the live
     # container and the volume it mounts are not.
-    assert names(g.unknown) == ["loopyard-aaaa1111_cache"]
+    assert g.unknown == []
+    assert names(g.unknown_data) == ["loopyard-aaaa1111_cache"]
   end
 
   test "a running container under the TEST prefix is a leftover, offered with force" do

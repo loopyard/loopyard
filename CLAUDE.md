@@ -34,7 +34,7 @@ The coordination layer went through a sprint of hardening moves (see [plans/arch
 - `/system/quarantine` — crash-looping actors, release controls
 - `/system/orphans` — tracked resources without a live owner
 - `/system/recovery` — checkpointer snapshot size/age, last boot replay time
-- `/system/workspaces`, `/system/docker`, `/system/ports`, `/system/secrets` — the registries, the daemon, the port pool, stored secrets. `/system/docker` leads with **Free up space**: what `GC.Auto` removed on its own, and the groups it will not touch (other tools' stopped containers, unused images, unrecognised `loopyard-<id>…` leftovers, other unattached volumes), each with its warning and remove buttons
+- `/system/workspaces`, `/system/docker`, `/system/ports`, `/system/secrets` — the registries, the daemon, the port pool, stored secrets. `/system/docker` leads with **Free up space**: what `GC.Auto` removed on its own, and the groups it will not touch (other tools' stopped containers, unused images, unrecognised `loopyard-<id>…` leftovers — the empty ones in bulk, any volume that holds something one at a time — and other unattached volumes), each with its warning and remove buttons
 - `/system` — aggregated health map (`:healthy | :degraded | :down` per component); the `Agent.Reconciler` drift check is one of its rows (there is no separate reconcilers page), and so is the **Docker disk** (`Docker.DiskMonitor` — free space in the VM; low raises ONE inbox item; `mix loopyard.gc` reclaims Loopyard's own leftovers, see docs/HOSTING.md)
 
 **Adding a new broadcast event:**
