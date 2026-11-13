@@ -31,7 +31,9 @@ defmodule LoopyardWeb.Showcase.Scenes.ChatSubagent do
         :agent,
         %{"description" => "Find callers of CartTotal.recompute", "subagent_type" => "Explore"},
         312
-      ),
+      )
+      # The model the harness reported the sub-agent ran on (card: "on Haiku 4.5").
+      |> Map.put(:subagent_model, "claude-haiku-4-5-20251001"),
       child(4, "Grep", :grep, %{"pattern" => "CartTotal.recompute", "path" => "app"}, 3, 310),
       Mock.tool_result_msg(
         5,

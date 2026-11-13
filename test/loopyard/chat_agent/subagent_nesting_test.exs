@@ -137,4 +137,47 @@ defmodule Loopyard.ChatAgent.SubagentNestingTest do
     assert child.parent_tool_id == "t_agent"
     assert :sys.get_state(pid).tool_calls == 2
   end
+
+  test "a delegation's reported model lands on its message, live and in the log",
+       %{id: id, pid: pid, ref: ref} do
+    send(
+      pid,
+      {:stream_event, id, ref,
+       %Event.ToolCall{id: "t_agent", name: "Agent", kind: :agent, input: %{"description" => "x"}}}
+    )
+
+    # The Translator re-emits the call once toolResponse names the model.
+    send(
+      pid,
+      {:stream_event, id, ref,
+       %Event.ToolCall{
+         id: "t_agent",
+         name: "Agent",
+         kind: :agent,
+         input: %{"description" => "x"},
+         model: "claude-sonnet-5"
+       }}
+    )
+
+    assert_receive %Loopyard.Events.ChatAgentMessage.MessageUpdated{
+                     msg: %{tool_id: "t_agent", subagent_model: "claude-sonnet-5"}
+                   },
+                   1_000
+
+    assert [agent] = tool_msgs(pid)
+    assert agent.subagent_model == "claude-sonnet-5"
+    assert :sys.get_state(pid).tool_calls == 1
+  end
+
+  test "a call with no reported model carries no :subagent_model key",
+       %{id: id, pid: pid, ref: ref} do
+    send(
+      pid,
+      {:stream_event, id, ref,
+       %Event.ToolCall{id: "t_agent", name: "Agent", kind: :agent, input: %{"description" => "x"}}}
+    )
+
+    assert [agent] = tool_msgs(pid)
+    refute Map.has_key?(agent, :subagent_model)
+  end
 end

@@ -177,12 +177,12 @@ defmodule Loopyard.Harness.ACP.Translator do
     {state, call_events} =
       if entry.emitted_call do
         if input_grew?(state, id, entry) do
-          {put_tool(state, id, %{entry | emitted_input: entry.input}), [call_event(id, entry)]}
+          {put_tool(state, id, mark_emitted(entry)), [call_event(id, entry)]}
         else
           {state, []}
         end
       else
-        entry = %{entry | emitted_call: true, emitted_input: entry.input}
+        entry = mark_emitted(%{entry | emitted_call: true})
         {put_tool(state, id, entry), [call_event(id, entry)]}
       end
 
@@ -471,6 +471,11 @@ defmodule Loopyard.Harness.ACP.Translator do
           name: nil,
           input: %{},
           emitted_input: %{},
+          # The model a delegation's sub-agent ran on, once the Agent tool's
+          # toolResponse names it — and the value last emitted, so learning it
+          # re-emits the call (StreamHandler refines the message by id).
+          model: nil,
+          emitted_model: nil,
           # Sub-agent lineage (see moduledoc): the delegating call's id, whether
           # this call IS a delegation, and whether that delegation went async.
           parent_id: nil,
@@ -488,7 +493,8 @@ defmodule Loopyard.Harness.ACP.Translator do
         input: Map.merge(entry.input, input),
         parent_id: entry.parent_id || meta["parentToolUseId"],
         subagent: entry.subagent or meta["subagent"] == true,
-        async: entry.async or get_in(meta, ["toolResponse", "isAsync"]) == true
+        async: entry.async or get_in(meta, ["toolResponse", "isAsync"]) == true,
+        model: reported_model(meta["toolResponse"]) || entry.model
     }
 
     {put_tool(state, id, entry), entry}
@@ -503,16 +509,36 @@ defmodule Loopyard.Harness.ACP.Translator do
       name: entry.name || "tool",
       input: entry.input,
       parent_id: entry.parent_id,
-      kind: if(entry.subagent, do: :agent)
+      kind: if(entry.subagent, do: :agent),
+      model: if(entry.subagent, do: entry.model)
     }
   end
+
+  defp mark_emitted(entry), do: %{entry | emitted_input: entry.input, emitted_model: entry.model}
+
+  # The Agent tool's output (Claude Code's own schema, forwarded by the adapter
+  # as `_meta.claudeCode.toolResponse`) names the model the sub-agent ran on:
+  # `resolvedModel`, plus `modelsUsed` — the ordered distinct models when it
+  # swapped mid-run, whose LAST entry is what it finished on. Both the
+  # foreground ("completed") and background ("async_launched") shapes carry it.
+  defp reported_model(%{"modelsUsed" => [_ | _] = used}) do
+    case List.last(used) do
+      model when is_binary(model) and model != "" -> model
+      _ -> nil
+    end
+  end
+
+  defp reported_model(%{"resolvedModel" => model}) when is_binary(model) and model != "",
+    do: model
+
+  defp reported_model(_), do: nil
 
   # Emit a ToolCall once we know its input; otherwise keep buffering.
   defp maybe_emit_call(state, _id, %{emitted_call: true}), do: {state, []}
 
   defp maybe_emit_call(state, id, entry) do
     if map_size(entry.input) > 0 do
-      entry = %{entry | emitted_call: true, emitted_input: entry.input}
+      entry = mark_emitted(%{entry | emitted_call: true})
       {put_tool(state, id, entry), [call_event(id, entry)]}
     else
       {state, []}
@@ -520,8 +546,11 @@ defmodule Loopyard.Harness.ACP.Translator do
   end
 
   # Did this update reveal arguments we hadn't emitted yet?
+  # …or named the model its sub-agent ran on.
   defp input_grew?(_state, _id, entry),
-    do: entry.input != Map.get(entry, :emitted_input, %{})
+    do:
+      entry.input != Map.get(entry, :emitted_input, %{}) or
+        entry.model != Map.get(entry, :emitted_model)
 
   defp put_tool(state, id, entry), do: %{state | tools: Map.put(state.tools, id, entry)}
 
