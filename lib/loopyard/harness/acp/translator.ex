@@ -46,6 +46,7 @@ defmodule Loopyard.Harness.ACP.Translator do
   """
 
   alias Loopyard.Agent.Event
+  require Logger
 
   # `text`: the OPEN text block only. It used to hold the whole turn and commit
   # once at finish, so every block landed as one message AFTER the turn's last
@@ -105,9 +106,28 @@ defmodule Loopyard.Harness.ACP.Translator do
 
   @doc """
   Translate one ACP `session/update`'s `update` map into events, advancing state.
+
+  An update this module cannot make sense of costs that ONE update: it is
+  logged and dropped, the state unchanged. Raising here killed the connection,
+  the harness was recycled, the interrupted prompt was re-driven, and the
+  adapter sent the same frame again: a crash loop that spent the user's plan
+  until the restart controller gave up. The wire is another project's to
+  change; a shape we did not expect must never be fatal.
   """
   @spec step(t(), map()) :: {t(), [Event.t()]}
-  def step(state, %{"sessionUpdate" => kind} = update), do: do_step(state, kind, update)
+  def step(state, %{"sessionUpdate" => kind} = update) do
+    do_step(state, kind, update)
+  rescue
+    e ->
+      Logger.warning(
+        "[ACP.Translator] dropped a #{kind} update it could not translate: " <>
+          Exception.message(e)
+      )
+
+      :telemetry.execute([:loopyard, :acp, :untranslatable_update], %{count: 1}, %{kind: kind})
+      {state, []}
+  end
+
   def step(state, _other), do: {state, []}
 
   # Streaming assistant text — accumulate for the final Text, emit a live delta.
@@ -493,7 +513,7 @@ defmodule Loopyard.Harness.ACP.Translator do
         input: Map.merge(entry.input, input),
         parent_id: entry.parent_id || meta["parentToolUseId"],
         subagent: entry.subagent or meta["subagent"] == true,
-        async: entry.async or get_in(meta, ["toolResponse", "isAsync"]) == true,
+        async: entry.async or async_launch?(meta["toolResponse"]),
         model: reported_model(meta["toolResponse"]) || entry.model
     }
 
@@ -521,6 +541,13 @@ defmodule Loopyard.Harness.ACP.Translator do
   # `resolvedModel`, plus `modelsUsed` — the ordered distinct models when it
   # swapped mid-run, whose LAST entry is what it finished on. Both the
   # foreground ("completed") and background ("async_launched") shapes carry it.
+  # `toolResponse` is whatever the tool returned: a map for the harness's own
+  # tools, a LIST of content blocks for an MCP tool. Match the shape, never
+  # index into it — `get_in(meta, ["toolResponse", "isAsync"])` raised on the
+  # list and took the whole connection down with every MCP tool result.
+  defp async_launch?(%{"isAsync" => true}), do: true
+  defp async_launch?(_), do: false
+
   defp reported_model(%{"modelsUsed" => [_ | _] = used}) do
     case List.last(used) do
       model when is_binary(model) and model != "" -> model

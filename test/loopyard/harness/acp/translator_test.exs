@@ -487,6 +487,53 @@ defmodule Loopyard.Harness.ACP.TranslatorTest do
       assert dup == []
     end
 
+    test "an MCP tool's response is a LIST of content blocks, not a map" do
+      # The adapter's frame for a finished MCP tool call, verbatim shape. The
+      # translator indexed into `toolResponse` as if it were always a map;
+      # that raised on this list and took the connection down with every
+      # successful Loopyard tool call.
+      {state, _} =
+        Translator.step(Translator.new(), %{
+          "sessionUpdate" => "tool_call",
+          "toolCallId" => "t1",
+          "title" => "mcp__loopyard-container__overview",
+          "rawInput" => %{"agent_id" => "abc"}
+        })
+
+      {_state, events} =
+        Translator.step(state, %{
+          "sessionUpdate" => "tool_call_update",
+          "toolCallId" => "t1",
+          "status" => "completed",
+          "content" => chunk("3 agents"),
+          "_meta" => %{
+            "claudeCode" => %{
+              "toolName" => "mcp__loopyard-container__overview",
+              "toolResponse" => [%{"type" => "text", "text" => "3 agents"}]
+            }
+          }
+        })
+
+      assert [%Event.ToolResult{id: "t1", content: "3 agents", is_error: false}] = events
+    end
+
+    test "an update the translator cannot make sense of is dropped, not fatal" do
+      state = Translator.new()
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          # `_meta` is an object on the wire; a list here would raise inside.
+          assert {^state, []} =
+                   Translator.step(state, %{
+                     "sessionUpdate" => "tool_call_update",
+                     "toolCallId" => "t9",
+                     "_meta" => ["not", "a", "map"]
+                   })
+        end)
+
+      assert log =~ "dropped a tool_call_update update"
+    end
+
     test "marks the ToolResult as an error on failed/error status" do
       {state, _} =
         Translator.step(Translator.new(), %{
