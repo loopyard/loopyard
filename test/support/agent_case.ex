@@ -52,9 +52,23 @@ defmodule Loopyard.AgentCase do
     # identity: a refusal one test provokes must not hold the next test's sends.
     Loopyard.AccountLimits.clear_all()
     ExUnit.Callbacks.on_exit(&Loopyard.AccountLimits.clear_all/0)
+    # An agent test that hits a plan limit raises a "limit:<agent>" inbox item.
+    # The store is shared by every test module, and a leftover one showed up on
+    # other modules' decks (a deck test saw three plan-limit slides, not one).
+    ExUnit.Callbacks.on_exit(&__MODULE__.clear_plan_limit_items/0)
     :ok
   end
 
   @doc "The module's shared workspace dir (the same path `start_agent/1` uses)."
   def module_workspace, do: Process.get(:loopyard_test_workspace_path)
+
+  @doc "Drop every plan-limit item from the shared inbox store (see setup)."
+  def clear_plan_limit_items do
+    for {"limit:" <> _ = id, _} <- :ets.tab2list(:notifications),
+        do: :ets.delete(:notifications, id)
+
+    :ok
+  rescue
+    _ -> :ok
+  end
 end

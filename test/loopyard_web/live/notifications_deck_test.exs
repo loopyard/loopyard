@@ -158,10 +158,26 @@ defmodule LoopyardWeb.NotificationsDeckTest do
     {:ok, view, html} = live(conn, "/notifications/#{aid}/limit")
     assert html =~ "no permitted account can take the work"
     assert has_element?(view, ~s(a[href="/workstations/brad"]), "Open brad")
-    refute html =~ "Keep going"
+
+    # THIS slide offers no "Keep going". The inbox store is shared with other
+    # test modules, whose finished items can be on the same deck, so the check
+    # is the slide's own markup, not the page's.
+    slide =
+      view
+      |> element("section[id^='slide-#{aid}']", "no permitted account can take the work")
+      |> render()
+
+    refute slide =~ "Keep going"
 
     Loopyard.Notifications.settle("limit:" <> aid, :cleared)
     Loopyard.Notifications.sync()
+
+    # The store has applied it; the view hears about it by broadcast, a moment
+    # later. Reading the render at once raced that under a loaded suite.
+    Loopyard.TestHelpers.eventually(fn ->
+      render(view) =~ "The limit cleared — Delta carried on."
+    end)
+
     assert render(view) =~ "The limit cleared — Delta carried on."
   end
 
