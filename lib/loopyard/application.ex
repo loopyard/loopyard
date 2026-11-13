@@ -243,7 +243,7 @@ defmodule Loopyard.Application do
     # (have restored agents) but whose work container is stopped, so a restart
     # doesn't leave you clicking Start on crashed agents in dead workspaces.
     # Async + best-effort so container starts never block boot. (#52)
-    safe_restore("Workspace.Autostart", fn -> autostart_used_workspaces() end)
+    safe_restore("Workspace.Autostart", fn -> Loopyard.Workspace.Autostart.run() end)
 
     # Scan the saga journal for incomplete sagas (BEAM crashed
     # mid-saga last run) and dispatch each per its declared
@@ -343,100 +343,6 @@ defmodule Loopyard.Application do
     else
       acc
     end
-  end
-
-  # Auto-start the workspaces that were in use, so a server restart restores
-  # the last working state instead of dropping you on crashed agents in
-  # powered-down workspaces. "In use" = has restored agents. We only start a
-  # workspace whose work container ALREADY EXISTS but is STOPPED — never build
-  # or create a fresh one on boot. Each start runs in its own supervised Task
-  # so one slow/failing start neither blocks boot nor the others. (#52)
-  defp autostart_used_workspaces do
-    if Application.get_env(:loopyard, :autostart_workspaces_on_boot, true) do
-      used_workspace_ids()
-      |> Enum.each(fn ws_id ->
-        ws = Loopyard.WorkspaceRegistry.get_workspace(ws_id)
-
-        cond do
-          is_nil(ws) or not ready_workspace?(ws) ->
-            :ok
-
-          # Container ALREADY RUNNING: the workspace group (ServiceManager /
-          # AgentSupervisor / agent resume) must still start — before this,
-          # a running workspace stayed headless until someone happened to
-          # visit its page, and agents couldn't restart ("noproc" on the
-          # workspace's AgentSupervisor). Group only — no container ops.
-          work_container_running?(ws_id) ->
-            Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
-              autostart_group(ws_id, ws[:path])
-            end)
-
-          # Container exists but stopped: bring the whole workspace back
-          # (group + container). Never build/create fresh on boot.
-          work_container_stopped?(ws_id) ->
-            Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
-              autostart_one(ws_id, ws[:path])
-            end)
-
-          true ->
-            :ok
-        end
-      end)
-    end
-
-    :ok
-  end
-
-  # Workspace ids that have at least one restored agent (were actually used).
-  defp used_workspace_ids do
-    :ets.tab2list(:chat_agents)
-    |> Enum.map(fn {_id, summary} -> Map.get(summary, :workspace_id) end)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.uniq()
-  end
-
-  # Same guard as restore_all_agents: skip workspaces mid-setup. Legacy
-  # workspaces (no :setup key) predate the saga and are safe.
-  defp ready_workspace?(ws) do
-    phase = get_in(ws, [:setup, :phase])
-    phase == nil or phase == :ready
-  end
-
-  # The work container exists (workspace was set up) but isn't running.
-  defp work_container_stopped?(ws_id) do
-    name = Loopyard.Workspace.WorkContainer.container_name(ws_id)
-    Loopyard.Docker.container_exists?(name) and not Loopyard.Docker.container_running?(name)
-  end
-
-  defp work_container_running?(ws_id) do
-    Loopyard.Docker.container_running?(Loopyard.Workspace.WorkContainer.container_name(ws_id))
-  end
-
-  defp autostart_one(ws_id, path) do
-    if path do
-      Loopyard.WorkspaceSupervisor.start_workspace(ws_id, path)
-      Loopyard.Workspace.WorkContainer.ensure_up(ws_id)
-      Logger.info("[Loopyard] Auto-started workspace #{ws_id} on boot")
-    end
-  rescue
-    e ->
-      Logger.warning(
-        "[Loopyard] Auto-start of workspace #{ws_id} failed: #{Exception.message(e)}"
-      )
-  end
-
-  # Container already running — start ONLY the supervision group; its
-  # ServiceManager reconnects to the live containers and resumes agents.
-  defp autostart_group(ws_id, path) do
-    if path do
-      Loopyard.WorkspaceSupervisor.start_workspace(ws_id, path)
-      Logger.info("[Loopyard] Attached workspace group #{ws_id} to running container on boot")
-    end
-  rescue
-    e ->
-      Logger.warning(
-        "[Loopyard] Group attach of workspace #{ws_id} failed: #{Exception.message(e)}"
-      )
   end
 
   # Docker Desktop's credential helper hangs when Desktop isn't running.
