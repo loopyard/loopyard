@@ -26,6 +26,11 @@ bind_ip =
 
 config :loopyard, LoopyardWeb.Endpoint,
   http: [ip: bind_ip, port: String.to_integer(System.get_env("PORT") || "4000")],
+  # Load-bearing for the phone: a tailnet name (`tailscale serve`) or a named
+  # tunnel hostname never matches `url: [host:]`, and `:conn` also compares
+  # scheme + port, which an HTTPS proxy in front of plain HTTP never meets.
+  # Tighten it and the page loads but the LiveView socket never connects
+  # (docs/HOSTING.md; guarded in test/loopyard/hosting/addresses_test.exs).
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
