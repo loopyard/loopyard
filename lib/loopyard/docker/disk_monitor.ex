@@ -50,18 +50,27 @@ defmodule Loopyard.Docker.DiskMonitor do
   @doc "Probe now (tests, tools)."
   def probe_now, do: send(__MODULE__, :probe)
 
-  @doc "Block until queued messages are applied (tests)."
-  def sync, do: GenServer.call(__MODULE__, :sync)
+  @doc """
+  Block until queued messages are applied AND any probe in flight has landed
+  (tests). A probe runs in a Task, so "the mailbox is drained" is not "the
+  probe was applied": without waiting for it, a result from an earlier probe
+  could arrive after the caller moved on and overwrite what it had just set up.
+  """
+  def sync, do: GenServer.call(__MODULE__, :sync, 20_000)
 
   @impl true
   def init(_opts) do
     if probe_interval(), do: Process.send_after(self(), :probe, @first_probe_ms)
-    {:ok, %{observation: nil, level: nil, probing: nil, at: nil}}
+    {:ok, %{observation: nil, level: nil, probing: nil, at: nil, waiters: []}}
   end
 
   @impl true
   def handle_call(:status, _from, state), do: {:reply, Disk.status(state.observation), state}
   def handle_call(:observation, _from, state), do: {:reply, state.observation, state}
+
+  def handle_call(:sync, from, %{probing: ref} = state) when is_reference(ref),
+    do: {:noreply, Map.put(state, :waiters, [from | Map.get(state, :waiters, [])])}
+
   def handle_call(:sync, _from, state), do: {:reply, :ok, state}
 
   def handle_call(msg, _from, state) do
@@ -85,12 +94,12 @@ defmodule Loopyard.Docker.DiskMonitor do
 
   def handle_info({ref, result}, %{probing: ref} = state) when is_reference(ref) do
     Process.demonitor(ref, [:flush])
-    {:noreply, apply_probe(%{state | probing: nil}, result)}
+    {:noreply, state |> Map.put(:probing, nil) |> apply_probe(result) |> release_waiters()}
   end
 
   def handle_info({:DOWN, ref, :process, _, reason}, %{probing: ref} = state) do
     Logger.warning("[DiskMonitor] probe task died: #{inspect(reason, limit: 20)}")
-    {:noreply, %{state | probing: nil}}
+    {:noreply, release_waiters(%{state | probing: nil})}
   end
 
   def handle_info(msg, state) do
@@ -99,6 +108,13 @@ defmodule Loopyard.Docker.DiskMonitor do
   end
 
   # ── internals ─────────────────────────────────────────────────────────
+
+  # Map.get, not state.waiters: a monitor already running when this code was
+  # hot-loaded holds a state without the key.
+  defp release_waiters(state) do
+    Enum.each(Map.get(state, :waiters, []), &GenServer.reply(&1, :ok))
+    Map.put(state, :waiters, [])
+  end
 
   defp probe_interval,
     do: Application.get_env(:loopyard, :docker_disk_probe_ms, @default_probe_ms)

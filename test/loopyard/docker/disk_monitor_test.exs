@@ -26,9 +26,14 @@ defmodule Loopyard.Docker.DiskMonitorTest do
     :ok
   end
 
+  # Drain any probe still in flight BEFORE swapping the probe fun: a probe is a
+  # Task, and one started under the previous fun would land after this one was
+  # requested (and this request would be dropped as "already probing").
   defp probe_with(result) do
+    DiskMonitor.sync()
     Application.put_env(:loopyard, :docker_disk_probe_fun, fn -> result end)
     DiskMonitor.probe_now()
+    DiskMonitor.sync()
     expected = result |> obs() |> Disk.status()
     eventually(fn -> DiskMonitor.status() == expected end)
     Notifications.sync()
