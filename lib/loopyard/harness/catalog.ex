@@ -35,6 +35,7 @@ defmodule Loopyard.Harness.Catalog do
   @type brief :: :cwd_file | {:config_env, String.t(), String.t()}
 
   @type t :: %{
+          optional(:credential_file) => credential_file(),
           id: id(),
           label: String.t(),
           adapter: String.t(),
@@ -45,6 +46,16 @@ defmodule Loopyard.Harness.Catalog do
           config: map(),
           models: [{String.t(), String.t()}]
         }
+
+  @typedoc """
+  A harness whose subscription sign-in is a FILE rather than an env var:
+  `home_env` is the variable that relocates the directory the CLI keeps it in,
+  `name` the file inside it. `Workstation.CredentialFile` stores the file with
+  an identity and materializes it per identity in the container home (see its
+  moduledoc for which copy wins once the CLI refreshes it). Harnesses without
+  the key authenticate from `credential_keys` only.
+  """
+  @type credential_file :: %{home_env: String.t(), name: String.t()}
 
   # Offered in the Claude picker, as full ids rather than the adapter's
   # default/opus/haiku aliases.
@@ -100,6 +111,13 @@ defmodule Loopyard.Harness.Catalog do
       # CODEX_API_KEY wins over OPENAI_API_KEY in the adapter itself; listing
       # both means either one lights the harness up in the picker.
       credential_keys: ["CODEX_API_KEY", "OPENAI_API_KEY"],
+      # A ChatGPT-plan sign-in (`codex login --device-auth`) is a file, not a
+      # key: `$CODEX_HOME/auth.json` (default `~/.codex`). Probed on the v5
+      # image: codex-cli 0.154.0 (adapter-bundled 0.148.0), and codex-acp 1.6.0
+      # decides "authenticated" by asking the app-server (`account/read`), which
+      # reads that file — so pointing CODEX_HOME at a per-identity directory is
+      # all it takes to run two agents on two ChatGPT plans in one container.
+      credential_file: %{home_env: "CODEX_HOME", name: "auth.json"},
       # Our containers are headless: without this the adapter advertises the
       # browser-based ChatGPT login as an auth method and a session can hang
       # waiting on a login nobody can complete.
@@ -165,18 +183,29 @@ defmodule Loopyard.Harness.Catalog do
   def label(id), do: fetch(id).label
 
   @doc """
-  Whether a harness has a usable credential in `env` (any of its keys set to a
-  non-empty value).
+  Whether a harness has a usable credential: in an `env` map (any of its keys
+  set to a non-empty value), or — given a workstation IDENTITY — in that
+  identity's env OR its stored subscription sign-in file (`credential_file`,
+  e.g. a guided Codex ChatGPT sign-in, `Workstation.CredentialFile`).
 
   ADVISORY ONLY — never gate the picker on this. `false` does not mean the
-  harness won't work: Codex also authenticates from `~/.codex/auth.json` written
-  by `codex login`, which lives in the container's $HOME volume and can only be
-  confirmed with a round-trip (`Workstation.Integration.connected?/2`) far too
-  slow to render a menu with. Disabling on a false negative would hide a harness
-  that works perfectly; a hint next to an enabled option costs nothing when
-  it's wrong.
+  harness won't work: Codex also authenticates from a legacy `~/.codex/auth.json`
+  written by `codex login` in the console, which lives in the container's $HOME
+  volume and can only be confirmed with a round-trip
+  (`Workstation.Integration.connected?/2`) far too slow to render a menu with.
+  Disabling on a false negative would hide a harness that works perfectly; a
+  hint next to an enabled option costs nothing when it's wrong.
   """
-  @spec credentialed?(id() | String.t() | nil, %{optional(String.t()) => String.t()}) :: boolean()
+  @spec credentialed?(
+          id() | String.t() | nil,
+          %{optional(String.t()) => String.t()} | String.t()
+        ) :: boolean()
+  def credentialed?(id, identity) when is_binary(identity) do
+    credentialed?(id, Loopyard.Workstation.Env.all(identity)) or
+      (Map.has_key?(fetch(id), :credential_file) and
+         Loopyard.Workstation.CredentialFile.stored?(identity, fetch(id).id))
+  end
+
   def credentialed?(id, env) when is_map(env) do
     Enum.any?(fetch(id).credential_keys, fn key ->
       case Map.get(env, key) do

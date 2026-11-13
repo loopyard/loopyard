@@ -303,9 +303,20 @@ first headless method (`Connection.Auth`), then redoes the resume-or-fresh
 decision — a refused resume is retried as a LOAD so harness-side history
 survives a Loopyard restart. `NO_BROWSER=1` (Catalog env) stops the adapter
 from offering the browser login nobody can complete in a headless container;
-the human path is `codex login --device-auth` in the box console, or an
+the human path is **Sign in to Codex** on the workstation's Codex page
+(`Workstation.SignIn`'s `:device` flow — `codex login --device-auth` in a
+throwaway container, link + one-time code on the page, no paste-back), or an
 `OPENAI_API_KEY`/`CODEX_API_KEY` in the workstation env
-(`Workstation.Integration`).
+(`Workstation.Integration`). The ChatGPT sign-in is a FILE (`auth.json`), so it
+is stored WITH the identity (`Workstation.CredentialFile`, Catalog
+`credential_file`) and delivered per identity at
+`~/.loopyard/codex.<identity>/auth.json` with `CODEX_HOME` exported from the
+identity env file — two agents in one container run on two ChatGPT plans, and
+`Catalog.credentialed?/2` (given an identity) counts it for the Account picker.
+Codex refreshes that file in place, so the delivered copy is authoritative: it
+is re-delivered only when absent or when the human signs in again (generation
+marker). The console `codex login` into `~/.codex` still works for an
+identity's own agents until a guided sign-in exists.
 
 **Switching harness carries the conversation, not the session.** The sidebar
 picker's value is a `harness:model` token (`Catalog.parse_selection/1`); same

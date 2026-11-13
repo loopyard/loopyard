@@ -11,6 +11,10 @@ defmodule Loopyard.Harness.Identity do
   volume (`Workstation.Env.sync_identity_into/2`); the launch script then
   sources it after `~/.profile` (`Harness.ACP.docker_exec_cmd/3`). The token
   travels as a file in the volume, never on the `docker exec` command line.
+  A file-shaped sign-in (Codex's `auth.json`, `Workstation.CredentialFile`)
+  rides the same sync: it lands at `~/.loopyard/codex.<identity>/` — only when
+  absent or newly signed in, so a copy the CLI refreshed in place is kept — and
+  the env file exports `CODEX_HOME` at it.
 
   Called from the two places a harness is started — `Initializer.start_session/3`
   (first boot + resume) and `SessionManager.start_session_safe/1` (every

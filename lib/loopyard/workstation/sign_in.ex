@@ -17,6 +17,42 @@ defmodule Loopyard.Workstation.SignIn do
   Which CLI, which env key and what a token looks like are DATA on the
   integration (`Integration` → `:sign_in`); nothing here names a vendor.
 
+  ## Two flow shapes
+
+    * `:paste` (the default — `claude setup-token`): show URL → the human pastes
+      the code back → the CLI prints a token, recognized by `token_prefix`,
+      stored with `Env.put/3` under the integration's `env` key. Phases
+      `:starting → :awaiting_code → :exchanging → :done`.
+    * `:device` (`flow: :device` — `codex login --device-auth`): the CLI prints
+      a verification URL AND a one-time code; the human enters the code on the
+      vendor's page from any device; the CLI polls, prints success and EXITS 0
+      having written a credential FILE. No paste-back. Phases
+      `:starting → :awaiting_approval → :done`. The file's location comes from
+      the Catalog harness the spec names (`harness:` → `credential_file`): the
+      flow runs the CLI with that directory pinned (`home_env`), and on success
+      the wrapper prints the file base64-encoded between two markers, so it
+      leaves the `--rm` container through the same PTY stream a token does.
+      It is stored with the identity by `CredentialFile.put/3`.
+
+  Captured from codex-cli 0.154.0 under this module's PTY (the code is fake):
+
+      Follow these steps to sign in with ChatGPT using device code authorization:
+      1. Open this link in your browser and sign in to your account
+         https://auth.openai.com/codex/device
+      2. Enter this one-time code (expires in 15 minutes)
+         ABCD-12345
+
+  then `Successfully logged in.` and exit 0 once approved; `Error logging in
+  with device code: …` and a non-zero exit on refusal or expiry.
+
+  **The one-time code IS in `SignInChanged` (`user_code`), deliberately.** It
+  is meant to be shown — the human types it on the vendor's page — it expires
+  in minutes, works once, and is useless without the device secret the CLI
+  holds inside the container (the vendor's poll needs both). Showing it to
+  every viewer of the page is the multiplayer design (a second window shows the
+  same step). It is still never logged. The credential file itself never
+  reaches an event, a log, argv or process state past `store/4`.
+
   One process for the whole app (sign-ins are rare and short), holding at most
   one flow per `{workstation, tool}`. Each flow runs in its OWN `--rm`
   container from the stock base image with no volumes: the CLI only PRINTS the
@@ -24,10 +60,10 @@ defmodule Loopyard.Workstation.SignIn do
   The container is `Resources.track/4`ed against this process, so a crash here
   cannot strand it.
 
-  Secrets: the transcript buffer holds the token for the instant between the
-  CLI printing it and `Env.put/3`; it is dropped at once, never logged, and
-  `format_status/1` keeps it out of crash reports. Events carry phase + URL
-  only.
+  Secrets: the transcript buffer holds the token (or the credential file) for
+  the instant between the CLI printing it and storing it; it is dropped at
+  once, never logged, and `format_status/1` keeps it out of crash reports.
+  Events carry phase + URL (+ the device flow's one-time code, above) only.
   """
   use GenServer
 
@@ -37,17 +73,35 @@ defmodule Loopyard.Workstation.SignIn do
   alias Loopyard.Events.Workstation, as: Events
   alias Loopyard.Events.Workstation.SignInChanged
   alias Loopyard.Workstation
-  alias Loopyard.Workstation.{Env, Integration}
+  alias Loopyard.Workstation.{CredentialFile, Env, Integration}
 
   # A human is in the loop (open a page, sign in, copy a code) — generous, but
   # bounded so an abandoned flow doesn't hold a container forever.
   @flow_timeout_ms 10 * 60_000
+  # A device code lives 15 minutes (codex says so in its prompt); give the
+  # human all of it, then stop holding a container.
+  @device_timeout_ms 15 * 60_000
   # Code → token is one HTTPS round trip inside the CLI.
   @exchange_timeout_ms 60_000
-  @max_buffer 32_000
+  # Room for a credential file (base64) on top of the CLI's own chatter.
+  @max_buffer 64_000
   @max_code_bytes 2_048
 
-  @type status :: %{phase: SignInChanged.phase(), url: String.t() | nil, error: String.t() | nil}
+  # Where a device flow's credential file is written inside its throwaway
+  # container, and the markers it is printed between on success.
+  # Not under /tmp: codex refuses to stage its helper binaries in a temp dir
+  # and warns into the transcript.
+  @device_home "/opt/loopyard-signin"
+  @file_begin "LOOPYARD:CREDENTIAL:BEGIN"
+  @file_end "LOOPYARD:CREDENTIAL:END"
+
+  @typedoc "A device flow's status also carries `:user_code` (see the moduledoc)."
+  @type status :: %{
+          required(:phase) => SignInChanged.phase(),
+          required(:url) => String.t() | nil,
+          required(:error) => String.t() | nil,
+          optional(:user_code) => String.t() | nil
+        }
 
   # ── API ──────────────────────────────────────────────────────────────────
 
@@ -119,6 +173,37 @@ defmodule Loopyard.Workstation.SignIn do
     end
   end
 
+  @doc """
+  A device flow's prompt — `{verification_url, one_time_code}` — once BOTH are
+  complete (each followed by whitespace). The code is the first dash-grouped
+  run of capitals/digits after the URL (`ABCD-12345`). `nil` until then.
+  """
+  @spec find_device(String.t()) :: {String.t(), String.t()} | nil
+  def find_device(text) do
+    with [_, url, rest] <- Regex.run(~r{(https://[^\s]+)\s(.*)}s, text),
+         [_, code] <- Regex.run(~r/(?<![A-Za-z0-9-])([A-Z0-9]{4,}(?:-[A-Z0-9]{4,})+)\s/, rest) do
+      {url, code}
+    else
+      _ -> nil
+    end
+  end
+
+  @doc """
+  The credential file a device flow's wrapper printed (between its markers,
+  base64), decoded — once the end marker is in. `nil` until then or when the
+  payload isn't valid base64.
+  """
+  @spec find_file(String.t()) :: binary() | nil
+  def find_file(text) do
+    with [_, b64] <-
+           Regex.run(~r/#{@file_begin}\s+([A-Za-z0-9+\/=]+)\s+#{@file_end}/, text),
+         {:ok, body} <- Base.decode64(b64) do
+      body
+    else
+      _ -> nil
+    end
+  end
+
   @doc "The token (by its integration's prefix), once complete. `nil` until then."
   @spec find_token(String.t(), String.t()) :: String.t() | nil
   def find_token(text, prefix) when is_binary(prefix) and prefix != "" do
@@ -153,7 +238,9 @@ defmodule Loopyard.Workstation.SignIn do
         state = drop(state, key)
         container = "#{Docker.prefix()}signin-#{id}-#{System.unique_integer([:positive])}"
 
-        case transport().open.(container, spec(tool).command) do
+        spec = spec(tool)
+
+        case transport().open.(container, spec.command) do
           {:ok, handle} ->
             Loopyard.Resources.track(self(), :signin_container, container, fn ->
               remove_container(container)
@@ -162,11 +249,12 @@ defmodule Loopyard.Workstation.SignIn do
             flow = %{
               handle: handle,
               container: container,
-              spec: spec(tool),
+              spec: spec,
               buf: "",
               phase: :starting,
               url: nil,
-              timer: Process.send_after(self(), {:flow_timeout, key, handle}, @flow_timeout_ms)
+              user_code: nil,
+              timer: Process.send_after(self(), {:flow_timeout, key, handle}, spec.timeout_ms)
             }
 
             publish(key, flow)
@@ -231,7 +319,8 @@ defmodule Loopyard.Workstation.SignIn do
     reply =
       case state.flows[{id, tool}] do
         nil -> %{phase: :idle, url: nil, error: nil}
-        flow -> %{phase: flow.phase, url: flow.url, error: nil}
+        %{spec: %{flow: :device}} = flow -> Map.put(base_status(flow), :user_code, flow.user_code)
+        flow -> base_status(flow)
       end
 
     {:reply, reply, state}
@@ -258,6 +347,15 @@ defmodule Loopyard.Workstation.SignIn do
 
   def handle_info({handle, {:exit_status, _code}}, state) do
     case find_flow(state, handle) do
+      # A device CLI exits non-zero when the code expired or was declined.
+      {key, %{phase: :awaiting_approval, spec: spec}} ->
+        {:noreply,
+         fail(
+           state,
+           key,
+           "#{spec.label} didn't confirm the sign-in — the code expired or was declined. Start it again."
+         )}
+
       {key, %{phase: phase}} when phase != :storing ->
         {:noreply, fail(state, key, "The sign-in stopped before it finished. Start it again.")}
 
@@ -268,8 +366,13 @@ defmodule Loopyard.Workstation.SignIn do
 
   def handle_info({:flow_timeout, key, handle}, state) do
     case state.flows[key] do
-      %{handle: ^handle, phase: :exchanging} ->
-        {:noreply, fail(state, key, "Claude didn't answer in time. Start the sign-in again.")}
+      %{handle: ^handle, phase: :exchanging, spec: spec} ->
+        {:noreply,
+         fail(state, key, "#{spec.label} didn't answer in time. Start the sign-in again.")}
+
+      %{handle: ^handle, phase: :awaiting_approval} ->
+        {:noreply,
+         fail(state, key, "The sign-in timed out waiting for approval. Start it again.")}
 
       %{handle: ^handle} ->
         {:noreply, fail(state, key, "The sign-in timed out waiting for a code. Start it again.")}
@@ -287,7 +390,8 @@ defmodule Loopyard.Workstation.SignIn do
         {:noreply, state}
 
       {%{phase: :storing}, _error} ->
-        {:noreply, fail(state, key, "Signed in, but the token couldn't be saved. Try again.")}
+        {:noreply,
+         fail(state, key, "Signed in, but the credential couldn't be saved. Try again.")}
 
       _ ->
         {:noreply, state}
@@ -317,6 +421,29 @@ defmodule Loopyard.Workstation.SignIn do
 
   # ── flow steps ───────────────────────────────────────────────────────────
 
+  defp advance(state, key, %{spec: %{flow: :device}} = flow) do
+    text = clean(flow.buf)
+
+    case {flow.phase, find_file(text)} do
+      {_phase, body} when is_binary(body) ->
+        store(state, key, flow, body)
+
+      {:starting, nil} ->
+        case find_device(text) do
+          nil ->
+            put_in(state.flows[key], flow)
+
+          {url, code} ->
+            flow = %{flow | phase: :awaiting_approval, url: url, user_code: code}
+            publish(key, flow)
+            put_in(state.flows[key], flow)
+        end
+
+      _ ->
+        put_in(state.flows[key], flow)
+    end
+  end
+
   defp advance(state, key, flow) do
     text = clean(flow.buf)
     token = find_token(text, flow.spec.token_prefix)
@@ -342,7 +469,7 @@ defmodule Loopyard.Workstation.SignIn do
         fail(
           put_in(state.flows[key], flow),
           key,
-          "Claude didn't accept that code. Start again and paste it exactly as shown."
+          "#{flow.spec.label} didn't accept that code. Start again and paste it exactly as shown."
         )
 
       true ->
@@ -350,26 +477,32 @@ defmodule Loopyard.Workstation.SignIn do
     end
   end
 
-  defp store(state, key, flow, token) do
+  defp store(state, key, flow, secret) do
     {id, _tool} = key
-    env_key = flow.spec.env
+    spec = flow.spec
     server = self()
     close(flow)
 
-    # Env.put shells out to Docker (sync into the home volume) and restarts the
-    # identity's agents — off this process so other flows keep moving.
+    # Storing shells out to Docker (sync into the home volume) and restarts the
+    # identity's agents — off this process so other flows keep moving. Which
+    # store follows the flow's SHAPE: a pasted-code flow yields a token for the
+    # identity's env, a device flow a credential file for its harness.
     Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
       result =
         try do
-          Env.put(env_key, token, id)
+          case spec.flow do
+            :device -> CredentialFile.put(id, spec.harness, secret)
+            :paste -> Env.put(spec.env, secret, id)
+          end
         rescue
           e -> {:error, Exception.message(e)}
         end
 
-      send(server, {:stored, key, result})
+      # The reason only — a failed store must not carry the secret back.
+      send(server, {:stored, key, if(result == :ok, do: :ok, else: :error)})
     end)
 
-    # Token is on its way to the store; nothing here keeps a copy.
+    # The secret is on its way to the store; nothing here keeps a copy.
     put_in(state.flows[key], %{flow | phase: :storing, buf: "", handle: nil})
   end
 
@@ -414,13 +547,44 @@ defmodule Loopyard.Workstation.SignIn do
 
   defp spec(tool) do
     case Integration.get(tool) do
-      %{sign_in: %{command: _, token_prefix: _} = sign_in, env: env} when is_binary(env) ->
-        Map.put(sign_in, :env, env)
+      %{sign_in: %{flow: :device, command: command, harness: harness}, label: label} ->
+        device_spec(command, harness, label)
+
+      %{sign_in: %{command: _, token_prefix: _} = sign_in, env: env, label: label}
+      when is_binary(env) ->
+        Map.merge(sign_in, %{flow: :paste, env: env, label: label, timeout_ms: @flow_timeout_ms})
 
       _ ->
         nil
     end
   end
+
+  # The device flow's command: the CLI with its credential directory pinned,
+  # then — only if it exits 0 — the file it wrote, base64 between markers. It
+  # runs inside a single-quoted `sh -c` inside `script`'s double-quoted command,
+  # so the pieces must carry neither quote nor `$` (checked, not assumed).
+  defp device_spec(command, harness, label) do
+    with {_, %{home_env: home_env, name: name}} <-
+           List.keyfind(CredentialFile.harnesses(), harness, 0),
+         true <- Regex.match?(~r/\A[^'"$`\\]+\z/, command) do
+      wrapped =
+        "sh -c 'export #{home_env}=#{@device_home} && mkdir -p #{@device_home} && " <>
+          "#{command} && echo #{@file_begin} && base64 -w0 #{@device_home}/#{name} && " <>
+          "echo && echo #{@file_end}'"
+
+      %{
+        flow: :device,
+        command: wrapped,
+        harness: harness,
+        label: label,
+        timeout_ms: @device_timeout_ms
+      }
+    else
+      _ -> nil
+    end
+  end
+
+  defp base_status(flow), do: %{phase: flow.phase, url: flow.url, error: nil}
 
   # ── events ───────────────────────────────────────────────────────────────
 
@@ -429,7 +593,8 @@ defmodule Loopyard.Workstation.SignIn do
       workstation_id: id,
       tool: tool,
       phase: flow.phase,
-      url: flow.url
+      url: flow.url,
+      user_code: flow[:user_code]
     })
   end
 

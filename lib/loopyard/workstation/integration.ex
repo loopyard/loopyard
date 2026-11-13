@@ -82,8 +82,24 @@ defmodule Loopyard.Workstation.Integration do
       # `claude setup-token`.
       console: "codex login --device-auth",
       console_label: "codex login (device code)",
-      check: {:file, ".codex/auth.json"},
-      lands: "~/.codex — live, every agent inherits it"
+      # The guided, in-app version (`Workstation.SignIn`'s `:device` flow): the
+      # same command in a throwaway container, the link + one-time code shown
+      # on the page, and the resulting `auth.json` stored WITH this identity
+      # (`Workstation.CredentialFile`) and delivered per agent at a
+      # per-identity CODEX_HOME — so two agents in one container can run on two
+      # ChatGPT plans. `harness` names the Catalog entry whose
+      # `credential_file` says where the file lives. The store is pinned to
+      # the file: with a keyring present codex would keep it there instead.
+      sign_in: %{
+        flow: :device,
+        command: "codex login --device-auth -c cli_auth_credentials_store=file",
+        harness: :codex
+      },
+      # Connected = a guided sign-in stored for this identity, or the legacy
+      # console login in ~/.codex (still what agents on this identity use
+      # until a guided sign-in exists).
+      check: {:any, [{:credential_file, :codex}, {:file, ".codex/auth.json"}]},
+      lands: "this account's own CODEX_HOME — agents on it reload themselves"
     },
     %{
       id: "fly",
@@ -203,6 +219,12 @@ defmodule Loopyard.Workstation.Integration do
   """
   @spec connected?(map(), String.t()) :: boolean()
   def connected?(%{check: {:env, key}}, id), do: key in Env.keys(id)
+
+  def connected?(%{check: {:any, checks}} = ig, id),
+    do: Enum.any?(checks, &connected?(%{ig | check: &1}, id))
+
+  def connected?(%{check: {:credential_file, harness}}, id),
+    do: Loopyard.Workstation.CredentialFile.stored?(id, harness)
 
   def connected?(%{check: {:file, rel}}, id) do
     exec_says?("test -f '/root/#{rel}' && echo CONNECTED", "CONNECTED", id)
