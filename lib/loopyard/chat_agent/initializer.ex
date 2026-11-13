@@ -522,6 +522,35 @@ defmodule Loopyard.ChatAgent.Initializer do
 
   defp put_new_binary(opts, _key, _value), do: opts
 
+  # WHICH HARNESS AND MODEL the agent was on survive a server restart. The
+  # saved row carried both and resume read neither: an agent switched to Codex
+  # came back on the default harness, and one moved to a cheaper model came
+  # back on the default (most expensive) one — silently, after any restart.
+  defp put_saved_harness(opts, harness) when is_atom(harness) and not is_nil(harness) do
+    if Enum.any?(Catalog.all(), &(&1.id == harness)),
+      do: Keyword.put_new(opts, :harness, harness),
+      else: opts
+  end
+
+  defp put_saved_harness(opts, _harness), do: opts
+
+  # The row holds the model as shown (a label when the harness named it, else
+  # the id), so match either against the harness's own list and hand the
+  # adapter the ID. A harness with no pinned list (its models come from the
+  # live session) boots on its adapter default, as a fresh agent would.
+  defp put_saved_model(opts, harness, model) when is_binary(model) do
+    harness = Keyword.get(opts, :harness, harness)
+
+    case Enum.find(Catalog.fetch(harness).models, fn {id, label} -> model in [id, label] end) do
+      {id, _label} -> Keyword.put_new(opts, :model, id)
+      nil -> opts
+    end
+  rescue
+    _ -> opts
+  end
+
+  defp put_saved_model(opts, _harness, _model), do: opts
+
   defp capture_live_session_id(backend, session, fallback) do
     backend.session_id(session) || fallback
   rescue
@@ -541,6 +570,8 @@ defmodule Loopyard.ChatAgent.Initializer do
       |> put_new_binary(:workstation_identity, saved[:workstation_identity])
       |> put_new_binary(:name, saved[:name])
       |> put_new_binary(:subagent_model, saved[:subagent_model])
+      |> put_saved_harness(saved[:harness])
+      |> put_saved_model(saved[:harness], saved[:model])
       # A Discuss agent resumes still discussing: the saved plan-mode id goes
       # out as the session's boot mode (ModeControl / Connection.maybe_set_mode).
       |> put_new_binary(:mode, (saved[:mode] == :discuss && saved[:plan_mode_id]) || nil)

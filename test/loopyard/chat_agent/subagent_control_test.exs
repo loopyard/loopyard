@@ -158,6 +158,54 @@ defmodule Loopyard.ChatAgent.SubagentControlTest do
     assert Keyword.get(opts, :subagent_model) == "claude-sonnet-5"
   end
 
+  test "the harness and the model survive a server-restart resume too", %{id: id} do
+    state = :sys.get_state(agent_pid(id))
+    summary = %{ChatAgent.summary(state) | harness: :codex, model: "Sonnet 5"}
+    :ets.insert(:chat_agents, {id, summary})
+    ChatAgent.stop_agent(id)
+    Process.sleep(50)
+    RecordingBackend.reset()
+
+    {:ok, _} =
+      Loopyard.TestHelpers.start_agent(
+        id: id,
+        name: "Sub-agent Test",
+        started_by: "test",
+        backend: RecordingBackend,
+        resume: true
+      )
+
+    # The boot opts are what start_session chooses the adapter from (and what a
+    # later "Restart agent" rebuilds from).
+    opts = :sys.get_state(agent_pid(id)).init_opts
+    # It was on Codex; it must not come back as the default harness.
+    assert Keyword.get(opts, :harness) == :codex
+    # Codex pins no model list, so a Claude label is not handed to it.
+    refute Keyword.has_key?(opts, :model)
+  end
+
+  test "a Claude agent's model comes back by id, from the label the row shows", %{id: id} do
+    state = :sys.get_state(agent_pid(id))
+    summary = %{ChatAgent.summary(state) | harness: :claude, model: "Sonnet 5"}
+    :ets.insert(:chat_agents, {id, summary})
+    ChatAgent.stop_agent(id)
+    Process.sleep(50)
+    RecordingBackend.reset()
+
+    {:ok, _} =
+      Loopyard.TestHelpers.start_agent(
+        id: id,
+        name: "Sub-agent Test",
+        started_by: "test",
+        backend: RecordingBackend,
+        resume: true
+      )
+
+    opts = :sys.get_state(agent_pid(id)).init_opts
+    assert Keyword.get(opts, :harness) == :claude
+    assert Keyword.get(opts, :model) == "claude-sonnet-5"
+  end
+
   test "the same value is a no-op; an unknown model is refused", %{id: id} do
     pid = agent_pid(id)
     RecordingBackend.reset()
