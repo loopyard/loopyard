@@ -53,6 +53,7 @@ defmodule Loopyard.Workspace.Destructor do
       stop_supervisor_subtree(workspace_id)
       adapter_teardown(workspace)
       remove_named_volumes(workspace_id, workspace)
+      remove_images(workspace_id)
       remove_compose_dir(workspace_id)
       release_ports(workspace_id)
       clear_ets(workspace_id)
@@ -168,6 +169,44 @@ defmodule Loopyard.Workspace.Destructor do
 
       :ok
     end)
+  end
+
+  # The images the workspace's dev cluster built (`loopyard-<id>-<service>`,
+  # compose's naming for a `build:` service). Nothing else can use them once
+  # the workspace is gone, and each is hundreds of MB that used to stay behind
+  # for good. Matched by the project's exact name plus `-`, so one id is never
+  # a prefix of another's; removal is not forced.
+  defp remove_images(workspace_id) do
+    step(workspace_id, "remove images", fn ->
+      for ref <- workspace_images(workspace_id) do
+        try_silently("remove image #{ref}", fn ->
+          Docker.docker(["image", "rm", ref], timeout: 60_000, retry: false)
+        end)
+      end
+
+      :ok
+    end)
+  end
+
+  @doc false
+  def workspace_images(workspace_id, lister \\ &list_image_refs/0) do
+    prefix = "#{Docker.prefix()}#{workspace_id}-"
+
+    for ref <- lister.(),
+        [repo | _] = String.split(ref, ":", parts: 2),
+        String.starts_with?(repo, prefix),
+        not String.ends_with?(ref, ":<none>"),
+        do: ref
+  end
+
+  defp list_image_refs do
+    case Docker.docker(["images", "--format", "{{.Repository}}:{{.Tag}}"],
+           timeout: 30_000,
+           retry: false
+         ) do
+      {:ok, out} -> String.split(out, "\n", trim: true)
+      _ -> []
+    end
   end
 
   defp remove_compose_dir(workspace_id) do

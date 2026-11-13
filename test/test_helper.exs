@@ -191,6 +191,6 @@ docker_volumes_before = Loopyard.Test.DockerVolumeSweep.snapshot()
 if docker_volumes_before do
   ExUnit.after_suite(fn _ ->
     n = Loopyard.Test.DockerVolumeSweep.sweep(docker_volumes_before)
-    if n > 0, do: IO.puts("Removed #{n} Docker volume(s) this run created.")
+    if n > 0, do: IO.puts("Removed #{n} Docker container(s) and volume(s) this run created.")
   end)
 end
