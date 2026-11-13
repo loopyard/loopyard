@@ -4,7 +4,7 @@ defmodule Loopyard.Notifications.Priority do
   Track A step 3). The top of the inbox has to be the right thing, or the
   inbox is just a list.
 
-  Tiers, first to last: a pin, then approvals (a turn is STOPPED on one),
+  Tiers, first to last: a pin, then system alerts and approvals (a turn is STOPPED on one),
   questions, secrets, finished-with-changes, finished-without, then anything
   demoted. Within a tier, OLDEST first — the inbox is a queue you work
   through, so the newest ask is the last one, not the first. Newest-first was
@@ -27,6 +27,8 @@ defmodule Loopyard.Notifications.Priority do
   @spec tier(Item.t()) :: integer()
   def tier(%Item{priority: :pinned}), do: 0
   def tier(%Item{priority: :demoted}), do: 9
+  # A system alert (the Docker disk is full) stops EVERY agent, so it leads.
+  def tier(%Item{kind: :alert}), do: 1
   def tier(%Item{kind: :approval}), do: 1
   def tier(%Item{kind: :question}), do: 2
   def tier(%Item{kind: :secret}), do: 3

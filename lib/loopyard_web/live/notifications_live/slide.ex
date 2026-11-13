@@ -40,19 +40,23 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
   # `data-stuck`, CSS switches the look. The composer is pinned to the foot.
   def decision_slide(assigns) do
     finished? = assigns.card.slide.kind == :finished
+    # A SYSTEM alert (the Docker disk is full): no card, no agent to talk to —
+    # its own card, and no composer.
+    alert? = assigns.card.slide.kind == :alert
     item = assigns.card[:item]
 
     assigns =
       assign(assigns,
         ref: "#{assigns.card.slide.agent_id}:#{assigns.card.slide.msg_id}",
         finished?: finished?,
+        alert?: alert?,
         item: item,
-        prompt: (finished? && item && item.label) || card_prompt(assigns.card),
+        prompt: ((finished? or alert?) && item && item.label) || card_prompt(assigns.card),
         # ONE predicate for "still waiting", shared with the deck's count — a
         # question of a multi-question ask resolves on its own, so asking the
         # message left an answered question wearing the flame.
         pending?: Deck.pending_card?(assigns.card),
-        verb: (finished? && "finished") || "asked",
+        verb: (finished? && "finished") || (alert? && "flagged") || "asked",
         awaiting?: awaiting_reply?(assigns.thread),
         blocked?: operator_blocked?(assigns.operator_id, assigns.card),
         who: Deck.who_asked(assigns.card.slide),
@@ -205,15 +209,19 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
           </.link>
 
           <Cards.question_card
-            :if={!@finished? && is_nil(@card.q) && @card.msg.role == :question}
+            :if={!@finished? && !@alert? && is_nil(@card.q) && @card.msg.role == :question}
             msg={@card.msg}
           />
-          <Cards.approval_card :if={!@finished? && @card.msg.role == :approval} msg={@card.msg} />
+          <Cards.approval_card
+            :if={!@finished? && !@alert? && @card.msg.role == :approval}
+            msg={@card.msg}
+          />
           <Cards.secret_card
-            :if={!@finished? && @card.msg.role == :secret_request}
+            :if={!@finished? && !@alert? && @card.msg.role == :secret_request}
             msg={@card.msg}
           />
           <.finished_card :if={@finished? && @item} item={@item} pending?={@pending?} />
+          <.alert_card :if={@alert? && @item} item={@item} pending?={@pending?} />
 
           <%!-- THE COLLAPSED DECISION. Nothing at rest. Placed AFTER the card and
         sticky under the bar, it pins exactly when the card has scrolled
@@ -309,7 +317,10 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
       padding). Same ChatForm hook as every chat (ack-gated clear,
       kept-on-failure); `data-re` names the decision so the send is tagged
       to it. --%>
-      <div class="flex-none px-4 md:px-6 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-brand-paper dark:bg-brand-ink border-t border-zinc-200 dark:border-zinc-800">
+      <div
+        :if={!@alert?}
+        class="flex-none px-4 md:px-6 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-brand-paper dark:bg-brand-ink border-t border-zinc-200 dark:border-zinc-800"
+      >
         <div id={"composer-" <> @card.dom_id} phx-update="ignore" class="mx-auto w-full max-w-2xl">
           <%!-- OPTIMISTIC ECHO: the instant you hit Send, the ChatForm hook shows
           your words here as "Sending…" — the operator may be mid-turn and
@@ -414,6 +425,61 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
     </LoopyardWeb.Components.StreamCard.band>
     """
   end
+
+  attr :item, :map, required: true
+  attr :pending?, :boolean, required: true
+
+  # A SYSTEM alert: the cause (the label carries the free figure), the one
+  # action in words, and two moves — Open /system (filled: it's the next
+  # step) and Dismiss (furthest away). It settles ON ITS OWN when the
+  # condition clears, so a settled one reads as a receipt.
+  defp alert_card(assigns) do
+    ~H"""
+    <LoopyardWeb.Components.StreamCard.band
+      tone={(@pending? && :needs_you) || :neutral}
+      chrome={:desktop}
+    >
+      <div class="text-meta font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+        {(@pending? && "Needs attention") || alert_word(@item)}
+      </div>
+      <p class="mt-2 text-lead text-zinc-900 dark:text-zinc-50">{@item.label}</p>
+      <p
+        :if={@pending? && @item.meta[:action]}
+        class="mt-2 text-body text-zinc-600 dark:text-zinc-300"
+      >
+        {@item.meta[:action]}
+      </p>
+
+      <div :if={@pending?} class="mt-4 flex flex-col sm:flex-row sm:items-center gap-2">
+        <.link
+          navigate={@item.path}
+          class={LoopyardWeb.Components.StreamCard.action_class(variant: :primary)}
+        >
+          Open System
+        </.link>
+        <button
+          type="button"
+          phx-click="dismiss_item"
+          phx-value-id={@item.id}
+          class={[LoopyardWeb.Components.StreamCard.action_class(), "sm:ml-auto"]}
+        >
+          Dismiss
+        </button>
+      </div>
+      <p :if={!@pending?} class="mt-3 text-lead text-zinc-500 dark:text-zinc-400">
+        {alert_receipt(@item)}
+      </p>
+    </LoopyardWeb.Components.StreamCard.band>
+    """
+  end
+
+  defp alert_word(%{outcome: :recovered}), do: "Recovered"
+  defp alert_word(%{status: :dismissed}), do: "Dismissed"
+  defp alert_word(_), do: "Settled"
+
+  defp alert_receipt(%{outcome: :recovered}), do: "Recovered — the condition cleared on its own."
+  defp alert_receipt(%{status: :dismissed}), do: "Dismissed — it comes back if it gets worse."
+  defp alert_receipt(_), do: "Settled."
 
   defp finished_word(%{status: :open}), do: "Finished"
   defp finished_word(%{status: :settled, outcome: :kept_going}), do: "Kept going"

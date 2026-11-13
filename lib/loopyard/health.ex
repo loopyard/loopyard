@@ -13,6 +13,9 @@ defmodule Loopyard.Health do
     * `:pubsub` — Phoenix.PubSub running means we can broadcast,
       which covers every cross-process signal path in Loopyard
     * `:agent_reconciler` — last-run age from Agent.Reconciler
+    * `:docker_disk` — free space in the Docker VM, from
+      `Loopyard.Docker.DiskMonitor` (degraded below a threshold, down once
+      writes fail — the reason carries the free figure)
 
   ## Status shape
 
@@ -35,7 +38,7 @@ defmodule Loopyard.Health do
   premature for our population of 3.
   """
 
-  @components [:docker, :pubsub, :agent_reconciler]
+  @components [:docker, :docker_disk, :pubsub, :agent_reconciler]
 
   # Drift is the reconciler's JOB — transient `:booting → :crashed`
   # blips during agent lifecycle produce drift of 1 or 2 per scan.
@@ -89,6 +92,12 @@ defmodule Loopyard.Health do
     _ -> {:down, "Observer raised during health check"}
   catch
     :exit, _ -> {:down, "Observer GenServer unresponsive"}
+  end
+
+  def component(:docker_disk) do
+    Loopyard.Docker.DiskMonitor.status()
+  catch
+    :exit, _ -> {:down, "DiskMonitor GenServer unresponsive"}
   end
 
   def component(:pubsub) do

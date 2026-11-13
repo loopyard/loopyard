@@ -119,6 +119,13 @@ defmodule Loopyard.Notifications do
   def raise_item(%Item{} = item), do: GenServer.cast(__MODULE__, {:raise, item})
 
   @doc """
+  Raise an item, or — when one with its id is already open — replace its
+  label and meta in place (keeping its age and priority). For a CONDITION
+  item (`:alert`, e.g. the Docker disk) whose wording changes as it worsens.
+  """
+  def upsert(%Item{} = item), do: GenServer.cast(__MODULE__, {:upsert, item})
+
+  @doc """
   "Keep going": hand the agent its next prompt (the same path as the
   operator's `dispatch`) and settle the finished item.
   """
@@ -192,6 +199,17 @@ defmodule Loopyard.Notifications do
       # a collision means a replayed relic) — replace it.
       %Item{status: :open, agent_id: aid} when aid == item.agent_id -> {:noreply, state}
       _ -> {:noreply, put(state, %{item | status: :open, settled_at: nil, outcome: nil}, :added)}
+    end
+  end
+
+  def handle_cast({:upsert, %Item{} = item}, state) do
+    case get(item.id) do
+      %Item{status: :open} = prior ->
+        updated = %{prior | label: item.label, meta: item.meta}
+        {:noreply, put(state, updated, {:changed, :open})}
+
+      _ ->
+        {:noreply, put(state, %{item | status: :open, settled_at: nil, outcome: nil}, :added)}
     end
   end
 

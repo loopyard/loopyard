@@ -3,7 +3,10 @@ defmodule Loopyard.Notifications.Item do
   One notification: something waiting on a human, or something that happened.
 
   * `kind` — `:question | :approval | :secret` (a DECISION: an agent is blocked
-    on a person) or `:finished` (an agent wrapped a turn — "keep going?").
+    on a person), `:finished` (an agent wrapped a turn — "keep going?"), or
+    `:alert` (a SYSTEM condition only a human can fix — the Docker disk filling
+    up; raised and settled by its watcher, e.g. `Docker.DiskMonitor`, never
+    by an agent; `agent_id` is `"loopyard"`).
   * `status` — `:open` until settled; then `:settled` (acted on — answered,
     approved, submitted, kept going), `:dismissed` (a human waved it away), or
     `:retracted` (an agent withdrew it as moot). `outcome` keeps the detail
@@ -18,7 +21,7 @@ defmodule Loopyard.Notifications.Item do
 
   alias Loopyard.{ProjectRegistry, WorkspaceRegistry}
 
-  @type kind :: :question | :approval | :secret | :finished
+  @type kind :: :question | :approval | :secret | :finished | :alert
   @type status :: :open | :settled | :dismissed | :retracted
 
   @type t :: %__MODULE__{
@@ -70,6 +73,9 @@ defmodule Loopyard.Notifications.Item do
 
   @doc "Every decision kind — the subset that blocks an agent on a human."
   def decision_kinds, do: [:question, :approval, :secret]
+
+  @doc "Every kind that waits on a human: the decisions plus system alerts (the badge)."
+  def needs_human_kinds, do: decision_kinds() ++ [:alert]
 
   @doc """
   Build the item for a freshly appended card. Reads the agent's ETS summary for

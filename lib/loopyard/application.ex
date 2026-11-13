@@ -125,6 +125,10 @@ defmodule Loopyard.Application do
       Loopyard.Notifications,
       # Web Push from the inbox: every raised item → the devices that want it.
       Loopyard.Notifications.Push,
+      # Free space in the Docker VM on a slow tick: the /system disk row, and
+      # the ONE inbox item when it runs low (after Notifications, which it
+      # writes to). Never blocks on Docker; inert while the daemon is down.
+      Loopyard.Docker.DiskMonitor,
       Loopyard.Operator.Digest,
 
       # Proactive harness memory management (Layer 2). Periodically reclaims a

@@ -35,7 +35,7 @@ The coordination layer went through a sprint of hardening moves (see [plans/arch
 - `/system/orphans` — tracked resources without a live owner
 - `/system/recovery` — checkpointer snapshot size/age, last boot replay time
 - `/system/workspaces`, `/system/docker`, `/system/ports`, `/system/secrets` — the registries, the daemon, the port pool, stored secrets
-- `/system` — aggregated health map (`:healthy | :degraded | :down` per component); the `Agent.Reconciler` drift check is one of its rows (there is no separate reconcilers page)
+- `/system` — aggregated health map (`:healthy | :degraded | :down` per component); the `Agent.Reconciler` drift check is one of its rows (there is no separate reconcilers page), and so is the **Docker disk** (`Docker.DiskMonitor` — free space in the VM; low raises ONE inbox item; `mix loopyard.gc` reclaims Loopyard's own leftovers, see docs/HOSTING.md)
 
 **Adding a new broadcast event:**
 1. Add a struct to the relevant publisher module in `lib/loopyard/events/` (e.g. `Loopyard.Events.ChatAgent.SomeEvent`).

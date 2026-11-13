@@ -124,7 +124,7 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
   already done. Ask the QUESTION.
   """
   @spec pending_card?(map()) :: boolean()
-  def pending_card?(%{slide: %{kind: :finished}, item: item}),
+  def pending_card?(%{slide: %{kind: kind}, item: item}) when kind in [:finished, :alert],
     do: match?(%{status: :open}, item)
 
   def pending_card?(%{msg: %{status: :pending} = msg, q: %{id: q_id}}),

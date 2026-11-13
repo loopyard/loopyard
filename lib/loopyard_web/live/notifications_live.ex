@@ -408,7 +408,7 @@ defmodule LoopyardWeb.NotificationsLive do
   defp pending_keys(slides) do
     slides
     |> Enum.filter(fn
-      %{kind: :finished, item_id: id} ->
+      %{kind: kind, item_id: id} when kind in [:finished, :alert] ->
         match?(%{status: :open}, Loopyard.Notifications.get(id))
 
       slide ->
@@ -593,7 +593,8 @@ defmodule LoopyardWeb.NotificationsLive do
   # A slide plus its LIVE message and (for a multi-question ask) the one
   # question this card is. Nil when the message has gone — a deleted agent
   # shouldn't leave a hole that crashes the deck.
-  defp resolve_card(%{kind: :finished, item_id: id} = slide) do
+  # A finished turn or a system alert has no card message: the item IS it.
+  defp resolve_card(%{kind: kind, item_id: id} = slide) when kind in [:finished, :alert] do
     case Loopyard.Notifications.get(id) do
       %{} = item -> %{slide: slide, msg: nil, q: nil, item: item, dom_id: Deck.dom_id(slide)}
       _ -> nil
