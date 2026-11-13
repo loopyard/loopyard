@@ -58,6 +58,7 @@ What lives in `test/support/`:
 | `Loopyard.Test.FakeVolumeIO` | Process-dictionary stand-in for `VolumeIO` reads; swap in via `:volume_reader`, seed with `seed/2`. |
 | `Loopyard.Test.FakeAttachmentWriter` | On-disk (OS tmp dir) stand-in for `VolumeIO`'s attachment WRITE path — cross-process, so a LiveView's writes are readable from the test. Wired via `:attachment_writer` in `config/test.exs`. |
 | `Loopyard.Test.FakeContainerIO` | Process-dictionary stand-in for `ContainerIO` (the operator's attachment store). Wired via `:container_io`. |
+| `Loopyard.Test.DockerVolumeSweep` | A Docker-enabled run (`LOOPYARD_DOCKER_TESTS=1`) snapshots the `loopyard-test-*` volumes at start and, after the suite (`test_helper.exs`), removes the dangling ones it created — through `Loopyard.GC`'s selection, never forced. Thousands of leftover test volumes once filled the VM's disk (#117). No-op in the default run. |
 | `LoopyardWeb.ConnCase` / `LoopyardWeb.ChannelCase` | Standard Phoenix case templates (`@endpoint`, verified routes, `Phoenix.ChannelTest`) for controller/LiveView and channel tests. |
 
 Always use random IDs to avoid test interference. Always clean up in `on_exit`:
