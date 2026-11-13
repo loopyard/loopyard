@@ -77,11 +77,23 @@ defmodule LoopyardWeb.NotificationsLive do
      |> assign(:awaiting, nil)
      |> assign(:user_label, user_label(operator_id))
      |> assign(:vapid_key, Loopyard.WebPush.public_key())
+     |> assign(:fleet_line, fleet_line())
      |> LoopyardWeb.Live.ConsentUI.attach(secret_scope: scope)
      |> sync_secret_scope()
      |> subscribe_slides()
      |> subscribe_agent(operator_id)
      |> load_threads()}
+  end
+
+  # The fleet in a line, for the slide past the last decision: an empty inbox
+  # means nothing is ASKING, not that everything is moving. Re-read with the
+  # deck (one ETS read), so it is as fresh as the slides around it.
+  defp fleet_line do
+    Loopyard.Agents.summaries()
+    |> LoopyardWeb.AgentsLive.Row.rows()
+    |> LoopyardWeb.AgentsLive.Row.fleet_line()
+  rescue
+    _ -> nil
   end
 
   # Answer updates are CASTS — the card flips via a MessageUpdated broadcast,
@@ -191,6 +203,7 @@ defmodule LoopyardWeb.NotificationsLive do
     socket
     |> assign(:slides, slides)
     |> assign(:pending_keys, now_pending)
+    |> assign(:fleet_line, fleet_line())
     |> focus_arrival(socket.assigns.pending_keys, now_pending, slides)
     |> sync_secret_scope()
     |> subscribe_slides()
@@ -457,6 +470,7 @@ defmodule LoopyardWeb.NotificationsLive do
       operator_id={@operator_id}
       user_label={@user_label}
       vapid_key={@vapid_key}
+      fleet_line={@fleet_line}
     />
     """
   end
@@ -483,6 +497,7 @@ defmodule LoopyardWeb.NotificationsLive do
   attr :operator_id, :string, default: nil
   attr :user_label, :string, default: "You"
   attr :vapid_key, :string, default: nil
+  attr :fleet_line, :string, default: nil
 
   def notifications_deck(assigns) do
     # "n of N" counts what is still WAITING, not what is on the deck. The deck
@@ -558,6 +573,7 @@ defmodule LoopyardWeb.NotificationsLive do
             waiting={@total}
             next_pending={Enum.find_value(@numbered, fn {card, position} -> position && card end)}
             vapid_key={@vapid_key}
+            fleet_line={@fleet_line}
           />
         </div>
 
@@ -568,6 +584,7 @@ defmodule LoopyardWeb.NotificationsLive do
               <p class="text-lead text-zinc-500 dark:text-zinc-400 mb-6">
                 {(@history? && "No decisions asked yet.") || "Nothing waiting on you."}
               </p>
+              <Slide.fleet_link :if={!@history?} line={@fleet_line} />
               <.link
                 :if={!@history?}
                 navigate="/notifications/history"

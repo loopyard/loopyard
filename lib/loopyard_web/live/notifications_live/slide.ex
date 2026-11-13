@@ -469,11 +469,32 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
     """
   end
 
+  attr :line, :string, default: nil
+
+  @doc """
+  The fleet in a line, and the way to it. Nothing asking is not the same as
+  everything moving: an agent that stopped without a question (interrupted,
+  signed out, at a plan limit) is named here, where the inbox would otherwise
+  say all is well.
+  """
+  def fleet_link(assigns) do
+    ~H"""
+    <.link
+      :if={@line}
+      navigate="/agents"
+      class="text-body min-h-11 inline-flex items-center justify-center text-zinc-600 dark:text-zinc-300 hover:underline"
+    >
+      {@line}
+    </.link>
+    """
+  end
+
   attr :history?, :boolean, default: false
   attr :last, :map, default: nil
   attr :vapid_key, :string, default: nil
   attr :waiting, :integer, default: 0, doc: "decisions still open behind this slide"
   attr :next_pending, :map, default: nil, doc: "the first one still waiting, to go back to"
+  attr :fleet_line, :string, default: nil, doc: "the fleet in a line; links to the Agents root"
 
   # The slide past the last decision: where the deck ends, and the way on.
   #
@@ -493,6 +514,7 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
           <p class="text-lead text-zinc-500 dark:text-zinc-400 mb-6">
             {end_line(@history?, @waiting)}
           </p>
+          <.fleet_link :if={!@history?} line={@fleet_line} />
           <%!-- One stack, one width, one edge: the actions read as a group
           instead of three things that happen to be centred. --%>
           <.link

@@ -173,6 +173,31 @@ defmodule LoopyardWeb.NotificationsDeckTest do
     assert html =~ "Asked first?", "the settled question keeps its place as a receipt"
   end
 
+  test "an empty inbox still says how the fleet is, and links to it", %{conn: conn} do
+    id = "fleet-line-#{System.unique_integer([:positive])}"
+
+    :ets.insert(
+      :chat_agents,
+      {id,
+       Loopyard.AgentLog.at_rest(%{
+         id: id,
+         name: "Cut short",
+         status: :thinking,
+         workspace_id: "ws-nope",
+         harness: :claude,
+         messages: [],
+         pending_messages: []
+       })}
+    )
+
+    on_exit(fn -> :ets.delete(:chat_agents, id) end)
+
+    {:ok, view, html} = live(conn, "/notifications")
+
+    assert html =~ ~r/\d+ agents? · .*\d+ interrupted/
+    assert has_element?(view, "a[href='/agents']", "interrupted")
+  end
+
   test "a bare question's byline keeps the workspace and the age readable on a phone" do
     # Chip and name on one line at phone size read "storefront · … · Claude
     # asked …". The name takes its own line there, under the project name.
