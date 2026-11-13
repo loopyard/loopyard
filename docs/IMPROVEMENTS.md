@@ -155,6 +155,14 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
     cat` it when the task-notification `usage_update` arrives and attach the
     last assistant message as the card's result. See
     docs/ARCHITECTURE.md "Sub-agents inside the harness".
+    Re-checked for #120 (Nov 2026, adapter 0.76.0): the `task_notification` the
+    adapter handles carries only `status`/`summary`/`output_file`, its
+    async-tasks runtime IGNORES sub-agent tasks, and the opt-in native
+    sub-agent sessions (`subagents` client capability) end with
+    `subagent_state_update {state}` — no report on any of them. (b) stays the
+    way in, but it needs a real `outputFile` capture to parse against (no
+    fixture of the JSONL shape exists yet) and a `docker exec` at the
+    task-notification `usage_update`; not contained enough to ship blind.
 
 12b. **A transient-turn retry reuses the DEAD harness session and wedges the agent
     for 30 minutes.** Seen twice on 2026-10-21 (isolated instance, system agent):

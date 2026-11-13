@@ -320,6 +320,21 @@ new adapter boots on its own default unless the picker named one.
 `Initializer.rebuild_session_opts/1` on `:reload`), exposed as `harness` on the
 agent summary.
 
+**Sub-agents can run on a cheaper model (`subagent_model`).** A capable main
+model directing cheaper workers: the sidebar's Sub-agents row (beside the
+model picker; options = the harness's Catalog models, led by "Same as the
+agent" = nil) and `agent action=switch subagent_model=…` call
+`ChatAgent.set_subagent_model/2` → `SubagentControl`, which stores it in
+`session_opts[:subagent_model]` (summary row + `{:agent, …}` record; carried
+through `:reload` by `rebuild_session_opts/1`) and relaunches the harness with
+a silent `:settings` restart that RESUMES the native session — deferred while a
+turn runs, never killing one. Delivery is the Catalog entry's `subagent_model`
+(Claude: `CLAUDE_CODE_SUBAGENT_MODEL` + `_FORCE` exported at launch; Codex:
+nil → no control). The sub-agent card names the model the harness REPORTS
+(`toolResponse.resolvedModel` → `:subagent_model` on the delegation message),
+never the setting. Evidence: docs/ARCHITECTURE.md "Sub-agents inside the
+harness".
+
 **The ACCOUNT is per agent, too (`workstation_identity`).** A work container
 mounts ONE identity's `$HOME` (the workspace's workstation,
 `Workspace.workstation_id/1`), but which workstation's credentials a harness

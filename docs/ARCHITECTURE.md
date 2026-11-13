@@ -231,7 +231,10 @@ The sub-agent's own prose/thinking is NOT streamed — only its tool calls.
   closing result ("Finished in the background — the agent folded its report
   into the reply", or an error line if the turn was interrupted). The report
   itself exists only as the sub-agent's JSONL transcript at `outputFile` in the
-  container's `/tmp` — not read today (see IMPROVEMENTS).
+  container's `/tmp` — not read today (see IMPROVEMENTS). Checked again in
+  adapter 0.76.0: its opt-in native-sub-agent sessions (client capability
+  `subagents`) announce `subagent_spawned` and close with
+  `subagent_state_update {state}` — a state, still no report.
 
 **What Loopyard can and cannot see.** CAN: every tool call + result the
 sub-agent makes, its lineage, when the foreground report lands, the model the
@@ -241,6 +244,56 @@ a background sub-agent's report on its own call, or nested sub-sub-agents as
 distinct levels (a grandchild carries only its immediate parent's id — the
 transcript nests one level: anything with a parent id folds under the
 nearest `:agent` call it names).
+
+**Which model a sub-agent runs on — and how Loopyard chooses it.** Read
+out of the v5 image (`loopyard-workspace-base:v5`: adapter 0.76.0, whose
+bundled CLI is `node_modules/@anthropic-ai/claude-agent-sdk-linux-arm64/claude`,
+SDK 0.3.257), not exercised against a live model:
+
+- *The knob is an environment variable.* The bundled CLI reads
+  `CLAUDE_CODE_SUBAGENT_MODEL` (`function i3(){let e=a.CLAUDE_CODE_SUBAGENT_MODEL;
+  return e&&e!=="inherit"?e:"inherit"}`) and resolves a sub-agent's model in
+  `hP(…)`: the parent's per-call `model` argument first, then the agent
+  definition's `model:` frontmatter, then the env var, else the parent's model.
+  Its own changelog says so: "Changed `CLAUDE_CODE_SUBAGENT_MODEL` to set the
+  default subagent model rather than override everything". The boolean
+  `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` (`Abn(…)`: with it set, the per-call and
+  definition models are dropped) makes the env var THE rule, and removes
+  `model` from the Agent tool's schema (`a.CLAUDE_CODE_SUBAGENT_MODEL_FORCE?
+  n.omit({model:!0}):n`). The model must also pass the `availableModels`
+  allowlist (`Lr(…)`, warning "Subagent model … is not in the availableModels
+  allowlist"), which our `CLAUDE_MODEL_CONFIG` already lists.
+- *It reaches the CLI.* The adapter builds the CLI's env as
+  `{...process.env, ...userProvidedOptions?.env, …}` (`dist/acp-agent.js`
+  ~line 6002) — so an `export` in the launch script lands. A user/project
+  `settings.json` `env` block is applied after it and would win; we write no
+  such file.
+- *Ruled out:* an `agents` option through ACP `_meta.claudeCode.options` exists
+  (`userProvidedOptions`, the SDK `agents` option) but defines agents rather
+  than setting a default, and `.claude/agents/*.md` `model:` would mean
+  writing into the user's repository.
+
+So `Harness.Catalog`'s Claude entry carries `subagent_model: {:env,
+"CLAUDE_CODE_SUBAGENT_MODEL", %{"CLAUDE_CODE_SUBAGENT_MODEL_FORCE" => "1"}}`
+and `Harness.ACP.docker_exec_cmd/3` exports both when an agent has a sub-agent
+model (`session_opts[:subagent_model]`, set by `ChatAgent.SubagentControl` from
+the sidebar's Sub-agents row or the chief of staff's `agent action=switch
+subagent_model=…`). FORCE because the control promises "sub-agents run on X":
+without it a built-in definition's own `model:` or the parent's choice would
+quietly win. Codex 0.148 has a `default_subagent_model` setting, but Loopyard
+pins no Codex model list, so its entry is `nil` and no control is offered.
+
+**The card names the model the sub-agent actually ran on.** Claude Code's
+Agent tool output schema has `resolvedModel` and `modelsUsed` ("Ordered
+distinct models used before backgrounding (length > 1 means a mid-run swap)")
+on both the completed and the `async_launched` shapes, and the adapter's
+PostToolUse hook forwards that output verbatim as
+`_meta.claudeCode.toolResponse` on a `tool_call_update` (the 2026-10-21 capture
+above shows `resolvedModel: "claude-sonnet-5"` on a background launch). The
+Translator reads it (`modelsUsed`'s last entry, else `resolvedModel`) and
+re-emits the delegation's `%Event.ToolCall{model: …}`; `StreamHandler` stamps
+it on the `:tool` message as `:subagent_model`; the card reads "on Sonnet 5".
+The configured setting is never shown as fact — what the harness reports is.
 
 **Identity and policy.** `Task`/`Agent` is allowed in-container. The old
 in-process path denied it because a sub-agent's MCP calls failed the
