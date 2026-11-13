@@ -90,6 +90,8 @@ defmodule Loopyard.ChatAgent.WorkstationControl do
       # "Reconnecting…" in the harness-status block for the restart's duration;
       # sends queue behind it (`:backoff` is the queue-and-deliver status).
       |> Map.put(:status, :backoff)
+      # The old account's plan limit no longer describes this agent.
+      |> Loopyard.ChatAgent.PlanLimit.on_account_switch()
 
     :ets.insert(@ets_table, {state.id, Loopyard.ChatAgent.summary(state)})
     Persistence.persist_agent(state, &Loopyard.ChatAgent.summary/1)

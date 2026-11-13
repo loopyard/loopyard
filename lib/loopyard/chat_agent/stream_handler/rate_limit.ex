@@ -14,7 +14,7 @@ defmodule Loopyard.ChatAgent.StreamHandler.RateLimit do
   require Logger
 
   alias Loopyard.Agent.Event
-  alias Loopyard.ChatAgent.Persistence
+  alias Loopyard.ChatAgent.{Persistence, PlanLimit}
   alias Loopyard.Events
 
   @ets_table :chat_agents
@@ -150,29 +150,49 @@ defmodule Loopyard.ChatAgent.StreamHandler.RateLimit do
         :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :rate_limited})
 
-        if first? do
-          Loopyard.EventLog.warning(
-            "agent:#{state.name}",
-            "Rate-limited (#{rate_limit_label(rl.rate_limit_type)}); resets #{format_reset(rl.resets_at_ms)}"
-          )
+        # The limit is the ACCOUNT's: record it there on every refusal (a
+        # sibling on the same plan learns the latest reset without a turn).
+        decision = PlanLimit.note_rejection(state, rl)
+        state = if first?, do: Map.put(state, :limit_origin, :turn), else: state
 
-          rl_msg = %{
-            role: :system,
-            content: rate_limit_message(rl),
-            timestamp: DateTime.utc_now()
-          }
+        cond do
+          first? and decision == :failover ->
+            # A permitted account can take the work: move there (a message to
+            # ourselves, so the stream's queued events land first). The chat
+            # gets the move's one quiet line, not this outage's.
+            Loopyard.EventLog.warning(
+              "agent:#{state.name}",
+              "Rate-limited (#{rate_limit_label(rl.rate_limit_type)}); failing over"
+            )
 
-          {state, rl_msg} = append_message(state, rl_msg)
-          Persistence.persist_message(state, rl_msg)
+            send(self(), {:plan_limit_failover, id})
+            state
 
-          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-            agent_id: id,
-            msg: rl_msg
-          })
+          first? ->
+            Loopyard.EventLog.warning(
+              "agent:#{state.name}",
+              "Rate-limited (#{rate_limit_label(rl.rate_limit_type)}); resets #{format_reset(rl.resets_at_ms)}"
+            )
 
-          state
-        else
-          state
+            rl_msg = %{
+              role: :system,
+              content: rate_limit_message(rl),
+              timestamp: DateTime.utc_now()
+            }
+
+            {state, rl_msg} = append_message(state, rl_msg)
+            Persistence.persist_message(state, rl_msg)
+
+            Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+              agent_id: id,
+              msg: rl_msg
+            })
+
+            # Nowhere to go: one inbox item, settled when the limit clears.
+            PlanLimit.raise_stuck(state)
+
+          true ->
+            state
         end
 
       :allowed_warning ->
@@ -189,6 +209,12 @@ defmodule Loopyard.ChatAgent.StreamHandler.RateLimit do
 
       :allowed ->
         was_rate_limited = state.rate_limit_status != :ok
+
+        state =
+          if was_rate_limited or PlanLimit.known_limited?(state),
+            do: PlanLimit.allowed(state),
+            else: state
+
         new_main_status = if state.status == :rate_limited, do: :idle, else: state.status
 
         state = %{
