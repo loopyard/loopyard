@@ -16,6 +16,7 @@ defmodule Loopyard.Workstation.Env do
   already models scope if we want to merge them).
   """
   alias Loopyard.Workstation
+  alias Loopyard.Workstation.CredentialFile
 
   @key_re ~r/^[A-Za-z_][A-Za-z0-9_]*$/
 
@@ -257,7 +258,14 @@ defmodule Loopyard.Workstation.Env do
   def sync_identity_into(identity, host) when is_binary(identity) and is_binary(host) do
     case checked_map(identity) do
       {:ok, map} ->
-        write_home_files(host, [{identity_file(identity), identity_file_body(map)}])
+        write_home_files(
+          host,
+          [
+            {identity_file(identity),
+             identity_file_body(map, CredentialFile.exports(identity, true))}
+          ],
+          script: CredentialFile.deliver_script(identity, "/vol", true)
+        )
 
       err ->
         err
@@ -273,11 +281,15 @@ defmodule Loopyard.Workstation.Env do
   credential key (`credential_keys/0`) so an agent on this identity can never
   inherit the container host identity's token through `~/.profile` — if this
   identity has no Claude credential, the harness fails to sign in (and says so)
-  rather than silently billing another account — then exports its own vars.
+  rather than silently billing another account — then exports its own vars,
+  then `extra` (the identity's credential-directory exports,
+  `CredentialFile.exports/2`). The directory vars (`CODEX_HOME`) are unset
+  with the tokens, for the same reason.
   """
-  @spec identity_file_body(%{optional(String.t()) => String.t()}) :: String.t()
-  def identity_file_body(map) do
-    "unset #{Enum.join(credential_keys(), " ")}\n" <> env_file_body(map)
+  @spec identity_file_body(%{optional(String.t()) => String.t()}, String.t()) :: String.t()
+  def identity_file_body(map, extra \\ "") do
+    "unset #{Enum.join(credential_keys() ++ CredentialFile.home_envs(), " ")}\n" <>
+      env_file_body(map) <> if(extra == "", do: "", else: "\n" <> String.trim_trailing(extra))
   end
 
   # The store, validated for materialization: only a store that EXISTS and is
@@ -298,7 +310,9 @@ defmodule Loopyard.Workstation.Env do
       # logging every live agent out of Claude. "I can't find a store" is never
       # a reason to erase one; only a store that EXISTS may assert emptiness.
       :absent ->
-        {:error, {:store_absent, path(id)}}
+        if CredentialFile.any_stored?(id),
+          do: {:ok, %{}},
+          else: {:error, {:store_absent, path(id)}}
 
       # An EMPTY store is the same hazard again, and it is the one that actually
       # ran: `mix test` redirects LOOPYARD_HOME to a scratch dir and writes an
@@ -310,8 +324,12 @@ defmodule Loopyard.Workstation.Env do
       # Erasing an identity's whole environment is never something to do as a
       # SIDE EFFECT of a sync. Removing the last var goes through `delete/2`,
       # which says so explicitly.
+      #
+      # A stored sign-in FILE (`CredentialFile`, e.g. a Codex ChatGPT sign-in)
+      # is the exception: it proves the store is real and deliberately written,
+      # so an identity whose only credential is that file still materializes.
       {:ok, map} when map_size(map) == 0 ->
-        {:error, :refusing_empty_env}
+        if CredentialFile.any_stored?(id), do: {:ok, map}, else: {:error, :refusing_empty_env}
 
       {:ok, map} ->
         {:ok, map}
@@ -329,15 +347,19 @@ defmodule Loopyard.Workstation.Env do
     # any other identity's file in this volume).
     write_home_files(
       id,
-      [{".loopyard/env", env_file_body(map)}, {identity_file(id), identity_file_body(map)}],
-      profile_hook: true
+      [
+        {".loopyard/env", env_file_body(map)},
+        {identity_file(id), identity_file_body(map, CredentialFile.exports(id, false))}
+      ],
+      profile_hook: true,
+      script: CredentialFile.deliver_script(id, "/vol", false)
     )
   end
 
   # Write `files` (`{rel_path, body}`, relative to the volume root) into `host`'s
   # home volume, mode 0600, through a transient container. `profile_hook: true`
   # also ensures ~/.profile sources ~/.loopyard/env.
-  defp write_home_files(host, files, opts \\ []) do
+  defp write_home_files(host, files, opts) do
     vol = Workstation.home_volume(host)
 
     # This function is the one that writes into a live $HOME volume, so it is
@@ -367,7 +389,9 @@ defmodule Loopyard.Workstation.Env do
         "true"
       end
 
-    script = "mkdir -p /vol/.loopyard && " <> writes <> hook
+    # Sign-in files (`CredentialFile.deliver_script/3`): conditional writes, so
+    # a copy the CLI refreshed in place is never rolled back.
+    script = "mkdir -p /vol/.loopyard && " <> writes <> Keyword.get(opts, :script, "") <> hook
 
     case Loopyard.Docker.docker([
            "run",

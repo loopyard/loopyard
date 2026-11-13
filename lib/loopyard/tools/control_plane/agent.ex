@@ -191,7 +191,7 @@ defmodule Loopyard.Tools.ControlPlane.Agent do
       not Workstation.exists?(id) ->
         {:error, "No account '#{id}'. #{known_accounts()}"}
 
-      not Catalog.credentialed?(harness, Workstation.Env.all(id)) ->
+      not Catalog.credentialed?(harness, id) ->
         {:error,
          "Account '#{id}' has no #{Catalog.label(harness)} credential — it must be signed " <>
            "in first (its workstation page). #{known_accounts()}"}

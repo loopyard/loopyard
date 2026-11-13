@@ -209,20 +209,19 @@ defmodule Loopyard.Workstation do
   Every workstation with the harnesses it holds a credential for — the
   options behind the per-agent account picker. `[%{id: "brad", harnesses:
   [:claude, :codex]}]`, sorted by id. Advisory (see `Catalog.credentialed?/2`):
-  a harness signed in inside the box (`codex login`) isn't visible here.
-  Reads every identity's env store — call it from mount/event handlers, never
-  from render.
+  a guided sign-in stored with the identity (a Codex ChatGPT plan,
+  `Workstation.CredentialFile`) counts; a legacy `codex login` run inside the
+  box console isn't visible here. Reads every identity's stores — call it from
+  mount/event handlers, never from render.
   """
   @spec accounts() :: [%{id: String.t(), harnesses: [Loopyard.Harness.Catalog.id()]}]
   def accounts do
     Enum.map(list(), fn id ->
-      env = Loopyard.Workstation.Env.all(id)
-
       %{
         id: id,
         harnesses:
           Loopyard.Harness.Catalog.all()
-          |> Enum.filter(&Loopyard.Harness.Catalog.credentialed?(&1.id, env))
+          |> Enum.filter(&Loopyard.Harness.Catalog.credentialed?(&1.id, id))
           |> Enum.map(& &1.id)
       }
     end)
