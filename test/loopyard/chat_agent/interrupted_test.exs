@@ -91,7 +91,7 @@ defmodule Loopyard.ChatAgent.InterruptedTest do
     do:
       pid
       |> :sys.get_state()
-      |> Map.get(:messages)
+      |> Map.get(:messages, [])
       |> Enum.count(&(&1[:role] == :system and &1[:content] == Interrupted.line()))
 
   defp streamed(text), do: Enum.count(RecordingBackend.streamed_prompts(), &(&1 == text))
