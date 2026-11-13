@@ -55,7 +55,8 @@ defmodule Loopyard.Fleet.ConditionsTest do
       confirmed = %{"a" => :signed_out, "b" => :quarantined, "d" => :failed_turn}
 
       assert Conditions.changes(raised, confirmed) ==
-               {[{"b", :quarantined}, {"d", :failed_turn}], [{"b", :offline}, {"c", :interrupted}]}
+               {[{"b", :quarantined}, {"d", :failed_turn}],
+                [{"b", :offline}, {"c", :interrupted}]}
 
       assert Conditions.changes(raised, raised) == {[], []}
     end
@@ -74,7 +75,9 @@ defmodule Loopyard.Fleet.ConditionsTest do
       end
 
       assert Conditions.action(:interrupted, nil) |> elem(0) == :continue
-      assert Conditions.action(:signed_out, "brad") == {:account, "Open brad and sign it in again."}
+
+      assert Conditions.action(:signed_out, "brad") ==
+               {:account, "Open brad and sign it in again."}
     end
   end
 

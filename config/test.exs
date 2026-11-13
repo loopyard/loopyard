@@ -78,6 +78,9 @@ config :loopyard, send_wakes_agent?: false
 # The GenServer starts but stays inert (no subscription, no sweep, no tasks).
 config :loopyard, change_counts_enabled?: false
 config :loopyard, operator_digest_enabled?: false
+# The fleet watch neither sweeps nor wakes anyone in tests; its tests drive it
+# with Fleet.Watch.sweep_now/1 and opt in to wakes with an injected deliver fun.
+config :loopyard, fleet_watch_sweep_ms: nil, fleet_watch_wakes_chief?: false
 # The inbox store keeps no log in tests: items would replay across runs
 # (stale agents, colliding ids) and pollute every deck test.
 config :loopyard, notifications_log?: false
