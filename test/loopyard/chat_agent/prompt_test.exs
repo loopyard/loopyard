@@ -131,6 +131,18 @@ defmodule Loopyard.ChatAgent.PromptTest do
       assert String.length(prompt) <= 16_000
     end
 
+    test "the chief of staff's brief says what it may do when the fleet watch wakes it" do
+      body = File.read!(Application.app_dir(:loopyard, "priv/agents/system/agent.md"))
+      prompt = Prompt.build_system_prompt("op-3", template_id: "system", name: "Operator")
+
+      assert prompt =~ "WHEN LOOPYARD WAKES YOU"
+      assert prompt =~ "agent action=continue"
+      assert prompt =~ "Always the human's: spending on an account nobody permitted"
+      # The brief itself stays inside the prompt budget every agent body keeps.
+      assert String.length(body) <= @prompt_budget,
+             "system brief is #{String.length(body)} chars, budget #{@prompt_budget}"
+    end
+
     test "template_id selects the template too" do
       prompt = Prompt.build_system_prompt("op-2", template_id: "system")
       assert prompt =~ "system agent"

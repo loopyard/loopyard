@@ -67,6 +67,8 @@ Loopyard.Supervisor (:one_for_one, max_restarts: 20, max_seconds: 10)
   │                       "Docker disk" row + ONE inbox item while it's low)
   ├── GC.Auto (removes Loopyard's own provably-unused Docker leftovers, hourly
   │            and when the disk monitor reports pressure)
+  ├── Fleet.Watch (agents stopped without asking → ONE :stuck inbox item each,
+  │                 + a batched, rate-limited wake for the chief of staff)
   ├── Operator.Digest (bounded "what finished" ring the operator pulls)
   ├── Harness.MemoryMonitor (restarts a bloated-but-idle harness before the OOM cap)
   ├── LoopyardWeb.Endpoint
@@ -80,7 +82,7 @@ Loopyard.Supervisor (:one_for_one, max_restarts: 20, max_seconds: 10)
 - Docker.Observer starts before Endpoint so the ETS cache is warm for the first LiveView mount.
 - ServiceManager.terminate does NOT call compose down — containers persist across server reboots.
 - Every fire-and-forget Task runs under TaskSupervisor (never bare `Task.start`).
-- `Harness.MemoryMonitor`, `ChangeCounts`, `Operator.Digest` and the MCP Listener are config-gated (inert or absent in test); `Docker.DiskMonitor` starts but never ticks in test (`:docker_disk_probe_ms` nil).
+- `Harness.MemoryMonitor`, `ChangeCounts`, `Operator.Digest` and the MCP Listener are config-gated (inert or absent in test); `Docker.DiskMonitor` starts but never ticks in test (`:docker_disk_probe_ms` nil); `Fleet.Watch` neither sweeps nor wakes in test (`:fleet_watch_sweep_ms` nil, `:fleet_watch_wakes_chief?` false).
 - `Docker.DiskMonitor` (issue #117) probes in a Task so `Health` never waits on Docker, and acts only on a LEVEL change (healthy / degraded / down): it upserts or settles the one `:alert` item in `Notifications` — never a line in an agent's chat. The ACP connection reports a "no space left on device" death to it (`Connection.Diagnostics.close_error/2`), which also classifies that death `{:disk_full, _}` so the ChatAgent neither auto-retries the turn into the same full disk nor blames the API (`StreamHandler.FailedTurn`). `Loopyard.GC` (pure selection over `docker system df -v`) names what is provably Loopyard's own and unused; `GC.Auto` removes it without being asked — on a timer and at once on a disk-pressure transition, and only what an earlier look at least 10 minutes before had already seen (the listing has no age for a volume, and "dangling now" is also a test run's volume between `volume create` and its container). `mix loopyard.gc` is the same selection by hand. Everything else that is large is `GC.Review`: groups a human clears from `/system/docker` ("Free up space"), each behind its own warning — other tools' stopped containers, unused images, `loopyard-<id>…` leftovers whose id is not registered here, and other unattached volumes (one at a time). The page re-surveys on every click and removes only what the fresh survey still lists. Cleanup also happens where things are disposed: `Workspace.Destructor` removes a destroyed workspace's built images with its containers and volumes, and a Docker-enabled test run removes the containers and volumes it created.
 
 ## Container model (Docker Compose)
@@ -648,6 +650,35 @@ The ETS rows are not persisted: after a restart the first refused turn
 re-learns the limit (one turn per account) instead of a stale row stranding
 every agent. The fallback lists are on disk, per workstation
 (`workstations/<id>/failover.json`).
+
+## Fleet watch (issue #119)
+
+An agent that stops without asking anyone raises nothing on its own. Two
+pieces, both plain code:
+
+```
+restart mid-turn ──► AgentLog.at_rest/1 marks the row interrupted?
+   resume (boot / Autostart / a wake) ──► ChatAgent.Interrupted.on_resume/2
+        recent (:interrupted_resume_window_ms) + session up + not re-driven yet
+            ──► unanswered prompts at the head of pending_sends, one quiet line
+        otherwise ──► keep the mark (summary.interrupted?)
+
+Fleet.Watch (sweep of Agents.summaries/0 + a debounced re-sweep on Events.ChatAgent)
+   Fleet.Conditions.of/1 ──► :quarantined | :signed_out | :offline | :failed_turn | :interrupted
+   held past its grace ──► ONE :stuck item ("stuck:<cond>:<agent>"), settled on clear
+   new conditions + open :plan_limit items ──► per identity, batched, rate-limited,
+        announced once ──► Thread.tag_from(text, "loopyard") to Agents.default_id/1
+        held while the chief can't act (it is stuck / its account is limited / disk down)
+```
+
+The pure half (`Fleet.Conditions`: the condition, the grace, the diff, the
+words, `can_wake/1`, the wake text) is tested without the GenServer.
+`Loopyard.Fleet.continue/1` (the card's Continue, `agent action=continue`)
+wakes the agent and re-drives through the same queue; `Fleet.dismiss/2`
+clears an interruption's mark in the row AND the log, so the next boot's
+`at_rest/1` doesn't re-mark it. A turn the stall watchdog ends is not its own
+condition: its unanswered prompt shows up as `:failed_turn` (or nothing, for a
+seed turn).
 
 ## Agent persistence
 

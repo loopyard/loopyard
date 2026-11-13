@@ -151,6 +151,24 @@ defmodule Loopyard.Tools.ControlPlaneTest do
       assert out =~ "#{ctx.empty} — no harness credential"
     end
 
+    test "overview leads with what needs attention and the move the chief may make", ctx do
+      item = Loopyard.Fleet.Conditions.item_id(ctx.a, :interrupted)
+      on_exit(fn -> :ets.delete(:notifications, item) end)
+
+      Loopyard.Notifications.raise_item(
+        Loopyard.Notifications.Item.stuck(ctx.a, :interrupted, "cut off", %{})
+      )
+
+      Loopyard.Notifications.sync()
+
+      assert {:ok, out} = Overview.execute(%{agent_id: "op"}, %{})
+      assert String.starts_with?(out, "Needs attention:\n")
+
+      assert out =~
+               "- Builder [#{ctx.a}]: Interrupted — you may continue it " <>
+                 "(agent action=continue target=#{ctx.a})"
+    end
+
     test "switch moves an agent to an account that can run its harness", ctx do
       assert {:ok, msg} =
                Agent.execute(

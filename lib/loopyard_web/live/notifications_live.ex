@@ -346,6 +346,23 @@ defmodule LoopyardWeb.NotificationsLive do
     {:noreply, socket}
   end
 
+  # A stuck agent's slide (Fleet.Watch): Continue re-drives it here; a wake
+  # that fails says so ON the card (its meta), so every viewer sees the same.
+  def handle_event("continue_stuck", %{"id" => id}, socket) do
+    with %Item{kind: :stuck, agent_id: aid} = item <- Loopyard.Notifications.get(id),
+         {:error, reason} when reason != :nothing_to_continue <- Loopyard.Fleet.continue(aid) do
+      note = "Couldn't wake #{item.agent_name} — open its chat and start it there."
+      Loopyard.Notifications.upsert(%{item | meta: Map.put(item.meta, :note, note)})
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("dismiss_stuck", %{"id" => id}, socket) do
+    Loopyard.Fleet.dismiss(id, socket.assigns.user_label)
+    {:noreply, socket}
+  end
+
   def handle_event("send_message", %{"message" => text} = params, socket) do
     text = String.trim(text)
 

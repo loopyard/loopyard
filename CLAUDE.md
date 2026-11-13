@@ -629,11 +629,31 @@ The home card is Agents. There is no rail beside the chat any more: what it
 listed lives on `/notifications`. The sound bed follows fleet busyness
 (`ActivitySound`), not any one agent.
 
+### Fleet watch
+
+**An agent that stops without asking still reaches a human (#119).**
+A restart cut off mid-turn marks the row `interrupted?` (`AgentLog.at_rest/1`);
+on resume `ChatAgent.Interrupted` re-drives the unanswered prompt ONCE through
+`pending_sends` (the PlanLimit / recycle mechanism, never a third) when the last
+activity is within `:interrupted_resume_window_ms` and the session is up, with
+one quiet line; otherwise the mark stays. `Loopyard.Fleet.Watch` (supervised,
+plain code) sweeps summaries for `Fleet.Conditions` — `:interrupted`,
+`:signed_out`, `:quarantined`, `:failed_turn` (`failed_prompt` set), `:offline`
+— and, past a grace period, raises ONE `:stuck` item per agent + condition
+(settled when it clears; the Agents row shows the same word). New conditions
+and open `:plan_limit` items wake the identity's default system agent with ONE
+`tag_from(…, "loopyard")` message, batched and rate-limited, announced once,
+and never when it can't act (it is stuck, its account is limited, the disk is
+down). Its brief lists what it may fix alone (restart, `agent action=continue`,
+a PERMITTED fallback account, re-dispatch) and what stays the human's.
+`Fleet.continue/1` / `Fleet.dismiss/2` are the card's and the tool's two moves.
+
 ## Attention & the Reviewer (questions that never get lost)
 
 **The inbox is a STORE, and the card is its truth.** `Loopyard.Notifications`
-holds every open item — a decision (question / approval / secret) or a
-finished turn — durably (its own log), prioritised (`Notifications.Priority`),
+holds every open item — a decision (question / approval / secret), a
+finished turn, or an item-only condition (`:alert` the Docker disk,
+`:plan_limit`, `:stuck` an agent stopped without asking) — durably (its own log), prioritised (`Notifications.Priority`),
 broadcast on change (`Events.Notifications`). Every decision card enters the
 transcript through `MessageWindow.append_message_ets/2` and settles through
 `update_message_now/3`; those two funnels raise and settle the item, and
@@ -835,6 +855,7 @@ Two ways in:
 | `Loopyard.Agents` + `Agents.Template` + `Agents.Spawn` + `Agents.SystemGroup` | Every agent by scope; the stamp (code presets: coding, system); the one spawn path; a system agent's supervision group |
 | `Loopyard.Notifications` | The inbox store — decisions + finished turns, durable, prioritised, its own log + events |
 | `Loopyard.Attention` | The "waiting on the human" line — a read of the store's decision subset |
+| `Loopyard.Fleet.Watch` + `Fleet.Conditions` + `ChatAgent.Interrupted` | Agents stopped without asking → `:stuck` inbox items + a batched wake for the chief of staff; continuing a turn a restart cut off |
 | `ChatAgent.Thread` | Decision threads: the `[[re:agent:msg]]` marker → `re:` on user + reply, so talk ABOUT a card lands on the card |
 | `Loopyard.CardText` | Cards → paste-ready markdown (share/raw) |
 | `LoopyardWeb.NotificationsLive` | `/notifications` — the inbox deck + `/notifications/:agent/:msg` (one item, with its discussion thread) |

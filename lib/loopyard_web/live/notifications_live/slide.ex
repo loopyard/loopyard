@@ -13,7 +13,7 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
   alias LoopyardWeb.Components.Common
   alias LoopyardWeb.Live.WorkspaceLive.Messages
   alias LoopyardWeb.Live.WorkspaceLive.Messages.Cards
-  alias LoopyardWeb.NotificationsLive.Deck
+  alias LoopyardWeb.NotificationsLive.{Deck, StuckCard}
   alias Phoenix.LiveView.JS
 
   attr :card, :map, required: true
@@ -44,8 +44,10 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
     # its own card, and no composer.
     alert? = assigns.card.slide.kind == :alert
     limit? = assigns.card.slide.kind == :plan_limit
+    # An agent that stopped without asking (Fleet.Watch): its own card, no composer.
+    stuck? = assigns.card.slide.kind == :stuck
     # No chat card behind it: the item is the whole record.
-    item_only? = finished? or alert? or limit?
+    item_only? = finished? or alert? or limit? or stuck?
     item = assigns.card[:item]
 
     assigns =
@@ -54,6 +56,7 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
         finished?: finished?,
         alert?: alert?,
         limit?: limit?,
+        stuck?: stuck?,
         item_only?: item_only?,
         item: item,
         prompt: (item_only? && item && item.label) || card_prompt(assigns.card),
@@ -62,7 +65,8 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
         # message left an answered question wearing the flame.
         pending?: Deck.pending_card?(assigns.card),
         verb:
-          (finished? && "finished") || (alert? && "flagged") || (limit? && "stopped") || "asked",
+          (finished? && "finished") || (alert? && "flagged") || ((limit? or stuck?) && "stopped") ||
+            "asked",
         awaiting?: awaiting_reply?(assigns.thread),
         blocked?: operator_blocked?(assigns.operator_id, assigns.card),
         who: Deck.who_asked(assigns.card.slide),
@@ -233,6 +237,7 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
           <.finished_card :if={@finished? && @item} item={@item} pending?={@pending?} />
           <.alert_card :if={@alert? && @item} item={@item} pending?={@pending?} />
           <.limit_card :if={@limit? && @item} item={@item} pending?={@pending?} />
+          <StuckCard.card :if={@stuck? && @item} item={@item} pending?={@pending?} />
 
           <%!-- THE COLLAPSED DECISION. Nothing at rest. Placed AFTER the card and
         sticky under the bar, it pins exactly when the card has scrolled
@@ -329,7 +334,7 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
       kept-on-failure); `data-re` names the decision so the send is tagged
       to it. --%>
       <div
-        :if={!@alert?}
+        :if={!@alert? and !@stuck?}
         class="flex-none px-4 md:px-6 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-brand-paper dark:bg-brand-ink border-t border-zinc-200 dark:border-zinc-800"
       >
         <div id={"composer-" <> @card.dom_id} phx-update="ignore" class="mx-auto w-full max-w-2xl">

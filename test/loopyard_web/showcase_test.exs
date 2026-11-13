@@ -104,6 +104,8 @@ defmodule LoopyardWeb.ShowcaseTest do
       "Quarantine and ship (Recommended)",
       "Answered"
     ],
+    # An agent a restart cut off (Fleet.Watch): its word, the sentence, the moves.
+    "stuck-card" => ["Interrupted", "A server restart cut", "Continue", "Dismiss"],
     # The ambient sound bed's control page (the aural package's UI).
     "aural" => [
       "Ambient bed",

@@ -644,6 +644,8 @@ defmodule Loopyard.ChatAgent.Initializer do
 
     state = SessionManager.track_os_pid(state)
     state = IdleReaper.schedule(state)
+    # Cut off mid-turn by a restart: continue it, or keep the mark (#119).
+    state = Loopyard.ChatAgent.Interrupted.on_resume(state, saved)
 
     :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
 

@@ -132,6 +132,12 @@ defmodule Loopyard.Application do
       # Removes Loopyard's own provably-unused Docker leftovers on a timer and
       # when the disk monitor reports pressure (GC.Auto).
       Loopyard.GC.Auto,
+      # The fleet watch: an agent that stopped without asking (interrupted,
+      # signed out, quarantined, a failed turn, offline) → one inbox item, and
+      # a batched, rate-limited wake for its chief of staff. After the inbox
+      # and the disk monitor, whose items it reads. Inert with
+      # :fleet_watch_sweep_ms nil (test env).
+      Loopyard.Fleet.Watch,
       Loopyard.Operator.Digest,
 
       # Proactive harness memory management (Layer 2). Periodically reclaims a

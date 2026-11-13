@@ -7,6 +7,9 @@ defmodule Loopyard.Tools.ControlPlane.Agent do
     * restart   — restart a stalled agent's session (conversation kept) — the
       literal "prevent agents from being stalled" lever
     * wake      — start a stopped/asleep agent
+    * continue  — wake an agent a restart cut off (or whose turn failed) and
+      re-run its unanswered prompt (`Loopyard.Fleet.continue/1`, the inbox's
+      Continue)
     * new       — spawn a NEW agent in the target workspace (parallel work),
       optionally on a named `account` and `model`
     * switch    — move an agent onto another `account` and/or `model` (a
@@ -25,6 +28,8 @@ defmodule Loopyard.Tools.ControlPlane.Agent do
       "Control a workspace's agent to keep things moving. action=interrupt stops " <>
         "its current turn; action=restart un-sticks a wedged/stalled session " <>
         "(conversation kept); action=wake starts a stopped/asleep agent; " <>
+        "action=continue re-runs the unanswered prompt of an agent a restart cut " <>
+        "off or whose turn failed; " <>
         "action=new spawns a NEW agent in the target workspace (optional `message` " <>
         "= its first task, optional `account` / `model`); action=switch moves an " <>
         "agent onto another `account` (when its account is rate-limited or its " <>
@@ -36,7 +41,9 @@ defmodule Loopyard.Tools.ControlPlane.Agent do
     params: [
       agent_id: {:string, required: true},
       target: {:string, required: true, description: "Workspace id/name or agent id."},
-      action: {:string, required: true, description: "interrupt | restart | wake | new | switch"},
+      action:
+        {:string,
+         required: true, description: "interrupt | restart | wake | continue | new | switch"},
       message:
         {:string, description: "For action=new only: the new agent's first task (optional)."},
       account:
@@ -64,11 +71,12 @@ defmodule Loopyard.Tools.ControlPlane.Agent do
       "switch" ->
         switch(target, params, operator_id)
 
-      a when a in ["interrupt", "restart", "wake"] ->
+      a when a in ["interrupt", "restart", "wake", "continue"] ->
         control(target, a, operator_id)
 
       other ->
-        {:error, "Unknown action '#{other}'. Use interrupt, restart, wake, new, or switch."}
+        {:error,
+         "Unknown action '#{other}'. Use interrupt, restart, wake, continue, new, or switch."}
     end
   rescue
     e -> {:error, "agent action failed: #{inspect(e)}"}
@@ -91,7 +99,25 @@ defmodule Loopyard.Tools.ControlPlane.Agent do
         action == "wake" ->
           ChatAgent.start_agent(agent.id)
           {:ok, "Woke #{agent.name} (#{agent.id})."}
+
+        action == "continue" ->
+          continue(agent)
       end
+    end
+  end
+
+  defp continue(agent) do
+    case Loopyard.Fleet.continue(agent.id) do
+      :ok ->
+        {:ok, "Continuing #{agent.name} (#{agent.id}) — its unanswered prompt is running again."}
+
+      {:error, :nothing_to_continue} ->
+        {:error,
+         "#{agent.name} (#{agent.id}) has no unanswered prompt — nothing to continue. " <>
+           "Dispatch it new work instead."}
+
+      {:error, reason} ->
+        {:error, "Couldn't continue #{agent.name} (#{agent.id}): #{inspect(reason)}"}
     end
   end
 
