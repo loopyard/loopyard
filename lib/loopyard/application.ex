@@ -129,6 +129,9 @@ defmodule Loopyard.Application do
       # the ONE inbox item when it runs low (after Notifications, which it
       # writes to). Never blocks on Docker; inert while the daemon is down.
       Loopyard.Docker.DiskMonitor,
+      # Removes Loopyard's own provably-unused Docker leftovers on a timer and
+      # when the disk monitor reports pressure (GC.Auto).
+      Loopyard.GC.Auto,
       Loopyard.Operator.Digest,
 
       # Proactive harness memory management (Layer 2). Periodically reclaims a

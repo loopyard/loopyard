@@ -54,6 +54,9 @@ config :loopyard,
   # Same for the Docker disk monitor: no timer; tests drive it with
   # DiskMonitor.probe_now/0 + an injected :docker_disk_probe_fun.
   docker_disk_probe_ms: nil,
+  # Same for the automatic cleanup: it starts, never ticks; tests drive it
+  # through GC.Auto.sweep_now/0 + injected :gc_auto_survey_fun / _remove_fun.
+  gc_auto_interval_ms: nil,
   # Disable Saga.Journal writes by default in test env. Async saga
   # tests would otherwise share one journal file and race on
   # compaction. Tests that exercise the journal explicitly opt in via

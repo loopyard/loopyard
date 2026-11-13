@@ -176,6 +176,9 @@ defmodule Loopyard.Docker.DiskMonitor do
   defp transition(level, status) do
     Loopyard.EventLog.warning("docker", "disk #{level}: #{elem(status, 1)}")
     Notifications.upsert(Disk.alert_item(level, status))
+    # Take back what is provably Loopyard's own right away, before a human
+    # has even seen the alert.
+    Loopyard.GC.Auto.sweep_now()
   end
 
   @doc """

@@ -98,10 +98,10 @@ defmodule Loopyard.Docker.DiskTest do
     assert item.id == Disk.alert_id()
     assert item.kind == :alert
     assert item.agent_id == "loopyard"
-    assert item.path == "/system"
     assert item.label =~ "full"
     assert item.label =~ "165 MB free"
-    assert item.meta.action =~ "mix loopyard.gc"
+    assert item.meta.action =~ "open Docker"
+    assert item.path == "/system/docker"
     assert Disk.alert_item(:degraded, {:degraded, "x"}).id == item.id
   end
 end

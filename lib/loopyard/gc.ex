@@ -42,6 +42,7 @@ defmodule Loopyard.GC do
           labels: String.t()
         }
   @type image :: %{
+          id: String.t() | nil,
           repository: String.t(),
           tag: String.t(),
           containers: integer(),
@@ -251,6 +252,8 @@ defmodule Loopyard.GC do
 
   defp image_row(i) do
     %{
+      # The handle for an untagged image, which has no name to remove it by.
+      id: i["ID"],
       repository: i["Repository"],
       tag: i["Tag"],
       # Unknown container count → in use.

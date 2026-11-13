@@ -160,7 +160,7 @@ defmodule Loopyard.Docker.Disk do
       status: :open,
       agent_id: "loopyard",
       agent_name: "Loopyard",
-      path: "/system",
+      path: "/system/docker",
       msg_id: @alert_id,
       scope: :system,
       label: headline(level) <> " — " <> reason,
@@ -175,9 +175,8 @@ defmodule Loopyard.Docker.Disk do
   @doc "The one action, in words."
   def action do
     # Plain text: the inbox card prints it as written, so backticks would show.
-    "Free space in the Docker VM. In a terminal, run mix loopyard.gc: it shows what " <>
-      "Loopyard can remove itself, then lists the largest volumes and images, which " <>
-      "are yours to delete."
+    "Loopyard removes its own leftovers automatically. The rest is yours to decide: " <>
+      "open Docker to remove stopped containers, unused images and old volumes."
   end
 
   @doc "The line an agent's chat shows when a turn or launch failed on a full disk."
