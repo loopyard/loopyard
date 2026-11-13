@@ -176,11 +176,11 @@ defmodule LoopyardWeb.Components.Workstation do
 
   defp button_class(:primary),
     do:
-      "focus-ring inline-flex items-center justify-center gap-1.5 rounded-sm bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white px-4 py-2 text-body font-semibold transition-colors"
+      "focus-ring inline-flex items-center justify-center gap-1.5 rounded-sm bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white px-4 py-2 min-h-11 text-body font-semibold transition-colors"
 
   defp button_class(:secondary),
     do:
-      "focus-ring inline-flex items-center justify-center rounded-sm border border-zinc-300 dark:border-zinc-600 px-4 py-2 text-body font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-60 transition-colors"
+      "focus-ring inline-flex items-center justify-center rounded-sm border border-zinc-300 dark:border-zinc-600 px-4 py-2 min-h-11 text-body font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-60 transition-colors"
 
   @doc "A small Restart button — recreates the workstation container ($HOME kept)."
   attr :restarting, :boolean, required: true

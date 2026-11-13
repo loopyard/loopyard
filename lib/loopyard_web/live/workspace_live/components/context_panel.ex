@@ -443,7 +443,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
           <select
             name="model"
             aria-label="Agent harness and model"
-            class="focus-ring rounded-sm border-0 bg-transparent py-0 pl-1 pr-6 text-body text-right font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400"
+            class="focus-ring rounded-sm border-0 bg-transparent py-0 pl-1 pr-6 min-h-11 md:min-h-5 text-body text-right font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400"
           >
             <option value="" disabled selected={true}>
               {current_harness_model(@agent)}
@@ -473,7 +473,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
           <select
             name="workstation"
             aria-label="Agent account (workstation)"
-            class="focus-ring rounded-sm border-0 bg-transparent py-0 pl-1 pr-6 text-body text-right font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400"
+            class="focus-ring rounded-sm border-0 bg-transparent py-0 pl-1 pr-6 min-h-11 md:min-h-5 text-body text-right font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400"
           >
             <option
               :for={{id, label} <- @account_options}
