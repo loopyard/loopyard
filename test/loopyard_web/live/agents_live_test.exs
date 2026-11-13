@@ -141,6 +141,22 @@ defmodule LoopyardWeb.AgentsLiveTest do
     assert html =~ ~r/\d+ at a plan limit/
   end
 
+  test "an agent that stopped without asking reads the inbox item's word", %{
+    conn: conn,
+    sid: sid,
+    wid: wid
+  } do
+    [{^sid, sys}] = :ets.lookup(:chat_agents, sid)
+    [{^wid, ws}] = :ets.lookup(:chat_agents, wid)
+    :ets.insert(:chat_agents, {sid, Map.put(%{sys | status: :idle}, :quarantined, true)})
+    :ets.insert(:chat_agents, {wid, Map.put(ws, :failed_prompt, "build it")})
+
+    {:ok, _view, html} = live(conn, "/agents")
+
+    assert html =~ Loopyard.Fleet.Conditions.word(:quarantined)
+    assert html =~ Loopyard.Fleet.Conditions.word(:failed_turn)
+  end
+
   test "/agents/new shows the form with the system templates", %{conn: conn} do
     {:ok, view, html} = live(conn, "/agents/new")
     assert html =~ "New system agent"

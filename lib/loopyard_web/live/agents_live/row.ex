@@ -33,6 +33,7 @@ defmodule LoopyardWeb.AgentsLive.Row do
   """
   use Phoenix.Component
 
+  alias Loopyard.Fleet.Conditions
   alias LoopyardWeb.Components.{Birdseye, Common}
   alias LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel
 
@@ -195,10 +196,12 @@ defmodule LoopyardWeb.AgentsLive.Row do
     cond do
       needs_you? -> :needs_you
       s[:status] in @working -> :working
-      s[:status] == :auth_expired or s[:quarantined] -> :broken
+      # Stopped without asking (Fleet.Conditions), in the inbox item's words.
+      Conditions.of(s) in [:quarantined, :signed_out, :offline] -> :broken
       s[:status] == :rate_limited -> :limited
-      # Restored from disk mid-turn and not woken since (AgentLog.at_rest/1).
-      s[:interrupted?] == true -> :interrupted
+      # Restored from disk mid-turn and nothing continued it (AgentLog.at_rest/1).
+      Conditions.of(s) == :interrupted -> :interrupted
+      Conditions.of(s) == :failed_turn -> :broken
       s[:status] == :idle -> :done
       true -> :asleep
     end
@@ -209,9 +212,9 @@ defmodule LoopyardWeb.AgentsLive.Row do
   # it's in when it has one.
   defp word_for(:needs_you, _s), do: "Needs you"
   defp word_for(:limited, _s), do: "At plan limit"
-  defp word_for(:interrupted, _s), do: "Interrupted"
-  defp word_for(:broken, %{status: :auth_expired}), do: "Signed out"
-  defp word_for(:broken, _s), do: "Broken"
+
+  defp word_for(state, s) when state in [:interrupted, :broken],
+    do: Conditions.word(Conditions.of(s)) || "Broken"
 
   defp word_for(:working, s) do
     case Birdseye.agent_activity(s) do
