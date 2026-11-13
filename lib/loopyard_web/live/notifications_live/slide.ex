@@ -94,7 +94,7 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
         project · workspace identity, then its name. Age in words. Position
         as "n of N" — a row of dots was tried and read as noise; the number
         is what you actually want to know. --%>
-          <div class="flex items-center gap-2 min-w-0 mb-3 text-lead text-zinc-500 dark:text-zinc-400">
+          <div class="flex items-start md:items-center gap-2 min-w-0 mb-3 text-lead text-zinc-500 dark:text-zinc-400">
             <span
               :if={@system_source?}
               class={[
@@ -123,11 +123,18 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
             workspace chip itself (the same chip twice, two lines apart, was
             the junk), so the byline is a state light and the name. A bare
             question of a fanned-out ask has no card header, so its byline
-            carries the chip. --%>
+            carries the chip.
+
+            On a phone the chip and the name do not fit one line at this size:
+            squeezed together they read "storefront · … · Claude asked …", with
+            the workspace and the age — what tells you which decision this is —
+            both cut. So there the name drops to its own line under the chip
+            (`basis-full`), indented past the chip's state light so both lines
+            share the project name's left edge; from md up it is one line. --%>
             <.link
               :if={!@system_source?}
               navigate={"#{@card.slide.path}#msg-#{@card.slide.msg_id}"}
-              class="min-w-0 flex items-center gap-2 truncate hover:underline"
+              class="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 hover:underline"
             >
               <Common.workspace_identity
                 :if={@card.q}
@@ -144,13 +151,13 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
                 ]}
                 aria-hidden="true"
               ></span>
-              <span class="truncate">
-                <span :if={@card.q}>· </span>
+              <span class={["min-w-0 truncate", @card.q && "basis-full md:basis-auto pl-4 md:pl-0"]}>
+                <span :if={@card.q} class="hidden md:inline">· </span>
                 <span class="font-semibold text-zinc-800 dark:text-zinc-100">{@card.slide.agent_name}</span>
                 <span :if={@card.slide.asked_at}>{@verb} {Deck.ago_words(@card.slide.asked_at)}</span>
               </span>
             </.link>
-            <span class="ml-auto flex-none inline-flex items-center gap-1 text-meta tabular-nums whitespace-nowrap">
+            <span class="ml-auto flex-none inline-flex items-center gap-1 text-meta tabular-nums whitespace-nowrap leading-[1.75rem] md:leading-normal">
               <a
                 :if={@prev}
                 href={"#slide-" <> @prev.dom_id}

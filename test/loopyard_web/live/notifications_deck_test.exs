@@ -173,6 +173,19 @@ defmodule LoopyardWeb.NotificationsDeckTest do
     assert html =~ "Asked first?", "the settled question keeps its place as a receipt"
   end
 
+  test "a bare question's byline keeps the workspace and the age readable on a phone" do
+    # Chip and name on one line at phone size read "storefront · … · Claude
+    # asked …". The name takes its own line there, under the project name.
+    html =
+      render_component(
+        &LoopyardWeb.NotificationsLive.notifications_deck/1,
+        LoopyardWeb.Showcase.Scenes.Reviewer.assigns()
+      )
+
+    assert html =~ "basis-full md:basis-auto pl-4 md:pl-0"
+    assert html =~ "checkout-fix"
+  end
+
   test "one ask fans out in the order it was asked, and answering one renumbers the rest",
        %{conn: conn} do
     seed_agent("Twenty", [multi_question("m-20q", ["First?", "Second?", "Third?"])])
