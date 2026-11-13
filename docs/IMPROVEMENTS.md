@@ -22,6 +22,12 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 ## Robustness (handles edge cases gracefully)
 
+**From the always-on service work (#116):**
+
+0. **The DockerDaemon heal can kill a Colima that is still starting.** At boot the first two failed probes (~11 s) trigger `colima stop -f` then `colima start`. If something else started Colima at login and it is mid-boot, the stop interrupts it. HOSTING.md tells people not to run Colima separately; a gentler first attempt (`colima status` → wait if starting, `colima start` without the stop) would remove the caveat.
+0. **A LaunchAgent starts at login, not at boot.** With FileVault on (no automatic login) a reboot leaves Loopyard down until someone logs in. A LaunchDaemon with `UserName` would start at boot but needs `sudo` to install and runs outside the user's GUI session (keychain, Colima's user VM); worth it only if the login gap bites.
+0. **The systemd unit is untested on a real Linux box.** `Loopyard.Hosting` renders and drives it through the same core and fake-runner tests as launchd, but no one has run `install` on Linux yet.
+
 **From the Nov 2026 architecture review (verified by reading code; none run):**
 
 0. **Rate limits and auth are per agent, not per account.** Each agent discovers its account's limit by failing a turn, posts its own line and arms its own retry (`chat_agent/stream_handler/rate_limit.ex`), so N agents on one account fail N times and all retry at the same reset instant. An account-level limit table consulted by `SendGuards` would park the others on the first hit. With it, the chief of staff could fail agents over to another account automatically (it has `agent action=switch`; what's missing is the trigger and a stated policy for WHICH account goes first — e.g. "subsidy account, then personal").
