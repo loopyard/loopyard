@@ -19,6 +19,7 @@ defmodule Loopyard.ChatAgent do
     Client,
     IdleReaper,
     Initializer,
+    Interrupted,
     Lifecycle,
     MessageLog,
     MessageWindow,
@@ -1014,6 +1015,8 @@ defmodule Loopyard.ChatAgent do
     end
   end
 
+  def handle_call({:interrupted, act}, _from, state), do: Interrupted.handle(act, state)
+
   # Catchall for unknown calls. Returns an error reply instead of
   # crashing — callers get `{:error, :unknown_call}` they can handle,
   # not a noproc/timeout. Same telemetry as handle_info / handle_cast
@@ -1593,7 +1596,7 @@ defmodule Loopyard.ChatAgent do
   # with the ref identifying THIS stream — a replaced session's stale events are
   # dropped by ref on the other side (agent-sanity #16).
   defp start_turn(state, prompt) do
-    state = %{state | status: :thinking}
+    state = %{Map.delete(state, :interrupted?) | status: :thinking}
     :ets.insert(@ets_table, {state.id, summary(state)})
     Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :thinking})
 

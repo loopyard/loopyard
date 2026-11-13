@@ -61,6 +61,9 @@ defmodule Loopyard.ChatAgent.Summary do
       failed_prompt: state.failed_prompt,
       prompt_hash: state.prompt_hash,
       context_utilization: state.context_utilization,
+      # A restart cut its last turn off and nothing has continued it yet
+      # (ChatAgent.Interrupted; a restored row carries it from AgentLog.at_rest/1).
+      interrupted?: Map.get(state, :interrupted?) == true,
       pending_count: length(state.pending_sends),
       pending_messages: state.pending_sends
     }
