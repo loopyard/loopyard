@@ -118,3 +118,34 @@ Displays still turn off, but the CPU and network stay up, so the server stays re
 Wake on LAN (System Settings → General → Sharing → "Wake for network access") wakes the Mac only on magic packets, not on ordinary HTTP requests; `sleep 0` is the reliable setting.
 
 Check with `pmset -g`. You want `sleep 0`, any `displaysleep`, and `networkoversleep 1` as a backup.
+
+## When the Docker disk fills up
+
+Everything Loopyard runs lives on the Docker VM's disk (Colima's, by default
+~100 GB). When it fills, `docker exec` fails with "no space left on device"
+and every agent turn dies. Loopyard watches it:
+
+- `/system` has a **Docker disk** row — degraded below 5 GB free, down below
+  500 MB or once a write has failed (thresholds: `docs/CONFIG.md`).
+- The Notifications inbox gets ONE item naming the cause and what to do; it
+  settles on its own once space is back.
+- An agent whose harness couldn't launch says the disk is full instead of
+  retrying into it.
+
+To free space:
+
+```bash
+mix loopyard.gc            # dry run: what is provably Loopyard's own and unused, with sizes
+mix loopyard.gc --apply    # remove it (never forced; Docker refuses anything in use)
+```
+
+`gc` only ever takes dangling test-suite volumes (`loopyard-test-*-code` and
+friends), stopped sign-in / copy throwaway containers, and superseded
+`loopyard-workspace-base` tags. It never touches a workspace's code volume, a
+workstation home, a compose project's volumes, or anything not named by
+Loopyard. Its output ends with the largest OTHER volumes and images — usually
+the real culprits (a compose project's `dind-data`, an old dev image, another
+tool's cache). Those are yours to decide about: `docker system df -v` shows
+them all, and `docker volume rm` / `docker image rm` removes what you choose.
+If Colima itself is out of room, `colima stop && colima start --disk <GB>`
+grows the VM disk (it cannot shrink).

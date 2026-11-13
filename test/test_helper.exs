@@ -182,3 +182,15 @@ ExUnit.start(
   exclude: [:docker, :terminal, :ssh, :recovery, :slow, :macos],
   timeout: default_timeout
 )
+
+# A Docker-enabled run (LOOPYARD_DOCKER_TESTS=1) removes the dangling
+# test-prefixed volumes it created — thousands of them used to pile up in the
+# VM until its disk filled (#117). A no-op for the default run (gate closed).
+docker_volumes_before = Loopyard.Test.DockerVolumeSweep.snapshot()
+
+if docker_volumes_before do
+  ExUnit.after_suite(fn _ ->
+    n = Loopyard.Test.DockerVolumeSweep.sweep(docker_volumes_before)
+    if n > 0, do: IO.puts("Removed #{n} Docker volume(s) this run created.")
+  end)
+end

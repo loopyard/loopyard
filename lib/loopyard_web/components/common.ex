@@ -642,11 +642,12 @@ defmodule LoopyardWeb.Components.Common do
     """
   end
 
-  # Open decisions, straight from the store's ETS — a read, never a scan of
+  # Open decisions (and system alerts — a full Docker disk waits on a human
+  # too), straight from the store's ETS — a read, never a scan of
   # agents. Anything that goes wrong here must not take a page's header down
   # with it, so a failure is simply "nothing waiting".
   defp waiting_count do
-    Loopyard.Notifications.count(:decisions)
+    Loopyard.Notifications.count(Loopyard.Notifications.Item.needs_human_kinds())
   rescue
     _ -> 0
   catch

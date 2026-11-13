@@ -226,6 +226,9 @@ defmodule Loopyard.ChatAgent.SessionManager do
               {:auth_failed, error} ->
                 Loopyard.ChatAgent.HarnessControl.auth_failed_copy(state, error)
 
+              {:disk_full, _} ->
+                Loopyard.Docker.Disk.agent_copy()
+
               _ ->
                 "Failed to reconnect to the agent harness: #{inspect(reason)}. " <>
                   "WHY: the harness session died, and trying to spawn a new one failed. " <>
@@ -552,10 +555,13 @@ defmodule Loopyard.ChatAgent.SessionManager do
   The error for a context-compaction restart whose fresh spawn failed
   (`ChatAgent`'s `:auto_restart_context` path), WHY / CONSEQUENCE / ACTION.
   An auth failure takes the shared sign-in copy — retrying can't help without
-  a credential.
+  a credential; a full Docker disk takes `Docker.Disk.agent_copy/0`.
   """
   def compaction_restart_failed_copy(state, {:auth_failed, error}),
     do: Loopyard.ChatAgent.HarnessControl.auth_failed_copy(state, error)
+
+  def compaction_restart_failed_copy(_state, {:disk_full, _}),
+    do: Loopyard.Docker.Disk.agent_copy()
 
   def compaction_restart_failed_copy(_state, reason) do
     "Context compaction couldn't restart the harness (#{inspect(reason)}). " <>
@@ -570,6 +576,10 @@ defmodule Loopyard.ChatAgent.SessionManager do
   # failure takes the shared sign-in copy (`HarnessControl.auth_failed_copy/2`).
   defp retry_failed_copy(state, _consecutive, {:auth_failed, error}, _max),
     do: Loopyard.ChatAgent.HarnessControl.auth_failed_copy(state, error)
+
+  # A full Docker disk: no retry can launch a harness until space is freed.
+  defp retry_failed_copy(_state, _consecutive, {:disk_full, _}, _max),
+    do: Loopyard.Docker.Disk.agent_copy()
 
   defp retry_failed_copy(state, consecutive, reason, max_consecutive_crashes) do
     harness = Loopyard.Harness.Catalog.label(Loopyard.ChatAgent.HarnessControl.current(state))

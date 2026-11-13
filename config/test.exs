@@ -51,6 +51,9 @@ config :loopyard,
   # No Docker-daemon probing/healing in tests (the keeper GenServer starts
   # but never ticks; tests drive transitions via the injected probe/heal fns).
   docker_probe_ms: nil,
+  # Same for the Docker disk monitor: no timer; tests drive it with
+  # DiskMonitor.probe_now/0 + an injected :docker_disk_probe_fun.
+  docker_disk_probe_ms: nil,
   # Disable Saga.Journal writes by default in test env. Async saga
   # tests would otherwise share one journal file and race on
   # compaction. Tests that exercise the journal explicitly opt in via

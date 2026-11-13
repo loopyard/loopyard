@@ -461,8 +461,8 @@ defmodule Loopyard.Harness.ACP.Connection do
     # log it LOUDLY (server log + /system/events); without this, failures like
     # the inotify EMFILE storm are invisible ("session/new never answered").
     stderr_tail = Diagnostics.surface_dying_words(state, reason)
-
-    state = reply_waiters(state, {:error, {:closed, reason}})
+    close = Diagnostics.close_error(stderr_tail, reason)
+    state = reply_waiters(state, {:error, close})
 
     if state.turn do
       # The adapter EXITS on an upstream rate-limit rejection instead of
@@ -481,9 +481,9 @@ defmodule Loopyard.Harness.ACP.Connection do
       # Emit an error SessionResult BEFORE acp_done so upstream sees the turn
       # actually failed (adapter died mid-turn) instead of a clean stop with
       # no result event.
-      {_t, events} = Translator.finish(state.turn.translator, {:error, {:closed, reason}})
+      {_t, events} = Translator.finish(state.turn.translator, {:error, close})
       Enum.each(events, &send(state.turn.subscriber, {:acp_event, state.turn.ref, &1}))
-      send(state.turn.subscriber, {:acp_done, state.turn.ref, {:error, {:closed, reason}}})
+      send(state.turn.subscriber, {:acp_done, state.turn.ref, {:error, close}})
     end
 
     {:stop, :normal, %{state | status: :closed, turn: nil}}

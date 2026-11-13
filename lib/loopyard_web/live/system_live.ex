@@ -301,6 +301,7 @@ defmodule LoopyardWeb.SystemLive do
   defp pct_over?(_, _), do: false
 
   defp humanize_component(:docker), do: "Docker"
+  defp humanize_component(:docker_disk), do: "Docker disk"
   defp humanize_component(:pubsub), do: "PubSub"
   defp humanize_component(:agent_reconciler), do: "Agent reconciler"
   defp humanize_component(other), do: other |> Atom.to_string() |> String.replace("_", " ")

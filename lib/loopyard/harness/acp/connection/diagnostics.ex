@@ -62,6 +62,30 @@ defmodule Loopyard.Harness.ACP.Connection.Diagnostics do
 
   def surface_dying_words(_state, _reason), do: nil
 
+  @doc """
+  The error a closed connection answers its waiters (and its in-flight turn)
+  with. A close whose dying words say "no space left on device" is a FULL
+  DOCKER DISK, not a harness crash: it becomes `{:disk_full, tail}` (which the
+  ChatAgent neither auto-retries nor blames on the API) and is reported to
+  `Docker.DiskMonitor`, so the inbox says so now. Anything else stays
+  `{:closed, reason}`.
+  """
+  def close_error(stderr_tail, reason) do
+    with {:disk_full, _} = error <- classify_close(stderr_tail, reason) do
+      Loopyard.Docker.DiskMonitor.report_full(stderr_tail)
+      error
+    end
+  end
+
+  @doc "The pure half of `close_error/2`: classify without reporting."
+  def classify_close(stderr_tail, reason) do
+    if Loopyard.Docker.Disk.full_error?(stderr_tail),
+      do: {:disk_full, tail(stderr_tail, 300)},
+      else: {:closed, reason}
+  end
+
+  defp tail(text, n), do: String.slice(text, max(String.length(text) - n, 0), n)
+
   # Delete stderr capture files older than a day — abnormal closes keep theirs
   # for diagnosis, and a crash loop used to accumulate hundreds. Best-effort.
   def sweep_stale_stderr_logs do
