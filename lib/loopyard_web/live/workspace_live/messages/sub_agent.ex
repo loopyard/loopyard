@@ -6,8 +6,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.SubAgent do
   Two pieces, both dispatched from `Messages.chat_msg/1`:
 
     * `call/1` — the delegating call's row: the job (the model's own
-      description), the sub-agent type, and a live elapsed counter while it
-      works. Under it, collapsed by default, the sub-agent's own calls —
+      description), the sub-agent type, the model it ran on once the harness
+      reports it (`:subagent_model`, from the Agent tool's own
+      `resolvedModel` — never the configured setting, which the harness may
+      not have honoured), and a live elapsed counter while it works. Under it, collapsed by default, the sub-agent's own calls —
       every `:tool` message whose `parent_tool_id` is this call (nested by
       `Transcript.item_contexts/2`, never rendered as rows of their own) —
       each paired with its result. While the sub-agent is still working the
@@ -40,6 +42,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.SubAgent do
       assign(assigns,
         summary: ToolSummary.summarize(assigns.msg[:tool] || "Agent", input),
         type: input["subagent_type"],
+        model: model_label(assigns.msg[:subagent_model]),
         children: Enum.map(children, &child_row/1),
         count: length(children),
         settled?: settled?,
@@ -60,6 +63,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.SubAgent do
           class="text-meta uppercase tracking-wide text-zinc-400 dark:text-zinc-500 flex-none mt-1"
         >
           {@type}
+        </span>
+        <span :if={@model} class="text-meta text-zinc-400 dark:text-zinc-500 flex-none mt-1">
+          on {@model}
         </span>
         <%!-- Alive signal while the sub-agent works: a client-side counter from
         the call's own timestamp (server owns the time, the browser animates). --%>
@@ -203,6 +209,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.SubAgent do
   end
 
   defp preview(_), do: nil
+
+  # "claude-sonnet-5" → "Sonnet 5". The CLI may tag a context lane onto the id
+  # ("claude-opus-5[1m]"); the card names the model, not the lane.
+  defp model_label(model) when is_binary(model) and model != "" do
+    model
+    |> String.replace(~r/\[[^\]]*\]$/, "")
+    |> LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel.short_model()
+  end
+
+  defp model_label(_), do: nil
 
   defp unix_ms(%DateTime{} = ts), do: DateTime.to_unix(ts, :millisecond)
   defp unix_ms(_), do: nil

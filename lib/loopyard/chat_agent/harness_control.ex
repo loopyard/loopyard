@@ -66,7 +66,9 @@ defmodule Loopyard.ChatAgent.HarnessControl do
             # never chose. An explicit `model` (the picker sends one when the
             # target harness has a pinned list) replaces it; otherwise drop it
             # and let the new adapter boot on its own default.
-            |> put_or_delete_model(model),
+            |> put_or_delete_model(model)
+            # So does the sub-agent model: a Claude id means nothing to Codex.
+            |> Keyword.delete(:subagent_model),
           model: model
       }
 

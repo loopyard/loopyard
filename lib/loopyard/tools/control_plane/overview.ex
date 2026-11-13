@@ -65,6 +65,7 @@ defmodule Loopyard.Tools.ControlPlane.Overview do
         # Restored mid-turn and not woken since (AgentLog.at_rest/1).
         a[:interrupted?] == true && "interrupted: its last turn never finished",
         "#{Catalog.label(a[:harness])} #{a[:model] || "default"}",
+        a[:subagent_model] && "sub-agents #{a[:subagent_model]}",
         a[:workstation_identity] && "account #{a[:workstation_identity]}"
       ]
       |> Enum.filter(& &1)

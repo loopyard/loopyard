@@ -12,7 +12,9 @@ defmodule Loopyard.Tools.ControlPlane.Agent do
     * switch    — move an agent onto another `account` and/or `model` (a
       `harness:model` selection). The lever for "this account hit its limit" or
       "this is cheap work, run it on a smaller model": the conversation is
-      carried over from Loopyard's log either way.
+      carried over from Loopyard's log either way. `subagent_model` sets
+      what the agent's OWN sub-agents run on (a model id, or `same` to clear)
+      — a capable main model directing cheaper workers.
 
   `target` is a workspace id/name or an agent id. Guarded so the operator can't
   interrupt/restart/switch ITSELF.
@@ -26,7 +28,8 @@ defmodule Loopyard.Tools.ControlPlane.Agent do
         "action=new spawns a NEW agent in the target workspace (optional `message` " <>
         "= its first task, optional `account` / `model`); action=switch moves an " <>
         "agent onto another `account` (when its account is rate-limited or its " <>
-        "sign-in expired) and/or another `model` — the conversation carries over. " <>
+        "sign-in expired) and/or another `model` and/or `subagent_model` (what its " <>
+        "own sub-agents run on) — the conversation carries over. " <>
         "`overview` lists the accounts and what each can run. `target` is a " <>
         "workspace id/name or an agent id.",
     busy_words: ["managing an agent"],
@@ -43,7 +46,11 @@ defmodule Loopyard.Tools.ControlPlane.Agent do
       model:
         {:string,
          description:
-           "For action=switch/new: a `harness:model` selection, e.g. `claude:claude-sonnet-5` or `codex:default`."}
+           "For action=switch/new: a `harness:model` selection, e.g. `claude:claude-sonnet-5` or `codex:default`."},
+      subagent_model:
+        {:string,
+         description:
+           "For action=switch: the model id the agent's own sub-agents run on, e.g. `claude-sonnet-5`, or `same` for the agent's own model."}
     ]
 
   alias Loopyard.{ChatAgent, Tools.ControlPlane, Workstation}
@@ -123,12 +130,17 @@ defmodule Loopyard.Tools.ControlPlane.Agent do
          :ok <- not_self(agent, operator_id),
          {:ok, selection} <- selection(params[:model]),
          harness = (selection && elem(selection, 0)) || agent[:harness] || Catalog.default(),
-         {:ok, account} <- account(params[:account], harness) do
-      if is_nil(selection) and is_nil(account) do
-        {:error, "Nothing to switch — pass `account` and/or `model`."}
+         {:ok, account} <- account(params[:account], harness),
+         {:ok, subagents} <- subagents(params[:subagent_model], harness) do
+      if is_nil(selection) and is_nil(account) and is_nil(subagents) do
+        {:error, "Nothing to switch — pass `account`, `model` and/or `subagent_model`."}
       else
         done =
-          [switch_model(agent, selection), switch_account(agent, account)]
+          [
+            switch_model(agent, selection),
+            switch_account(agent, account),
+            switch_subagents(agent, subagents)
+          ]
           |> Enum.filter(& &1)
           |> Enum.join(" and ")
 
@@ -162,6 +174,40 @@ defmodule Loopyard.Tools.ControlPlane.Agent do
     ChatAgent.set_workstation(agent.id, account)
     "account #{account}"
   end
+
+  defp switch_subagents(_agent, nil), do: nil
+
+  defp switch_subagents(agent, {:set, model}) do
+    ChatAgent.set_subagent_model(agent.id, model)
+    "sub-agents on #{model || "the agent's own model"}"
+  end
+
+  # nil = not asked for; `same` (or "") clears it. Validated against the
+  # harness the agent will run on — a harness without the knob refuses.
+  defp subagents(nil, _harness), do: {:ok, nil}
+
+  defp subagents(value, harness) when is_binary(value) do
+    value = String.trim(value)
+
+    cond do
+      not Catalog.subagent_model?(harness) ->
+        {:error, "#{Catalog.label(harness)} doesn't take a sub-agent model."}
+
+      value in ["", "same", "inherit"] ->
+        {:ok, {:set, nil}}
+
+      Catalog.subagent_model_valid?(harness, value) ->
+        {:ok, {:set, value}}
+
+      true ->
+        {:error,
+         "subagent_model must be one of " <>
+           Enum.map_join(Catalog.fetch(harness).models, ", ", &elem(&1, 0)) <>
+           ", or `same` — got '#{value}'."}
+    end
+  end
+
+  defp subagents(_, _), do: {:error, "subagent_model must be a model id or `same`."}
 
   # nil = not asked for. A selection must parse — never guess a harness.
   defp selection(nil), do: {:ok, nil}

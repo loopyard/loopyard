@@ -210,6 +210,65 @@ defmodule Loopyard.Tools.ControlPlaneTest do
       assert msg =~ "Claude Code claude-sonnet-5"
     end
 
+    test "switch sets what an agent's sub-agents run on, validated against its harness", ctx do
+      assert {:ok, msg} =
+               Agent.execute(
+                 %{
+                   agent_id: "op",
+                   target: ctx.a,
+                   action: "switch",
+                   subagent_model: "claude-haiku-4-5-20251001"
+                 },
+                 %{}
+               )
+
+      assert msg =~ "sub-agents on claude-haiku-4-5-20251001"
+
+      assert {:ok, msg} =
+               Agent.execute(
+                 %{agent_id: "op", target: ctx.a, action: "switch", subagent_model: "same"},
+                 %{}
+               )
+
+      assert msg =~ "sub-agents on the agent's own model"
+
+      assert {:error, msg} =
+               Agent.execute(
+                 %{agent_id: "op", target: ctx.a, action: "switch", subagent_model: "gpt-9"},
+                 %{}
+               )
+
+      assert msg =~ "subagent_model must be one of"
+      assert msg =~ "claude-sonnet-5"
+
+      # Moving it onto Codex in the same call: Codex has no such knob.
+      assert {:error, msg} =
+               Agent.execute(
+                 %{
+                   agent_id: "op",
+                   target: ctx.a,
+                   action: "switch",
+                   model: "codex:default",
+                   subagent_model: "claude-sonnet-5"
+                 },
+                 %{}
+               )
+
+      assert msg =~ "Codex doesn't take a sub-agent model"
+    end
+
+    test "overview shows the sub-agent model when one is set", ctx do
+      [{_, row}] = :ets.lookup(:chat_agents, ctx.a)
+      :ets.insert(:chat_agents, {ctx.a, Map.put(row, :subagent_model, "claude-sonnet-5")})
+
+      assert {:ok, out} = Overview.execute(%{agent_id: "op"}, %{})
+
+      assert out =~
+               "Builder [#{ctx.a}] (idle · Claude Code claude-opus-5 · sub-agents claude-sonnet-5"
+
+      refute out =~ "Reviewer [#{ctx.b}] (rate_limited · Claude Code claude-opus-5 · sub-agents"
+    end
+
     test "the operator can't switch itself", ctx do
       assert {:error, msg} =
                Agent.execute(

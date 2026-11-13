@@ -36,6 +36,8 @@ defmodule Loopyard.ChatAgent.Summary do
       # Which harness this agent runs on, so the picker can show the current
       # selection without reaching into session_opts from the view.
       harness: Loopyard.ChatAgent.HarnessControl.current(state),
+      # The model the harness's own sub-agents run on; nil = same as the agent.
+      subagent_model: Keyword.get(Map.get(state, :session_opts) || [], :subagent_model),
       # The composer's Discuss / Build setting, and whether the live harness
       # advertises a plan mode at all (nil → the switch is hidden). Map.get:
       # summaries are built over partial state maps and pre-field structs.

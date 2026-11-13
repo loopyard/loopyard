@@ -719,12 +719,12 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     state
   end
 
-  defp refine_tool_call(state, %Event.ToolCall{id: tool_id, input: input}) do
+  defp refine_tool_call(state, %Event.ToolCall{id: tool_id, input: input} = ev) do
     {messages, updated} =
       Enum.map_reduce(state.messages, nil, fn msg, acc ->
         if msg[:role] == :tool and msg[:tool_id] == tool_id do
           merged = Map.merge(msg[:input] || %{}, input || %{})
-          msg = Map.put(msg, :input, merged)
+          msg = msg |> Map.put(:input, merged) |> Event.ToolCall.stamp_model(ev)
           {msg, msg}
         else
           {msg, acc}
@@ -734,7 +734,8 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     state = %{state | messages: messages}
 
     if updated do
-      Persistence.persist_message_update(state, updated.id, %{input: updated[:input]})
+      changes = Map.take(updated, [:input, :subagent_model])
+      Persistence.persist_message_update(state, updated.id, changes)
 
       Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.MessageUpdated{
         agent_id: state.id,
@@ -753,23 +754,19 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     # we derive it from the name via the single ToolKind seam.
     tool_kind = ev.kind || Loopyard.Agent.ToolKind.classify(tool_name)
 
-    tool_msg = %{
-      role: :tool,
-      tool: tool_name,
-      tool_kind: tool_kind,
-      tool_id: ev.id,
-      input: tool_input,
-      timestamp: now
-    }
-
-    # A harness-native sub-agent's call names the delegating call it ran under
-    # (ACP: parentToolUseId). It rides the message so the transcript can nest
-    # the sub-agent's work under its `:agent` card; absent for top-level calls
-    # so the message shape of every other call is unchanged.
+    # Sub-agent lineage (`:parent_tool_id`) and a delegation's reported model
+    # (`:subagent_model`) ride the message only when present — see
+    # `Event.ToolCall.stamp/2`.
     tool_msg =
-      if is_binary(ev.parent_id),
-        do: Map.put(tool_msg, :parent_tool_id, ev.parent_id),
-        else: tool_msg
+      %{
+        role: :tool,
+        tool: tool_name,
+        tool_kind: tool_kind,
+        tool_id: ev.id,
+        input: tool_input,
+        timestamp: now
+      }
+      |> Event.ToolCall.stamp(ev)
 
     {state, tool_msg} = append_message(state, tool_msg)
 

@@ -158,6 +158,14 @@ defmodule Loopyard.ChatAgent.Client do
   def set_workstation(id, workstation_id) when is_binary(workstation_id),
     do: GenServer.cast(via(id), {:set_workstation, workstation_id})
 
+  @doc """
+  Set the model the agent's harness runs its OWN sub-agents on (nil / "" =
+  same as the agent). Relaunches the harness when idle, resuming the
+  conversation. See `ChatAgent.SubagentControl`.
+  """
+  def set_subagent_model(id, model) when is_binary(model) or is_nil(model),
+    do: GenServer.cast(via(id), {:set_subagent_model, model})
+
   @doc "Register an agent as booting in ETS so all viewers can see it"
   def register_booting(id, name, working_dir, opts \\ []),
     do: Lifecycle.register_booting(id, name, working_dir, opts)

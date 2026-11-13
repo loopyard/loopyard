@@ -245,7 +245,9 @@ defmodule Loopyard.Harness.ACP.SubagentTest do
     test "the internal 'async launched' result is NOT surfaced; the call stays open" do
       {state, _} = run(Translator.new(), agent_call_frames())
       {_state, events} = run(state, async_launch_frames())
-      assert events == []
+      # Only the call's refinement with the model it resolved to — no result.
+      refute Enum.any?(events, &match?(%Event.ToolResult{}, &1))
+      assert [%Event.ToolCall{id: @parent}] = events
     end
 
     test "nested calls still land under the parent after the launch frames" do
@@ -279,6 +281,50 @@ defmodule Loopyard.Harness.ACP.SubagentTest do
                %Event.ToolResult{id: @parent, is_error: true},
                %Event.SessionResult{is_error: true}
              ] = events
+    end
+  end
+
+  describe "the model the sub-agent ran on" do
+    # Claude Code's Agent tool output schema carries `resolvedModel` (and
+    # `modelsUsed` after a mid-run swap); the adapter forwards it verbatim as
+    # `_meta.claudeCode.toolResponse` on a tool_call_update.
+    test "a background launch's resolvedModel re-emits the call with the model" do
+      {state, _} = run(Translator.new(), agent_call_frames())
+      {_state, events} = run(state, async_launch_frames())
+
+      assert [%Event.ToolCall{id: @parent, kind: :agent, model: "claude-sonnet-5"}] = events
+    end
+
+    test "a foreground completion names it too; modelsUsed's last entry wins" do
+      {state, _} = run(Translator.new(), agent_call_frames())
+
+      {_state, events} =
+        run(state, [
+          %{
+            "sessionUpdate" => "tool_call_update",
+            "toolCallId" => @parent,
+            "_meta" => %{
+              "claudeCode" => %{
+                "toolName" => "Agent",
+                "toolResponse" => %{
+                  "status" => "completed",
+                  "resolvedModel" => "claude-opus-5",
+                  "modelsUsed" => ["claude-opus-5", "claude-haiku-4-5-20251001"]
+                }
+              }
+            }
+          }
+        ])
+
+      assert [%Event.ToolCall{id: @parent, model: "claude-haiku-4-5-20251001"}] = events
+    end
+
+    test "unreported → no model, and a child call never carries one" do
+      {state, events} = run(Translator.new(), agent_call_frames())
+      assert Enum.all?(events, &(&1.model == nil))
+
+      {_state, events} = run(state, child_frames("toolu_child1", "pwd", "/workspace"))
+      assert [%Event.ToolCall{model: nil}, %Event.ToolResult{}] = events
     end
   end
 end

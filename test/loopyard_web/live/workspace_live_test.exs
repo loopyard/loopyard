@@ -227,6 +227,39 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
       refute render(view) =~ "Plans and talks"
     end
 
+    test "the Sub-agents control sets the agent's sub-agent model and every viewer sees it",
+         %{conn: conn, workspace: ws, setup_agent_id: id} do
+      {:ok, view, html} = live(conn, ws_chat_path(ws, id))
+      {:ok, other, _} = live(conn, ws_chat_path(ws, id))
+
+      # Claude takes the setting, so the row renders; "Same as the agent" leads.
+      assert html =~ ~s(name="subagent_model")
+
+      assert has_element?(
+               view,
+               ~s(select[name=subagent_model] option[value=""][selected]),
+               "Same as the agent"
+             )
+
+      render_change(view, "set_subagents", %{
+        "agent-id" => id,
+        "subagent_model" => "claude-sonnet-5"
+      })
+
+      assert wait_for(fn ->
+               Loopyard.ChatAgent.get_state(id)[:subagent_model] == "claude-sonnet-5"
+             end)
+
+      assert wait_for(fn ->
+               has_element?(other, ~s(option[value="claude-sonnet-5"][selected]))
+             end)
+
+      # A bogus value is refused by the agent, never a crash.
+      render_change(view, "set_subagents", %{"agent-id" => id, "subagent_model" => "nope"})
+      assert render(view) =~ "Test Agent"
+      assert Loopyard.ChatAgent.get_state(id)[:subagent_model] == "claude-sonnet-5"
+    end
+
     test "a bogus mode value is ignored, not a crash",
          %{conn: conn, workspace: ws, setup_agent_id: id} do
       {:ok, view, _html} = live(conn, ws_chat_path(ws, id))

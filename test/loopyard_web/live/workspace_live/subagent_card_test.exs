@@ -167,6 +167,26 @@ defmodule LoopyardWeb.Live.WorkspaceLive.SubagentCardTest do
       refute html =~ ~s(<details class="mt-1 group/nest" open)
     end
 
+    test "names the model the sub-agent ran on when the harness reported it" do
+      call = Map.put(agent_call(), :subagent_model, "claude-haiku-4-5-20251001")
+      msgs = [user("go"), call, result("t_agent", "## Report")]
+      ctx = Messages.item_contexts(msgs, MapSet.new())
+      html = render(msgs, 1, ctx[1])
+
+      assert html =~ "on Haiku 4.5"
+
+      # A context-lane tag on the id is not part of the model's name.
+      call = Map.put(agent_call(), :subagent_model, "claude-opus-5[1m]")
+      msgs = [user("go"), call]
+      assert render(msgs, 1, Messages.item_contexts(msgs, MapSet.new())[1]) =~ ~r/on Opus 5\s*</
+    end
+
+    test "names no model when none was reported" do
+      msgs = [user("go"), agent_call(), result("t_agent", "## Report")]
+      ctx = Messages.item_contexts(msgs, MapSet.new())
+      refute render(msgs, 1, ctx[1]) =~ ~r/>\s*on /
+    end
+
     test "settled: the counter is gone and the count is final" do
       msgs = [
         user("go"),
