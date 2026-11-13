@@ -9,7 +9,9 @@ defmodule Loopyard.Tools.ControlPlane.Overview do
   use Loopyard.Tool,
     name: "overview",
     description:
-      "The whole Loopyard picture in ONE compact read: every project, its " <>
+      "The whole Loopyard picture in ONE compact read. It LEADS with what needs " <>
+        "attention (agents stopped without asking, plan limits) and what you may do; " <>
+        "then every project, its " <>
         "workspaces, each workspace's agents (id, live status, harness · model, " <>
         "and the ACCOUNT each one bills), its open ports, and which accounts can " <>
         "run which harness, which are at a plan limit (until when) and where " <>
@@ -22,12 +24,33 @@ defmodule Loopyard.Tools.ControlPlane.Overview do
       agent_id: {:string, required: true}
     ]
 
+  alias Loopyard.Fleet.Conditions
   alias Loopyard.Harness.Catalog
 
   def execute(_params, _assigns) do
-    {:ok, format(Loopyard.WorkspaceTree.global()) <> accounts()}
+    {:ok, attention() <> format(Loopyard.WorkspaceTree.global()) <> accounts()}
   rescue
     e -> {:error, "Couldn't build the overview: #{inspect(e)}"}
+  end
+
+  # What the fleet watch has open (Fleet.Watch): each stuck agent by id, its
+  # condition and the move you may make — the first thing worth reading.
+  defp attention do
+    case Loopyard.Notifications.open([:stuck, :plan_limit]) do
+      [] ->
+        ""
+
+      items ->
+        "Needs attention:\n" <>
+          Enum.map_join(items, "\n", fn i ->
+            c = if i.kind == :plan_limit, do: :plan_limit, else: i.meta[:condition]
+
+            "- #{i.agent_name} [#{i.agent_id}]: #{Conditions.word(c) || "stuck"} — you may " <>
+              Conditions.may_do(c, i.agent_id)
+          end) <> "\n\n"
+    end
+  rescue
+    _ -> ""
   end
 
   defp format([]), do: "No projects yet. Use manage_project to create one."

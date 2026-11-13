@@ -163,6 +163,21 @@ defmodule Loopyard.ChatAgent.InterruptedTest do
     refute Loopyard.Agents.get(id)[:interrupted?]
   end
 
+  test "the chief of staff continues it with agent action=continue" do
+    id = restored!([reply("hello"), user("write the docs")], 2 * 60 * 60_000)
+    pid = resume!(id)
+    :sys.get_state(pid)
+
+    assert {:ok, msg} =
+             Loopyard.Tools.ControlPlane.Agent.execute(
+               %{agent_id: "op", target: id, action: "continue"},
+               %{}
+             )
+
+    assert msg =~ "Continuing"
+    eventually(fn -> streamed("write the docs") == 1 end)
+  end
+
   test "Dismiss clears the mark of an asleep agent, in its row and its log" do
     id = restored!([reply("hello"), user("migrate the db")], 2 * 60 * 60_000)
     item = Conditions.item_id(id, :interrupted)
