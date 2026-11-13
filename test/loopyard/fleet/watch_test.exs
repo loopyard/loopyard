@@ -117,6 +117,32 @@ defmodule Loopyard.Fleet.WatchTest do
       assert item(id, :offline) == nil
     end
 
+    test "an item raised before a restart settles when its condition has cleared",
+         %{ident: ident, sys: sys} do
+      # The inbox is durable; the watch's own memory of what it raised is not.
+      id = worker(ident, %{})
+      Notifications.raise_item(Item.stuck(id, :interrupted, "Worker was interrupted", %{}))
+      Notifications.sync()
+      assert %Item{status: :open} = item(id, :interrupted)
+
+      sweep([id, sys])
+      assert %Item{status: :settled, outcome: :cleared} = item(id, :interrupted)
+    end
+
+    test "an item raised before a restart that is still true stays, with no second wait",
+         %{ident: ident, sys: sys} do
+      Application.put_env(:loopyard, :fleet_watch_grace_ms, 60_000)
+      id = worker(ident, %{interrupted?: true})
+      Notifications.raise_item(Item.stuck(id, :interrupted, "Worker was interrupted", %{}))
+      Notifications.sync()
+
+      sweep([id, sys])
+      assert %Item{status: :open} = item(id, :interrupted)
+      assert Enum.count(Notifications.all(), &(&1.agent_id == id)) == 1
+      # Already past its grace period: it is raised, not waiting to be.
+      assert Watch.raised()[id] == :interrupted
+    end
+
     test "the stuck kind waits on a human" do
       assert :stuck in Item.needs_human_kinds()
       assert Item.item_only?(:stuck)

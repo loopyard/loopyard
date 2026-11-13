@@ -39,6 +39,8 @@ defmodule Loopyard.Fleet.Watch do
 
   @default_sweep_ms 60_000
   @event_debounce_ms 2_000
+  # Older than any grace period: a condition already in the inbox is confirmed.
+  @long_ago_ms :timer.hours(24)
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
@@ -137,8 +139,23 @@ defmodule Loopyard.Fleet.Watch do
     current =
       for s <- summaries, c = Conditions.of(s), into: %{}, do: {s.id, c}
 
-    {seen, confirmed} = Conditions.observe(scoped(state.seen, only), current, now, grace_opts())
-    {to_raise, to_settle} = Conditions.changes(scoped(state.raised, only), confirmed)
+    # The inbox outlives this process. An item raised before a restart is
+    # either still true (then it is already raised and already past its grace
+    # period: no second wait, no second item) or it cleared while nobody was
+    # watching (then it is settled here; `raised` starts empty, so nothing
+    # else would ever settle it).
+    {standing, orphaned} = stored(only, current)
+    Enum.each(orphaned, fn {aid, c} -> Notifications.settle(Conditions.item_id(aid, c), :cleared) end)
+
+    seen0 =
+      Enum.reduce(standing, scoped(state.seen, only), fn {aid, c}, acc ->
+        Map.put_new(acc, {aid, c}, now - @long_ago_ms)
+      end)
+
+    raised0 = Map.merge(standing, scoped(state.raised, only))
+
+    {seen, confirmed} = Conditions.observe(seen0, current, now, grace_opts())
+    {to_raise, to_settle} = Conditions.changes(raised0, confirmed)
 
     Enum.each(to_settle, fn {aid, c} ->
       Notifications.settle(Conditions.item_id(aid, c), :cleared)
@@ -159,6 +176,18 @@ defmodule Loopyard.Fleet.Watch do
     e ->
       Logger.warning("[Fleet.Watch] sweep failed: #{Exception.message(e)}")
       state
+  end
+
+  # The open `:stuck` items in scope, split by whether the agent is in that
+  # condition right now: `{%{agent_id => condition}, [{agent_id, condition}]}`.
+  defp stored(only, current) do
+    items =
+      for %Item{agent_id: aid, meta: %{condition: c}} <- Notifications.open([:stuck]),
+          is_nil(only) or aid in only,
+          do: {aid, c}
+
+    {standing, orphaned} = Enum.split_with(items, fn {aid, c} -> Map.get(current, aid) == c end)
+    {Map.new(standing), orphaned}
   end
 
   defp in_scope(summaries, nil), do: summaries
