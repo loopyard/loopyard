@@ -47,6 +47,37 @@ defmodule Loopyard.Docker.DiskMonitor do
     :ok
   end
 
+  @doc """
+  Is there room to build or pull an image? `false` only when the disk is KNOWN
+  to be down — an unknown or unreadable disk is not a reason to refuse.
+
+  A boot starts every in-use workspace's dev cluster seconds before the first
+  timed probe, so with no reading yet this takes one itself. Without that,
+  every restart on a full disk pulled image layers into the last free megabytes
+  and failed, once per workspace, making the outage worse each time.
+  """
+  @spec room_to_build?() :: boolean()
+  def room_to_build? do
+    reading =
+      case observation() do
+        nil ->
+          case Application.get_env(:loopyard, :docker_disk_probe_fun, &probe/0).() do
+            {:ok, r} -> r
+            :full -> :full
+            _ -> nil
+          end
+
+        known ->
+          known
+      end
+
+    not match?({:down, _}, Disk.status(reading))
+  rescue
+    _ -> true
+  catch
+    :exit, _ -> true
+  end
+
   @doc "Probe now (tests, tools)."
   def probe_now, do: send(__MODULE__, :probe)
 

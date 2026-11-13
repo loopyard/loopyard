@@ -106,6 +106,23 @@ defmodule Loopyard.Docker.DiskMonitorTest do
     assert DiskMonitor.status() == :healthy
   end
 
+  test "there is no room to build once the disk is down, and there is again when it recovers" do
+    assert DiskMonitor.room_to_build?()
+
+    # Degraded is a warning, not a refusal: builds still fit.
+    probe_with({:ok, %{free_bytes: 2 * @gb, total_bytes: 96 * @gb}})
+    assert DiskMonitor.room_to_build?()
+
+    probe_with({:ok, %{free_bytes: 70_000_000, total_bytes: 96 * @gb}})
+    refute DiskMonitor.room_to_build?()
+
+    probe_with(:full)
+    refute DiskMonitor.room_to_build?()
+
+    probe_with({:ok, %{free_bytes: 50 * @gb, total_bytes: 96 * @gb}})
+    assert DiskMonitor.room_to_build?()
+  end
+
   test "the real probe is skipped while the daemon gate is closed (test env)" do
     assert DiskMonitor.probe() == :skipped
   end

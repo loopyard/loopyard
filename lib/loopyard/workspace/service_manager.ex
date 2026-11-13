@@ -397,6 +397,22 @@ defmodule Loopyard.Workspace.ServiceManager do
           false
       end
 
+    if has_compose and not Loopyard.Docker.DiskMonitor.room_to_build?() do
+      # `compose up` builds and pulls: on a full disk it only fails, after
+      # writing into what is left, once per workspace on every boot.
+      reason =
+        "Not starting the dev services: the Docker disk is full. Free up space " <>
+          "(System → Docker), then start them again."
+
+      Loopyard.EventLog.error("workspace:#{state.workspace_id}", reason)
+      broadcast_compose_result(state.workspace_id, {:error, reason})
+      {:error, :disk_full}
+    else
+      do_compose_up(state, has_compose, volume_name)
+    end
+  end
+
+  defp do_compose_up(state, has_compose, volume_name) do
     if has_compose do
       Loopyard.EventLog.info("workspace:#{state.workspace_id}", "Starting compose services")
 
