@@ -37,7 +37,7 @@ defmodule Mix.Tasks.Loopyard.Server do
     # Loopback longname, NOT a hostname-derived shortname — macOS flips the
     # hostname (Mac ↔ Mac.localdomain ↔ macbook), which silently broke remote
     # access (`loopyard.rpc` could no longer find the node). 127.0.0.1 is stable.
-    case Node.start(:"loopyard@127.0.0.1", name_domain: :longnames) do
+    case start_node(10) do
       {:ok, _} ->
         Node.set_cookie(cookie)
 
@@ -82,6 +82,25 @@ defmodule Mix.Tasks.Loopyard.Server do
 
     _ = :logger.remove_handler(:default)
     :ok
+  end
+
+  # A RESTART races the old server: its node name stays registered with EPMD
+  # until that process is fully gone, and a new server that starts within the
+  # same second finds the name "in use", gives up, and runs for the rest of
+  # its life with no remote shell (`mix loopyard.rpc` → "not reachable"). A
+  # service manager restarts exactly that fast. So wait the old one out.
+  defp start_node(attempts) do
+    case Node.start(:"loopyard@127.0.0.1", name_domain: :longnames) do
+      {:ok, _} = ok ->
+        ok
+
+      {:error, _} when attempts > 1 ->
+        Process.sleep(500)
+        start_node(attempts - 1)
+
+      {:error, _} = error ->
+        error
+    end
   end
 
   # Boot EPMD if it isn't already up. `epmd -daemon` is idempotent (a no-op
