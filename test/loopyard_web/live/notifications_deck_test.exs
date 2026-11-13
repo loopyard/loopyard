@@ -140,6 +140,31 @@ defmodule LoopyardWeb.NotificationsDeckTest do
     assert render(view) =~ "Dismissed", "the slide stays, as a receipt"
   end
 
+  test "a plan limit with nowhere to go is a slide whose one action is the account's page",
+       %{conn: conn} do
+    aid = seed_agent("Delta", [])
+
+    Loopyard.Notifications.raise_item(
+      Loopyard.Notifications.Item.plan_limit(
+        aid,
+        "Delta is at brad's Claude Code plan limit until 14:05, and no permitted account can take the work.",
+        %{account: "brad", harness: :claude, until_ms: nil}
+      )
+    )
+
+    Loopyard.Notifications.sync()
+    on_exit(fn -> :ets.delete(:notifications, "limit:" <> aid) end)
+
+    {:ok, view, html} = live(conn, "/notifications/#{aid}/limit")
+    assert html =~ "no permitted account can take the work"
+    assert has_element?(view, ~s(a[href="/workstations/brad"]), "Open brad")
+    refute html =~ "Keep going"
+
+    Loopyard.Notifications.settle("limit:" <> aid, :cleared)
+    Loopyard.Notifications.sync()
+    assert render(view) =~ "The limit cleared — Delta carried on."
+  end
+
   test "the count is of what's still WAITING, oldest first", %{conn: conn} do
     old_q = pending_question("m-old", "Asked first?")
     new_q = %{pending_question("m-new", "Asked second?") | timestamp: DateTime.utc_now()}

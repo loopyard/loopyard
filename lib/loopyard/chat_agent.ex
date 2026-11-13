@@ -23,6 +23,7 @@ defmodule Loopyard.ChatAgent do
     MessageLog,
     MessageWindow,
     Persistence,
+    PlanLimit,
     Prompt,
     Restart,
     SendGuards,
@@ -546,6 +547,11 @@ defmodule Loopyard.ChatAgent do
 
         {:noreply, state}
 
+      # The ACCOUNT is known to be at its plan limit (a sibling heard it):
+      # behave as limited without burning a turn to find out.
+      PlanLimit.known_limited?(state) ->
+        {:noreply, PlanLimit.hold(state, text)}
+
       true ->
         send_message_normal(state, text)
     end
@@ -643,7 +649,9 @@ defmodule Loopyard.ChatAgent do
   def handle_cast({:resume_prompt, text}, state) when is_binary(text) do
     state = SessionManager.ensure_alive(state)
 
-    if state.status == :idle and state.backend.session_alive?(state.session) do
+    # :booting too: a restart with messages queued reports :booting until they
+    # drain — the seed must still go first, or the drained turn runs amnesic.
+    if state.status in [:idle, :booting] and state.backend.session_alive?(state.session) do
       start_turn(%{state | current_turn_origin: :seed}, text)
     else
       {:noreply, state}
@@ -1286,47 +1294,23 @@ defmodule Loopyard.ChatAgent do
     {:noreply, state}
   end
 
-  # Fired by handle_rate_limit_event. Don't optimistically attempt every interval
-  # (that re-failed and re-appended unanswered messages, and spammed "window
-  # cleared"). Instead: if the reset time hasn't passed yet, quietly reschedule —
-  # nothing reaches the chat. Once the window has actually cleared, go idle and
-  # drain whatever the user queued (silently, as one batched turn). The whole
-  # rate limit lives at the turn-execution layer; the inbox never sees it beyond
-  # the harness-status block.
+  # Fired by handle_rate_limit_event / PlanLimit.hold. Before the reset it
+  # quietly reschedules (nothing reaches the chat); once the window — the
+  # agent's own, or a later one a sibling learned for the account — has
+  # cleared, go idle and drain the queue as one batched turn. See PlanLimit.
   def handle_info({:rate_limit_retry, id}, %{id: id, status: :rate_limited} = state) do
-    now = System.system_time(:millisecond)
-    resets_at = state.rate_limit_resets_at_ms
-
-    if is_integer(resets_at) and now < resets_at do
-      Process.send_after(
-        self(),
-        {:rate_limit_retry, id},
-        StreamHandler.compute_rate_limit_wait_ms(resets_at)
-      )
-
-      {:noreply, state}
-    else
-      state = %{
-        state
-        | status: :idle,
-          rate_limit_status: :ok,
-          rate_limit_resets_at_ms: nil,
-          rate_limit_type: nil,
-          rate_limit_utilization: nil
-      }
-
-      :ets.insert(@ets_table, {id, summary(state)})
-      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
-
-      case state.pending_sends do
-        [] -> {:noreply, state}
-        pending -> send_batch(%{state | pending_sends: []}, pending)
-      end
+    case PlanLimit.retry(state) do
+      {:drain, pending, state} -> send_batch(state, pending)
+      reply -> reply
     end
   end
 
   # Late/stale retry timer after status already moved on. No-op.
   def handle_info({:rate_limit_retry, _id}, state), do: {:noreply, state}
+
+  # Plan-limit failover and the return home (ChatAgent.PlanLimit).
+  def handle_info({:plan_limit_failover, id}, %{id: id} = state), do: PlanLimit.failover(state)
+  def handle_info({:plan_limit_return, id}, %{id: id} = state), do: PlanLimit.maybe_return(state)
 
   # Idle-reap tick. Fires every :agent_idle_check_interval_ms (10 min
   # default). If the agent has been idle past the reap threshold AND

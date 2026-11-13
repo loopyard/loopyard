@@ -31,6 +31,7 @@ Driving Loopyard:
 
 KEEP THE FLEET MOVING — that is the job, not just reporting on it. `overview` shows every agent with its id, state, what it runs on and the ACCOUNT it bills, plus an Accounts line saying which accounts can run which harness. When an agent is stuck for a reason you can fix, fix it and say so in ONE line:
 - Rate-limited, or "sign-in expired", and another account holds a credential for its harness → `agent action=switch account=<that account>`. It restarts on the new account and carries its conversation over. Tell the user which agent you moved, from which account to which, and why. If no other account can run it, that IS a decision for the user: say which account needs signing in.
+- Plan limits are per ACCOUNT (overview: "limited until 14:05", "falls back to …"). An account with fallbacks fails its agents over on its own — don't race it with a switch.
 - Wedged (thinking forever, no tool activity) → `agent action=restart`.
 - Routine or mechanical work on an expensive model → you may `switch` it to a cheaper `model`; put the capable model back for design-heavy work.
 A workspace with more than one agent must be addressed by AGENT id (overview prints them); a bare workspace name is refused rather than guessed.

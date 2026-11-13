@@ -54,22 +54,35 @@ defmodule Loopyard.ChatAgent.Restart do
   # fresh session that keeps crashing too — stop auto-retrying, let the user see
   # it's stuck rather than spin forever).
   def pending_user_prompt(state) do
-    if compaction_looping?(state) do
-      nil
-    else
-      Enum.reduce_while(Enum.reverse(state.messages || []), nil, fn m, _ ->
-        cond do
-          m[:role] == :assistant ->
-            {:halt, nil}
+    # state.messages is stored NEWEST first. This used to reverse it before
+    # scanning, so it walked from the oldest message and handed back the
+    # conversation's FIRST prompt — a recycle re-ran something answered long ago.
+    if compaction_looping?(state), do: nil, else: List.last(pending_user_prompts(state))
+  end
 
-          m[:role] == :user and is_binary(m[:content]) and m[:content] != "" ->
-            {:halt, m[:content]}
+  @doc """
+  Every user message of the trailing unanswered run — the whole turn a refusal
+  interrupted, oldest first (a drained flurry is several messages streamed as
+  one batch). Same scan as `pending_user_prompt/1`, with one difference: a
+  truncated partial reply (`partial: true`) is not an answer, so the scan
+  looks past it. [] when the last turn was answered.
+  """
+  def pending_user_prompts(state) do
+    state.messages
+    |> List.wrap()
+    |> Enum.reduce_while([], fn m, acc ->
+      cond do
+        # Stored newest first: walk back to the last real answer.
+        m[:role] == :assistant and m[:partial] != true ->
+          {:halt, acc}
 
-          true ->
-            {:cont, nil}
-        end
-      end)
-    end
+        m[:role] == :user and is_binary(m[:content]) and m[:content] != "" ->
+          {:cont, [m[:content] | acc]}
+
+        true ->
+          {:cont, acc}
+      end
+    end)
   end
 
   # ≥3 compactions in 3 minutes = even fresh sessions keep dying, so the problem

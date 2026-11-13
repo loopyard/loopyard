@@ -3,10 +3,14 @@ defmodule Loopyard.Notifications.Item do
   One notification: something waiting on a human, or something that happened.
 
   * `kind` — `:question | :approval | :secret` (a DECISION: an agent is blocked
-    on a person), `:finished` (an agent wrapped a turn — "keep going?"), or
+    on a person), `:finished` (an agent wrapped a turn — "keep going?"),
     `:alert` (a SYSTEM condition only a human can fix — the Docker disk filling
     up; raised and settled by its watcher, e.g. `Docker.DiskMonitor`, never
-    by an agent; `agent_id` is `"loopyard"`).
+    by an agent; `agent_id` is `"loopyard"`), or
+    `:plan_limit` (an agent is at its account's plan limit and no permitted
+    account can take the work — `ChatAgent.PlanLimit`; settles when the
+    limit clears). `:finished`, `:alert` and `:plan_limit` are ITEM-ONLY: no chat card
+    behind them, the item is the whole record (`item_only?/1`).
   * `status` — `:open` until settled; then `:settled` (acted on — answered,
     approved, submitted, kept going), `:dismissed` (a human waved it away), or
     `:retracted` (an agent withdrew it as moot). `outcome` keeps the detail
@@ -21,7 +25,7 @@ defmodule Loopyard.Notifications.Item do
 
   alias Loopyard.{ProjectRegistry, WorkspaceRegistry}
 
-  @type kind :: :question | :approval | :secret | :finished | :alert
+  @type kind :: :question | :approval | :secret | :finished | :alert | :plan_limit
   @type status :: :open | :settled | :dismissed | :retracted
 
   @type t :: %__MODULE__{
@@ -74,8 +78,44 @@ defmodule Loopyard.Notifications.Item do
   @doc "Every decision kind — the subset that blocks an agent on a human."
   def decision_kinds, do: [:question, :approval, :secret]
 
-  @doc "Every kind that waits on a human: the decisions plus system alerts (the badge)."
-  def needs_human_kinds, do: decision_kinds() ++ [:alert]
+  @doc """
+  Every kind that waits on a human: the decisions, system alerts, and an agent
+  stuck at its plan limit with nowhere to go (the badge).
+  """
+  def needs_human_kinds, do: decision_kinds() ++ [:alert, :plan_limit]
+
+  @doc "Kinds with no chat card behind them: the item is the whole record."
+  defguard item_only?(kind) when kind in [:finished, :alert, :plan_limit]
+
+  @doc """
+  The item for an agent stuck at its plan limit with nowhere permitted to go.
+  One per agent (`"limit:" <> agent_id`); `label` is the decisive sentence and
+  `meta` names the account whose page holds the one action.
+  """
+  @spec plan_limit(String.t(), String.t(), map()) :: t()
+  def plan_limit(agent_id, label, meta) when is_binary(agent_id) do
+    summary = agent_summary(agent_id)
+    ws_id = summary[:workspace_id]
+    {ws_name, project_id, project_name} = where(ws_id)
+
+    %__MODULE__{
+      id: "limit:" <> agent_id,
+      kind: :plan_limit,
+      agent_id: agent_id,
+      agent_name: summary[:name] || "Agent",
+      workspace_id: ws_id,
+      workspace_name: ws_name,
+      project_id: project_id,
+      project_name: project_name,
+      path: path(ws_id, project_id, agent_id),
+      msg_id: nil,
+      label: label,
+      raised_at: DateTime.utc_now(),
+      scope: Loopyard.Agents.scope(summary),
+      status: :open,
+      meta: meta
+    }
+  end
 
   @doc """
   Build the item for a freshly appended card. Reads the agent's ETS summary for

@@ -99,7 +99,9 @@ defmodule Loopyard.ChatAgent.SenderTest do
     assert %{role: :user, content: "run the suite", from: "chief-of-staff"} =
              Enum.find(state.messages, &(&1[:role] == :user))
 
-    # The model got the framing, not the raw marker.
+    # The model got the framing, not the raw marker. The stream starts just
+    # after the enqueue returns, so wait for it rather than read at once.
+    Loopyard.TestHelpers.eventually(fn -> Agent.get(RecordingBackend, & &1.streamed) != [] end)
     [prompt | _] = Agent.get(RecordingBackend, & &1.streamed)
     text = if is_binary(prompt), do: prompt, else: inspect(prompt)
     assert text =~ "NOT typed by the user"

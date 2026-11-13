@@ -5,7 +5,7 @@ defmodule Loopyard.Notifications.Priority do
   inbox is just a list.
 
   Tiers, first to last: a pin, then system alerts and approvals (a turn is STOPPED on one),
-  questions, secrets, finished-with-changes, finished-without, then anything
+  questions, secrets and plan limits, finished-with-changes, finished-without, then anything
   demoted. Within a tier, OLDEST first — the inbox is a queue you work
   through, so the newest ask is the last one, not the first. Newest-first was
   tried and it inverted conversations: three questions from one turn came out
@@ -32,6 +32,7 @@ defmodule Loopyard.Notifications.Priority do
   def tier(%Item{kind: :approval}), do: 1
   def tier(%Item{kind: :question}), do: 2
   def tier(%Item{kind: :secret}), do: 3
+  def tier(%Item{kind: :plan_limit}), do: 3
 
   def tier(%Item{kind: :finished, meta: %{changes: %{added: a, removed: r}}}) when a + r > 0,
     do: 4

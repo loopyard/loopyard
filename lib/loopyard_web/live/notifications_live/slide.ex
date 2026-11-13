@@ -43,6 +43,9 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
     # A SYSTEM alert (the Docker disk is full): no card, no agent to talk to —
     # its own card, and no composer.
     alert? = assigns.card.slide.kind == :alert
+    limit? = assigns.card.slide.kind == :plan_limit
+    # No chat card behind it: the item is the whole record.
+    item_only? = finished? or alert? or limit?
     item = assigns.card[:item]
 
     assigns =
@@ -50,13 +53,16 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
         ref: "#{assigns.card.slide.agent_id}:#{assigns.card.slide.msg_id}",
         finished?: finished?,
         alert?: alert?,
+        limit?: limit?,
+        item_only?: item_only?,
         item: item,
-        prompt: ((finished? or alert?) && item && item.label) || card_prompt(assigns.card),
+        prompt: (item_only? && item && item.label) || card_prompt(assigns.card),
         # ONE predicate for "still waiting", shared with the deck's count — a
         # question of a multi-question ask resolves on its own, so asking the
         # message left an answered question wearing the flame.
         pending?: Deck.pending_card?(assigns.card),
-        verb: (finished? && "finished") || (alert? && "flagged") || "asked",
+        verb:
+          (finished? && "finished") || (alert? && "flagged") || (limit? && "stopped") || "asked",
         awaiting?: awaiting_reply?(assigns.thread),
         blocked?: operator_blocked?(assigns.operator_id, assigns.card),
         who: Deck.who_asked(assigns.card.slide),
@@ -216,19 +222,17 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
           </.link>
 
           <Cards.question_card
-            :if={!@finished? && !@alert? && is_nil(@card.q) && @card.msg.role == :question}
+            :if={!@item_only? && is_nil(@card.q) && @card.msg.role == :question}
             msg={@card.msg}
           />
-          <Cards.approval_card
-            :if={!@finished? && !@alert? && @card.msg.role == :approval}
-            msg={@card.msg}
-          />
+          <Cards.approval_card :if={!@item_only? && @card.msg.role == :approval} msg={@card.msg} />
           <Cards.secret_card
-            :if={!@finished? && !@alert? && @card.msg.role == :secret_request}
+            :if={!@item_only? && @card.msg.role == :secret_request}
             msg={@card.msg}
           />
           <.finished_card :if={@finished? && @item} item={@item} pending?={@pending?} />
           <.alert_card :if={@alert? && @item} item={@item} pending?={@pending?} />
+          <.limit_card :if={@limit? && @item} item={@item} pending?={@pending?} />
 
           <%!-- THE COLLAPSED DECISION. Nothing at rest. Placed AFTER the card and
         sticky under the bar, it pins exactly when the card has scrolled
@@ -355,9 +359,13 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
               rows="1"
               placeholder={
                 (@finished? && "Tell #{@card.slide.agent_name} what's next…") ||
+                  (@limit? && "Leave #{@card.slide.agent_name} a message — it waits for the limit…") ||
                   "Chat about this decision…"
               }
-              aria-label={(@finished? && "What's next") || "Chat about this decision"}
+              aria-label={
+                (@finished? && "What's next") || (@limit? && "Message the agent") ||
+                  "Chat about this decision"
+              }
               autocomplete="off"
               class="focus-ring text-lead flex-1 bg-transparent border-0 rounded-sm px-1 py-2.5 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none focus:outline-none focus:ring-0"
             ></textarea>
@@ -487,6 +495,52 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
   defp alert_receipt(%{outcome: :recovered}), do: "Recovered — the condition cleared on its own."
   defp alert_receipt(%{status: :dismissed}), do: "Dismissed — it comes back if it gets worse."
   defp alert_receipt(_), do: "Settled."
+
+  # A plan-limit item: the agent stopped at its account's plan limit and no
+  # permitted account could take the work. The ONE action is on the account's
+  # page (sign in / permit another account); waiting is the other, and needs
+  # nothing — the item settles itself when the window resets.
+  defp limit_card(assigns) do
+    assigns = assign(assigns, :account, assigns.item.meta[:account])
+
+    ~H"""
+    <LoopyardWeb.Components.StreamCard.band
+      tone={(@pending? && :needs_you) || :neutral}
+      chrome={:desktop}
+    >
+      <div class="text-meta font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+        {(@pending? && "Plan limit") || "Limit cleared"}
+      </div>
+      <p class="mt-2 text-lead text-zinc-900 dark:text-zinc-50">{@item.label}</p>
+      <div :if={@pending?} class="mt-4 flex flex-col sm:flex-row sm:items-center gap-2">
+        <.link
+          :if={@account}
+          navigate={"/workstations/#{@account}"}
+          class={LoopyardWeb.Components.StreamCard.action_class(variant: :primary)}
+        >
+          Open {@account}
+        </.link>
+        <.link navigate={@item.path} class={LoopyardWeb.Components.StreamCard.action_class()}>
+          Open chat
+        </.link>
+        <button
+          type="button"
+          phx-click="dismiss_item"
+          phx-value-id={@item.id}
+          class={[LoopyardWeb.Components.StreamCard.action_class(), "sm:ml-auto"]}
+        >
+          Dismiss
+        </button>
+      </div>
+      <p :if={!@pending?} class="mt-3 text-lead text-zinc-500 dark:text-zinc-400">
+        {limit_receipt(@item)}
+      </p>
+    </LoopyardWeb.Components.StreamCard.band>
+    """
+  end
+
+  defp limit_receipt(%{status: :dismissed}), do: "Dismissed — it still resumes on its own."
+  defp limit_receipt(%{agent_name: a}), do: "The limit cleared — #{a} carried on."
 
   defp finished_word(%{status: :open}), do: "Finished"
   defp finished_word(%{status: :settled, outcome: :kept_going}), do: "Kept going"

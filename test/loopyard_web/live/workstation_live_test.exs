@@ -57,6 +57,48 @@ defmodule LoopyardWeb.WorkstationLiveTest do
     refute html =~ "Not the default"
   end
 
+  test "the failover list: opt-in, ordered, and the account's live limit shown",
+       %{conn: conn} do
+    [a, b, c] =
+      for tag <- ~w(fa fb fc) do
+        id = "#{tag}-#{System.unique_integer([:positive])}"
+        :ok = Workstation.create(id)
+        on_exit(fn -> File.rm_rf(Workstation.dir(id)) end)
+        id
+      end
+
+    on_exit(&Loopyard.AccountLimits.clear_all/0)
+    Loopyard.AccountLimits.mark(a, :claude, System.system_time(:millisecond) + 60_000)
+
+    {:ok, view, html} = live(conn, "/workstations/#{a}")
+
+    # Off by default: nothing listed, every other account offered.
+    assert Loopyard.Workstation.Failover.fallbacks(a) == []
+    refute html =~ ~s(id="ws-fallbacks")
+    assert html =~ "At its plan limit now: Claude Code until"
+
+    view |> form("#ws-add-fallback", %{"account" => b}) |> render_submit()
+    view |> form("#ws-add-fallback", %{"account" => c}) |> render_submit()
+    assert Loopyard.Workstation.Failover.fallbacks(a) == [b, c]
+
+    html =
+      view
+      |> element(~s(button[phx-click=raise_fallback][phx-value-account="#{c}"]))
+      |> render_click()
+
+    assert Loopyard.Workstation.Failover.fallbacks(a) == [c, b]
+    assert html =~ ~s(id="ws-fallbacks")
+
+    view
+    |> element(~s(button[phx-click=remove_fallback][phx-value-account="#{c}"]))
+    |> render_click()
+
+    assert Loopyard.Workstation.Failover.fallbacks(a) == [b]
+
+    # The account's own name is never an option for itself.
+    refute has_element?(view, ~s(#ws-add-fallback option[value="#{a}"]))
+  end
+
   test "an unknown identity redirects to the current one with a flash", %{conn: conn, id: id} do
     assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
              live(conn, "/workstations/no-such-identity")

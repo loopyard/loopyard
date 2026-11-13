@@ -31,7 +31,9 @@ defmodule LoopyardWeb.AgentLiveTest do
   test "mounts one agent's chat under its name, with the mode nav", %{conn: conn, id: id} do
     {:ok, view, html} = live(conn, "/agents/#{id}")
     assert html =~ "Ops"
-    assert has_element?(view, "a[href='/notifications'][aria-label='Notifications']")
+    # The label carries the waiting count when the inbox isn't empty ("Notifications
+    # — 2 waiting"), and other tests' items share the store.
+    assert has_element?(view, "a[href='/notifications'][aria-label^='Notifications']")
     refute html =~ "In motion", "the rail is gone"
     assert Process.alive?(view.pid)
   end

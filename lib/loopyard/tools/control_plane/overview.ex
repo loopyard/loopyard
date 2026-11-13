@@ -12,7 +12,8 @@ defmodule Loopyard.Tools.ControlPlane.Overview do
       "The whole Loopyard picture in ONE compact read: every project, its " <>
         "workspaces, each workspace's agents (id, live status, harness · model, " <>
         "and the ACCOUNT each one bills), its open ports, and which accounts can " <>
-        "run which harness. " <>
+        "run which harness, which are at a plan limit (until when) and where " <>
+        "each one's agents may fail over. " <>
         "Read-only, no approval — your first call to answer 'what projects/" <>
         "workspaces exist, what's running, what ports are open'. For one " <>
         "workspace's details or chat, use peek_workspace.",
@@ -101,11 +102,36 @@ defmodule Loopyard.Tools.ControlPlane.Overview do
                 _ -> Enum.map_join(hs, ", ", &Catalog.label/1)
               end
 
-            "#{id}#{if id == default, do: " (default)"} — #{can}"
+            "#{id}#{if id == default, do: " (default)"} — #{can}#{limits(id)}#{fallbacks(id)}"
           end)
     end
   rescue
     _ -> ""
+  end
+
+  # The account's plan limits — "Claude limited until 14:05" — so a stuck agent
+  # reads as its account's, not its own.
+  defp limits(id) do
+    case Loopyard.AccountLimits.for_identity(id) do
+      [] ->
+        ""
+
+      rows ->
+        " · " <>
+          Enum.map_join(rows, ", ", fn r ->
+            "#{Catalog.label(r.harness)} limited until " <>
+              (Loopyard.AccountLimits.clock(r.until_ms) || "?") <>
+              if(r.known, do: "", else: " (reset unknown)")
+          end)
+    end
+  end
+
+  # Where its agents may continue when it's spent (opt-in, set by a human).
+  defp fallbacks(id) do
+    case Loopyard.Workstation.Failover.fallbacks(id) do
+      [] -> ""
+      list -> " · falls back to " <> Enum.join(list, ", ")
+    end
   end
 
   # Ports come straight from the registry (WorkspaceTree only fills port URLs when
