@@ -110,6 +110,27 @@ defmodule Loopyard.ChatAgent.TurnRetryTest do
     end
   end
 
+  describe "a full Docker disk (#117)" do
+    test "is NOT retried even with retries left, and the error names the disk",
+         %{id: id, pid: pid} do
+      Application.delete_env(:loopyard, :agent_turn_retries)
+      ref = in_turn(pid)
+
+      # What the ACP Translator makes of a connection closed `{:disk_full, _}`.
+      subtype = inspect({:disk_full, "OCI runtime exec failed: no space left on device"})
+      fail_turn(pid, id, ref, subtype)
+
+      state = :sys.get_state(pid)
+      assert state.status == :idle
+      assert state.turn_retry_count == 0
+
+      last = hd(state.messages)
+      assert last.role == :error
+      assert last.content =~ "disk is full"
+      refute last.content =~ "Anthropic"
+    end
+  end
+
   describe "opted out (0): preserve + hand back the text" do
     setup do
       Application.put_env(:loopyard, :agent_turn_retries, 0)

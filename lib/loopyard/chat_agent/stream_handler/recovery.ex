@@ -113,12 +113,7 @@ defmodule Loopyard.ChatAgent.StreamHandler.Recovery do
 
           fail_msg = %{
             role: :error,
-            content:
-              "CLI session crashed and failed to restart: #{inspect(reason)}. " <>
-                "WHY: the CLI died mid-stream, and the second attempt to spawn a new one failed. " <>
-                "CONSEQUENCE: this agent can't respond until the CLI is restored. " <>
-                "ACTION: click Restart in the sidebar. If that also fails, the agent harness " <>
-                "may be misconfigured — verify the harness is installed in the container and re-authenticate.",
+            content: restart_failed_copy(reason),
             timestamp: DateTime.utc_now()
           }
 
@@ -135,6 +130,17 @@ defmodule Loopyard.ChatAgent.StreamHandler.Recovery do
           StreamHandler.drain_pending_sends(state)
       end
     end
+  end
+
+  # A full Docker disk is not a misconfigured harness: say what to free.
+  defp restart_failed_copy({:disk_full, _}), do: Loopyard.Docker.Disk.agent_copy()
+
+  defp restart_failed_copy(reason) do
+    "CLI session crashed and failed to restart: #{inspect(reason)}. " <>
+      "WHY: the CLI died mid-stream, and the second attempt to spawn a new one failed. " <>
+      "CONSEQUENCE: this agent can't respond until the CLI is restored. " <>
+      "ACTION: click Restart in the sidebar. If that also fails, the agent harness " <>
+      "may be misconfigured — verify the harness is installed in the container and re-authenticate."
   end
 
   # Unrecoverable stream error: drop the turn, surface the

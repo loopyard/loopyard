@@ -23,7 +23,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
   alias Loopyard.Agent.Event
   alias Loopyard.ChatAgent.{MessageLog, Persistence}
-  alias Loopyard.ChatAgent.StreamHandler.{LoopGuard, RateLimit, Recovery}
+  alias Loopyard.ChatAgent.StreamHandler.{FailedTurn, LoopGuard, RateLimit, Recovery}
   alias Loopyard.Events
 
   # Rate-limit / auth-status / context-window helpers live in the RateLimit
@@ -321,7 +321,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   def on_stream_done(state) do
     cond do
       state.pending_turn_error && state.turn_retry_count < max_turn_retries() &&
-          is_binary(state.current_turn_prompt) ->
+        is_binary(state.current_turn_prompt) && !FailedTurn.disk_full?(state.pending_turn_error) ->
         schedule_turn_retry(state)
 
       state.pending_turn_error ->
@@ -388,15 +388,10 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     # WHY / CONSEQUENCE / ACTION — never a bare "turn failed" (that's a level
     # of indirection: the system already retried; say what actually happened
     # and what the human's one remaining move is).
-    attempts = max_turn_retries()
-
-    retried = if attempts > 0, do: " after #{attempts} automatic retries", else: ""
-
+    # A full Docker disk is not the API failing, and retrying can't fix it.
     err = %{
       role: :error,
-      content:
-        "This didn't go through — Anthropic's API failed#{retried} " <>
-          "(#{inspect(state.pending_turn_error)}). Send it again.",
+      content: FailedTurn.copy(state.pending_turn_error, max_turn_retries()),
       timestamp: DateTime.utc_now()
     }
 
