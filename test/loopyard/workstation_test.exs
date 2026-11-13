@@ -66,6 +66,29 @@ defmodule Loopyard.WorkstationTest do
     end
   end
 
+  describe "the default, once resolved, does not move by itself" do
+    test "creating an account that sorts first leaves the default where it was" do
+      default = Workstation.current()
+      # Sorts before any user name a bootstrap would pick.
+      :ok = Workstation.create("0-second")
+
+      assert Workstation.current() == default
+      :ok = Workstation.set_current("0-second")
+      assert Workstation.current() == "0-second"
+    end
+
+    test "a recorded default that was removed is replaced once, then stays" do
+      :ok = Workstation.create("bbb")
+      :ok = Workstation.create("aaa")
+      :ok = Workstation.set_current("bbb")
+      File.rm_rf!(Workstation.dir("bbb"))
+
+      assert Workstation.current() == "aaa"
+      :ok = Workstation.create("0-later")
+      assert Workstation.current() == "aaa"
+    end
+  end
+
   describe "default_id/0" do
     test "is always a valid id and never the generic 'default'-with-spaces junk" do
       id = Workstation.default_id()

@@ -328,7 +328,12 @@ defmodule Loopyard.ChatAgent.PlanLimitTest do
 
       {:ok, text} = Loopyard.Tools.ControlPlane.Overview.execute(%{}, %{})
 
-      [line] = text |> String.split(["\n", "; "]) |> Enum.filter(&String.starts_with?(&1, a))
+      # The first account's entry follows the "Accounts: " label on its line.
+      [line] =
+        text
+        |> String.split(["\n", "; ", "Accounts: "])
+        |> Enum.filter(&String.starts_with?(&1, a))
+
       assert line =~ "Claude Code limited until"
       assert line =~ "falls back to #{b}"
     end

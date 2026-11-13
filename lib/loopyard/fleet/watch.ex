@@ -145,7 +145,10 @@ defmodule Loopyard.Fleet.Watch do
     # watching (then it is settled here; `raised` starts empty, so nothing
     # else would ever settle it).
     {standing, orphaned} = stored(only, current)
-    Enum.each(orphaned, fn {aid, c} -> Notifications.settle(Conditions.item_id(aid, c), :cleared) end)
+
+    Enum.each(orphaned, fn {aid, c} ->
+      Notifications.settle(Conditions.item_id(aid, c), :cleared)
+    end)
 
     seen0 =
       Enum.reduce(standing, scoped(state.seen, only), fn {aid, c}, acc ->

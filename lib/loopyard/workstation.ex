@@ -111,11 +111,23 @@ defmodule Loopyard.Workstation do
     case File.read(current_path()) do
       {:ok, raw} ->
         id = String.trim(raw)
-        if exists?(id), do: id, else: ensure_bootstrap()
+        if exists?(id), do: id, else: record_default(ensure_bootstrap())
 
       _ ->
-        ensure_bootstrap()
+        record_default(ensure_bootstrap())
     end
+  end
+
+  # No recorded default (first run, or the recorded one was removed): RECORD
+  # the pick. Unrecorded, the answer was re-derived from the directory listing
+  # on every call — in whatever order the filesystem returned it — so creating
+  # a second account could silently become "the default" and move every
+  # workspace that follows it. After this the default moves only by
+  # `set_current/1`.
+  defp record_default(id) do
+    _ = File.mkdir_p(base_dir())
+    _ = File.write(current_path(), id)
+    id
   end
 
   @doc "Switch the identity you operate as."
@@ -264,19 +276,29 @@ defmodule Loopyard.Workstation do
   # --- internals ---
 
   # Ensure at least one identity exists; return the operating-as default.
+  # A pick, not a record: `list/0` calls this too, and must never move the
+  # default. `current/0` records what it returns (`record_default/1`).
   defp ensure_bootstrap do
-    id = default_id()
-
     existing =
-      with {:ok, entries} <- File.ls(base_dir()), do: Enum.filter(entries, &File.dir?(dir(&1)))
+      case File.ls(base_dir()) do
+        {:ok, entries} -> entries |> Enum.filter(&File.dir?(dir(&1))) |> Enum.sort()
+        _ -> []
+      end
 
-    case existing do
-      [first | _] ->
-        first
+    preferred = default_id()
 
-      _ ->
-        create(id)
-        id
+    cond do
+      # The identity a first run creates (the OS user's name) wins over
+      # whatever else is there, so the pick does not depend on spelling.
+      preferred in existing ->
+        preferred
+
+      existing != [] ->
+        hd(existing)
+
+      true ->
+        create(preferred)
+        preferred
     end
   end
 
