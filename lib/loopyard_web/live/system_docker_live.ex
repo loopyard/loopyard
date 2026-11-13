@@ -16,6 +16,7 @@ defmodule LoopyardWeb.SystemDockerLive do
   alias Phoenix.LiveView.AsyncResult
   alias Loopyard.Events
   alias Loopyard.SystemStats
+  alias LoopyardWeb.SystemDockerLive.Reclaim
 
   @behaviour Loopyard.Events.DockerObserver.Subscriber
 
@@ -32,10 +33,16 @@ defmodule LoopyardWeb.SystemDockerLive do
       |> assign(:volumes, observer.volumes)
       |> assign(:docker_connected, Loopyard.Docker.Observer.connected?())
       |> assign(:container_stats, AsyncResult.loading())
+      |> assign(:reclaim, AsyncResult.loading())
+      |> assign(:reclaim_busy, nil)
 
     if connected?(socket) do
       Loopyard.Docker.Observer.subscribe()
-      {:ok, start_async(socket, :container_stats, &SystemStats.docker_container_stats/0)}
+
+      {:ok,
+       socket
+       |> start_async(:container_stats, &SystemStats.docker_container_stats/0)
+       |> start_async(:reclaim, &Reclaim.load/0)}
     else
       {:ok, socket}
     end
@@ -114,6 +121,34 @@ defmodule LoopyardWeb.SystemDockerLive do
     {:noreply, put_flash(socket, :error, "Could not remove #{name}: #{inspect(reason)}")}
   end
 
+  # A removal finished (Reclaim): say what went, then re-measure everything
+  # it changed — the groups, the disk row and the container/volume tables.
+  def handle_async(:reclaim_run, {:ok, {:ok, result}}, socket) do
+    if Process.whereis(Loopyard.Docker.DiskMonitor), do: Loopyard.Docker.DiskMonitor.probe_now()
+    Loopyard.Docker.Observer.poll_now()
+
+    {:noreply,
+     socket
+     |> assign(:reclaim_busy, nil)
+     |> put_flash(:info, Reclaim.result_line(result))
+     |> start_async(:reclaim, &Reclaim.load/0)}
+  end
+
+  def handle_async(:reclaim_run, other, socket) do
+    reason =
+      case other do
+        {:ok, {:error, why}} -> to_string(why)
+        {:exit, why} -> inspect(why, limit: 5)
+        _ -> "unexpected result"
+      end
+
+    {:noreply,
+     socket
+     |> assign(:reclaim_busy, nil)
+     |> put_flash(:error, "Couldn't remove that: #{String.slice(reason, 0, 200)}")
+     |> start_async(:reclaim, &Reclaim.load/0)}
+  end
+
   def handle_async(key, {:ok, value}, socket) do
     {:noreply,
      assign(socket, key, AsyncResult.ok(socket.assigns[key] || AsyncResult.loading(), value))}
@@ -138,6 +173,34 @@ defmodule LoopyardWeb.SystemDockerLive do
      end)}
   end
 
+  def handle_event("reclaim_group", %{"group" => group}, socket),
+    do: reclaim(socket, Reclaim.group_key(group), nil)
+
+  def handle_event("reclaim_one", %{"group" => group, "name" => name}, socket)
+      when is_binary(name),
+      do: reclaim(socket, Reclaim.group_key(group), name)
+
+  def handle_event("reclaim_auto", _params, %{assigns: %{reclaim_busy: nil}} = socket) do
+    {:noreply,
+     socket
+     |> assign(:reclaim_busy, "Loopyard's own leftovers")
+     |> start_async(:reclaim_run, &Reclaim.remove_auto/0)}
+  end
+
+  def handle_event("reclaim_" <> _, _params, socket), do: {:noreply, socket}
+
+  # One removal at a time; the group and the name are re-checked against a
+  # fresh survey inside the task (Reclaim.remove/2), never trusted from here.
+  defp reclaim(%{assigns: %{reclaim_busy: nil}} = socket, group, name)
+       when is_atom(group) and not is_nil(group) do
+    {:noreply,
+     socket
+     |> assign(:reclaim_busy, name || String.replace(Atom.to_string(group), "_", " "))
+     |> start_async(:reclaim_run, fn -> Reclaim.remove(group, name) end)}
+  end
+
+  defp reclaim(socket, _group, _name), do: {:noreply, socket}
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -149,6 +212,7 @@ defmodule LoopyardWeb.SystemDockerLive do
       flash={@flash}
     >
       <div class="space-y-8">
+        <Reclaim.section reclaim={@reclaim} busy={@reclaim_busy} />
         <.containers_section containers={@containers} stats={@container_stats} />
         <.volumes_section volumes={@volumes} />
       </div>

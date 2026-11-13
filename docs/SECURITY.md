@@ -232,6 +232,19 @@ The Loopyard BEAM makes Docker CLI calls of its own (not through agent tools). T
 
 If a new BEAM-side Docker call is added, it should follow the same pattern: workspace-scoped if it targets containers/volumes, and only reachable from operator/system paths (not from MCP tool handlers).
 
+### Docker cleanup is a human's control, never an agent's
+
+`/system/docker` can remove containers, images and volumes (`GC.Review`,
+`SystemDockerLive.Reclaim`). Those are LiveView events for a person at the
+page. No MCP tool reaches them, in-process or over the ACP bridge, so an
+agent cannot free space by deleting another workspace's data. The automatic
+tier (`GC.Auto`) takes only what `GC.select/2` proves is Loopyard's own and
+unused, and never by "this id is not registered": a registry that has not
+finished loading, or a second Loopyard on the same daemon, would make every
+workspace look like a leftover. That judgement is the one a human makes on the
+page, behind a warning that says so. Removal is never forced, with one
+exception: a running container under the TEST resource prefix.
+
 ## Residual risks (accepted)
 
 - **Resource exhaustion.** Memory IS capped — every work container runs under `--memory`/`--memory-swap` (`WorkContainer.memory_limit/0`, §0) with `Harness.MemoryMonitor` reclaiming early — but there is no CPU limit, no cap on concurrent `exec` tasks, and no hard volume size quota (size badges in the sidebar make usage visible but don't bound it). Agent log compaction IS implemented (see `AgentLog.Compactor.maybe_compact/1`). A CPU- or disk-hungry agent can still degrade the host; adding those limits is tracked in `docs/IMPROVEMENTS.md`.

@@ -65,6 +65,8 @@ Loopyard.Supervisor (:one_for_one, max_restarts: 20, max_seconds: 10)
   ├── Notifications.Push (Web Push for every raised inbox item)
   ├── Docker.DiskMonitor (free space in the Docker VM every 5 min → the /system
   │                       "Docker disk" row + ONE inbox item while it's low)
+  ├── GC.Auto (removes Loopyard's own provably-unused Docker leftovers, hourly
+  │            and when the disk monitor reports pressure)
   ├── Operator.Digest (bounded "what finished" ring the operator pulls)
   ├── Harness.MemoryMonitor (restarts a bloated-but-idle harness before the OOM cap)
   ├── LoopyardWeb.Endpoint
@@ -79,7 +81,7 @@ Loopyard.Supervisor (:one_for_one, max_restarts: 20, max_seconds: 10)
 - ServiceManager.terminate does NOT call compose down — containers persist across server reboots.
 - Every fire-and-forget Task runs under TaskSupervisor (never bare `Task.start`).
 - `Harness.MemoryMonitor`, `ChangeCounts`, `Operator.Digest` and the MCP Listener are config-gated (inert or absent in test); `Docker.DiskMonitor` starts but never ticks in test (`:docker_disk_probe_ms` nil).
-- `Docker.DiskMonitor` (issue #117) probes in a Task so `Health` never waits on Docker, and acts only on a LEVEL change (healthy / degraded / down): it upserts or settles the one `:alert` item in `Notifications` — never a line in an agent's chat. The ACP connection reports a "no space left on device" death to it (`Connection.Diagnostics.close_error/2`), which also classifies that death `{:disk_full, _}` so the ChatAgent neither auto-retries the turn into the same full disk nor blames the API (`StreamHandler.FailedTurn`). `mix loopyard.gc` (`Loopyard.GC`, pure selection over `docker system df -v`) reclaims what is provably Loopyard's own and unused.
+- `Docker.DiskMonitor` (issue #117) probes in a Task so `Health` never waits on Docker, and acts only on a LEVEL change (healthy / degraded / down): it upserts or settles the one `:alert` item in `Notifications` — never a line in an agent's chat. The ACP connection reports a "no space left on device" death to it (`Connection.Diagnostics.close_error/2`), which also classifies that death `{:disk_full, _}` so the ChatAgent neither auto-retries the turn into the same full disk nor blames the API (`StreamHandler.FailedTurn`). `Loopyard.GC` (pure selection over `docker system df -v`) names what is provably Loopyard's own and unused; `GC.Auto` removes it without being asked — on a timer and at once on a disk-pressure transition, and only what an earlier look at least 10 minutes before had already seen (the listing has no age for a volume, and "dangling now" is also a test run's volume between `volume create` and its container). `mix loopyard.gc` is the same selection by hand. Everything else that is large is `GC.Review`: groups a human clears from `/system/docker` ("Free up space"), each behind its own warning — other tools' stopped containers, unused images, `loopyard-<id>…` leftovers whose id is not registered here, and other unattached volumes (one at a time). The page re-surveys on every click and removes only what the fresh survey still lists. Cleanup also happens where things are disposed: `Workspace.Destructor` removes a destroyed workspace's built images with its containers and volumes, and a Docker-enabled test run removes the containers and volumes it created.
 
 ## Container model (Docker Compose)
 

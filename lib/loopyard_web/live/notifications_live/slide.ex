@@ -445,7 +445,7 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
   attr :pending?, :boolean, required: true
 
   # A SYSTEM alert: the cause (the label carries the free figure), the one
-  # action in words, and two moves — Open /system (filled: it's the next
+  # action in words, and two moves — Free up space (filled: it's the next
   # step) and Dismiss (furthest away). It settles ON ITS OWN when the
   # condition clears, so a settled one reads as a receipt.
   defp alert_card(assigns) do
@@ -470,7 +470,7 @@ defmodule LoopyardWeb.NotificationsLive.Slide do
           navigate={@item.path}
           class={LoopyardWeb.Components.StreamCard.action_class(variant: :primary)}
         >
-          Open System
+          Free up space
         </.link>
         <button
           type="button"

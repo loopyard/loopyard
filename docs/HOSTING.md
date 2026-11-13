@@ -132,20 +132,37 @@ and every agent turn dies. Loopyard watches it:
 - An agent whose harness couldn't launch says the disk is full instead of
   retrying into it.
 
-To free space:
+Loopyard frees what it safely can **by itself**: every hour, and at once when
+the disk row turns degraded or down, it removes its own provably-unused
+leftovers (dangling test-suite volumes, finished sign-in / copy containers,
+superseded `loopyard-workspace-base` tags). A leftover goes only after an
+earlier look, ten minutes before, already saw it. It also cleans up where
+things are disposed: destroying a workspace removes its containers, volumes
+and the images its dev cluster built.
+
+The rest is yours to decide, and it is one tap from a phone. The inbox alert's
+**Free up space** opens `/system/docker`, which lists, each with its warning:
+
+- **Stopped containers** that are not Loopyard's. Their volumes are kept;
+  removing them also releases the images only they were holding.
+- **Unused images.** Pulled or rebuilt when next needed.
+- **Leftovers this server doesn't recognise**: `loopyard-<id>…` containers,
+  volumes and images whose id is not registered here. Usually a deleted
+  workspace or an old test run. If another Loopyard shares this Docker they may
+  be ITS workspaces, which is why this is never automatic. A running container
+  under the live prefix, and anything a running container mounts, is never
+  offered.
+- **Other unattached volumes**, one at a time. This is other tools' data.
+
+Nothing is forced (Docker refuses anything in use, and the page says what it
+kept), and each click is re-checked against a fresh look at the daemon.
+
+From a terminal, the automatic tier is also a command:
 
 ```bash
 mix loopyard.gc            # dry run: what is provably Loopyard's own and unused, with sizes
 mix loopyard.gc --apply    # remove it (never forced; Docker refuses anything in use)
 ```
 
-`gc` only ever takes dangling test-suite volumes (`loopyard-test-*-code` and
-friends), stopped sign-in / copy throwaway containers, and superseded
-`loopyard-workspace-base` tags. It never touches a workspace's code volume, a
-workstation home, a compose project's volumes, or anything not named by
-Loopyard. Its output ends with the largest OTHER volumes and images — usually
-the real culprits (a compose project's `dind-data`, an old dev image, another
-tool's cache). Those are yours to decide about: `docker system df -v` shows
-them all, and `docker volume rm` / `docker image rm` removes what you choose.
 If Colima itself is out of room, `colima stop && colima start --disk <GB>`
 grows the VM disk (it cannot shrink).

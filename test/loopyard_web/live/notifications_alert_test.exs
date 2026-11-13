@@ -1,7 +1,7 @@
 defmodule LoopyardWeb.NotificationsAlertTest do
   @moduledoc """
   A SYSTEM alert (the Docker disk filling up, #117) is one slide on the deck:
-  the cause, the one action, Open System / Dismiss — no composer, since there
+  the cause, the one action, Free up space / Dismiss — no composer, since there
   is no agent to talk to — and it counts in the Notifications badge.
   """
   use LoopyardWeb.ConnCase, async: false
@@ -43,15 +43,15 @@ defmodule LoopyardWeb.NotificationsAlertTest do
     refute :alert in Item.decision_kinds(), "the decision reconcile sweep must never touch it"
   end
 
-  test "the deck shows the alert with its action, Open System and Dismiss, and no composer",
+  test "the deck shows the alert with its action, Free up space and Dismiss, and no composer",
        %{conn: conn} do
     raise_alert(:down, "165 MB free of 96 GB")
 
     {:ok, view, html} = live(conn, "/notifications/loopyard/docker-disk")
     assert html =~ "Agents can&#39;t run" or html =~ "Agents can't run"
     assert html =~ "165 MB free of 96 GB"
-    assert html =~ "mix loopyard.gc"
-    assert has_element?(view, ~s(a[href="/system"]), "Open System")
+    assert html =~ "removes its own leftovers automatically"
+    assert has_element?(view, ~s(a[href="/system/docker"]), "Free up space")
     assert has_element?(view, "button[phx-click=dismiss_item][phx-value-id='docker-disk']")
     refute has_element?(view, "#chat-form-loopyard-docker-disk-all")
 
