@@ -57,6 +57,13 @@ defmodule Loopyard.ChatAgent.StreamIntegrityTest do
       end
 
       Process.sleep(20)
+
+      # A completed turn raises a finished item in the SHARED inbox store; left
+      # open, it shows up on another module's deck ("Keep going").
+      Loopyard.Notifications.sync()
+
+      for %{agent_id: ^id, id: nid} <- Loopyard.Notifications.all(),
+          do: :ets.delete(:notifications, nid)
     end)
 
     %{id: id}

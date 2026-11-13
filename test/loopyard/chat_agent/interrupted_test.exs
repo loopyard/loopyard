@@ -52,7 +52,10 @@ defmodule Loopyard.ChatAgent.InterruptedTest do
         :exit, _ -> :ok
       end
 
-      Notifications.settle(Conditions.item_id(id, :interrupted), :test_cleanup)
+      # The store is shared: a re-driven turn that finishes raises a finished
+      # item too, and a neighbour's deck would render it.
+      Notifications.sync()
+      for %{agent_id: ^id, id: nid} <- Notifications.all(), do: :ets.delete(:notifications, nid)
     end)
 
     ChatAgent.stop_agent(id)
