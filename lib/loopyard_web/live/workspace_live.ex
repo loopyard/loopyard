@@ -1077,6 +1077,8 @@ defmodule LoopyardWeb.WorkspaceLive do
   def handle_event("set_agent_workstation", params, socket),
     do: AgentPicker.set_workstation(params, socket)
 
+  def handle_event("set_subagents", params, socket), do: AgentPicker.set_subagents(params, socket)
+
   @impl true
   def handle_event("set_agent_mode", params, socket), do: AgentPicker.set_mode(params, socket)
 

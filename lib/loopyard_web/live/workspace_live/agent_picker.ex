@@ -12,6 +12,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentPicker do
       The agent re-stamps itself and runs a `:credentials` restart
       (conversation carried over, native session dropped).
 
+    * **sub-agents** — which model the harness's OWN sub-agents run on
+      (`ChatAgent.SubagentControl`); "" is "Same as the agent". Relaunches the
+      harness when idle, conversation resumed.
+
   Plus the composer's **Discuss / Build** switch (`set_mode/2`) — the same
   shape: server state on the agent (`ChatAgent.ModeControl`), persisted.
 
@@ -60,6 +64,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentPicker do
 
     {:noreply, socket}
   end
+
+  @doc ~S|`set_subagents` event: `%{"subagent_model" => model or "", "agent-id" => id}`.|
+  def set_subagents(%{"subagent_model" => model} = params, socket) when is_binary(model) do
+    agent_id = params["agent-id"] || socket.assigns.selected_id
+    if is_binary(agent_id), do: ChatAgent.set_subagent_model(agent_id, model)
+    {:noreply, socket}
+  end
+
+  def set_subagents(_params, socket), do: {:noreply, socket}
 
   @doc ~S(`set_agent_mode` event: `%{"mode" => "discuss" or "build", "id" => id}`.)
   def set_mode(%{"mode" => mode} = params, socket) do

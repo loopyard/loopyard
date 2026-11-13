@@ -424,6 +424,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       |> assign(:total_tokens, total_tokens)
       |> assign(:estimating?, est > 0)
       |> assign(:account_options, account_options(assigns.agent, assigns[:accounts] || []))
+      # Compile-time Catalog data, the same list the Agent picker offers — no I/O.
+      |> assign(:subagent_options, Catalog.subagent_model_options(assigns.agent[:harness]))
 
     ~H"""
     <.section label="Usage">
@@ -483,6 +485,33 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
             <%!-- The way IN to a second account lives where you pick one:
             it opens the workstations page (create an identity, sign it in). --%>
             <option value={AgentPicker.add_account_value()}>Add an account…</option>
+          </select>
+        </form>
+      </div>
+      <%!-- What the harness's OWN sub-agents (Task/Agent delegations) run on —
+    a capable main model directing cheaper workers. "Same as the agent" sets
+    nothing. Only for a harness that takes the setting (Catalog); a change
+    relaunches the harness when idle and resumes the conversation. Phone: the
+    select is the 44px tap target; the row grows to hold it. --%>
+      <div
+        :if={@subagent_options != []}
+        class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-5 text-body"
+      >
+        <span class="text-zinc-500 dark:text-zinc-400 flex-none">Sub-agents</span>
+        <form phx-change="set_subagents" class="flex-none">
+          <input type="hidden" name="agent-id" value={@agent.id} />
+          <select
+            name="subagent_model"
+            aria-label="Model the agent's sub-agents run on"
+            class="focus-ring rounded-sm border-0 bg-transparent py-0 pl-1 pr-6 min-h-11 md:min-h-5 text-body text-right font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400"
+          >
+            <option
+              :for={{value, label} <- @subagent_options}
+              value={value}
+              selected={value == (@agent[:subagent_model] || "")}
+            >
+              {label}
+            </option>
           </select>
         </form>
       </div>
