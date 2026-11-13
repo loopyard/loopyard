@@ -80,6 +80,11 @@ defmodule LoopyardWeb.DashboardLive do
         LoopyardWeb.AgentsLive.Row.working_count(&1.assigns.agent_rows)
       )
     )
+    # The same line the Agents root leads with, so the card and the page it
+    # opens never disagree about how the fleet is.
+    |> then(
+      &assign(&1, :fleet_line, LoopyardWeb.AgentsLive.Row.fleet_line(&1.assigns.agent_rows))
+    )
     |> assign(:operator_count, safe(fn -> length(Loopyard.Workstation.list()) end, 1))
     |> load_attention_async()
     |> assign(:inference_ready?, safe(&inference_ready?/0, true))
@@ -426,7 +431,7 @@ defmodule LoopyardWeb.DashboardLive do
               <span class="text-violet-600 dark:text-violet-400"><Brand.mark class="w-5 h-5" /></span>
             </:icon>
             <.gauge navigate="/agents" tone={(@agents_working > 0 && :working) || :calm}>
-              {length(@agent_rows)} {plural(length(@agent_rows), "agent")} · {@agents_working} working
+              {@fleet_line}
               <:detail>Running the shop as {@workstation}</:detail>
             </.gauge>
             <div class="relative z-10 mt-4 space-y-1">
