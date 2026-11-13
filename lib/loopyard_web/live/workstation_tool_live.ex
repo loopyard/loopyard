@@ -34,7 +34,13 @@ defmodule LoopyardWeb.WorkstationToolLive do
   @impl Loopyard.Events.Workstation.Subscriber
   def on_workstation_sign_in_changed(%SignInChanged{tool: tool} = e, socket) do
     if tool == socket.assigns.ig.id do
-      {:noreply, assign(socket, :sign_in, %{phase: e.phase, url: e.url, error: e.error})}
+      {:noreply,
+       assign(socket, :sign_in, %{
+         phase: e.phase,
+         url: e.url,
+         error: e.error,
+         user_code: e.user_code
+       })}
     else
       {:noreply, socket}
     end
@@ -218,6 +224,47 @@ defmodule LoopyardWeb.WorkstationToolLive do
   defp sign_in_label(ig, :connected, _phase), do: "Sign in to a different #{ig.label} account"
   defp sign_in_label(ig, _status, _phase), do: "Sign in to #{ig.label}"
 
+  # The section's one-line promise follows the flow's SHAPE (never the vendor):
+  # a device flow has no code to paste back.
+  defp sign_in_hint(%{label: label, sign_in: %{flow: :device}}),
+    do:
+      "Open #{label}'s sign-in page, enter the code shown here, approve — done. Works from any device, no terminal."
+
+  defp sign_in_hint(%{label: label}),
+    do:
+      "Approve in #{label}'s own sign-in page, paste the code it gives you, done. Works from any device — no terminal."
+
+  # Step 1 of either flow: the vendor's page, and which account it signs in.
+  attr :label, :string, required: true
+  attr :url, :string, required: true
+
+  defp sign_in_open_step(assigns) do
+    ~H"""
+    <div class="space-y-2">
+      <h3 class="text-meta font-medium text-zinc-700 dark:text-zinc-200">
+        1. Approve in {@label}
+      </h3>
+      <.button variant={:primary} href={@url}>Open {@label} sign-in ↗</.button>
+      <p class="text-meta text-zinc-500 dark:text-zinc-400 leading-relaxed">
+        It signs in whichever {@label} account that browser is using. Adding a second
+        account? Switch accounts there before you approve.
+      </p>
+    </div>
+    """
+  end
+
+  defp sign_in_cancel(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="sign_in_cancel"
+      class="focus-ring text-meta text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+    >
+      Cancel
+    </button>
+    """
+  end
+
   # Fill doc placeholders: $LOOPYARD → `__ORIGIN__` (swapped for the real browser
   # origin client-side by the OriginText hook), $WS → the workstation.
   defp fill(md, ws) do
@@ -254,7 +301,7 @@ defmodule LoopyardWeb.WorkstationToolLive do
         <.section
           :if={@ig[:sign_in]}
           title={"Sign in with #{@ig.label}"}
-          hint={"Approve in #{@ig.label}'s own sign-in page, paste the code it gives you, done. Works from any device — no terminal."}
+          hint={sign_in_hint(@ig)}
         >
           <div :if={@sign_in.phase in [:idle, :done, :failed]} class="space-y-2">
             <p
@@ -283,16 +330,7 @@ defmodule LoopyardWeb.WorkstationToolLive do
           </p>
 
           <div :if={@sign_in.phase == :awaiting_code} class="space-y-6">
-            <div class="space-y-2">
-              <h3 class="text-meta font-medium text-zinc-700 dark:text-zinc-200">
-                1. Approve in {@ig.label}
-              </h3>
-              <.button variant={:primary} href={@sign_in.url}>Open {@ig.label} sign-in ↗</.button>
-              <p class="text-meta text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                It signs in whichever {@ig.label} account that browser is using. Adding a second
-                account? Switch accounts there before you approve.
-              </p>
-            </div>
+            <.sign_in_open_step label={@ig.label} url={@sign_in.url} />
             <form id="sign-in-code" phx-submit="sign_in_code" class="space-y-2">
               <h3 class="text-meta font-medium text-zinc-700 dark:text-zinc-200">
                 2. Paste the code it shows you
@@ -311,13 +349,24 @@ defmodule LoopyardWeb.WorkstationToolLive do
                 <.button variant={:primary} type="submit" class="flex-none">Finish</.button>
               </div>
             </form>
-            <button
-              type="button"
-              phx-click="sign_in_cancel"
-              class="focus-ring text-meta text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
-            >
-              Cancel
-            </button>
+            <.sign_in_cancel />
+          </div>
+
+          <%!-- Device flow: no paste-back. The one-time code is meant to be
+          read off this page (see SignInChanged); the CLI finishes on its own
+          once the human approves, and the page moves on by itself. --%>
+          <div :if={@sign_in.phase == :awaiting_approval} class="space-y-6">
+            <.sign_in_open_step label={@ig.label} url={@sign_in.url} />
+            <div class="space-y-2">
+              <h3 class="text-meta font-medium text-zinc-700 dark:text-zinc-200">
+                2. Enter this code there
+              </h3>
+              <.command_box id="sign-in-user-code" command={@sign_in[:user_code] || ""} />
+              <p class="text-meta text-zinc-500 dark:text-zinc-400 animate-pulse">
+                Waiting for you to approve — this page moves on by itself.
+              </p>
+            </div>
+            <.sign_in_cancel />
           </div>
 
           <p
