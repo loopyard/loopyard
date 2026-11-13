@@ -63,6 +63,10 @@ defmodule Loopyard.Notifications.Push do
   def title(%Item{kind: :secret} = item), do: "Secret needed — " <> where(item)
   def title(%Item{kind: :alert}), do: "Needs attention — Loopyard"
   def title(%Item{kind: :plan_limit} = item), do: "Plan limit — " <> where(item)
+
+  def title(%Item{kind: :stuck, meta: %{condition: c}} = item),
+    do: "#{Loopyard.Fleet.Conditions.word(c) || "Stuck"} — " <> where(item)
+
   def title(%Item{} = item), do: "Decision — " <> where(item)
 
   @doc "The item's slide."

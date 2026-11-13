@@ -9,8 +9,11 @@ defmodule Loopyard.Notifications.Item do
     by an agent; `agent_id` is `"loopyard"`), or
     `:plan_limit` (an agent is at its account's plan limit and no permitted
     account can take the work — `ChatAgent.PlanLimit`; settles when the
-    limit clears). `:finished`, `:alert` and `:plan_limit` are ITEM-ONLY: no chat card
-    behind them, the item is the whole record (`item_only?/1`).
+    limit clears), or `:stuck` (an agent stopped without asking — interrupted
+    by a restart, signed out, quarantined, a failed turn, its harness offline —
+    `Loopyard.Fleet.Watch`; one per agent + condition, settles when it clears).
+    `:finished`, `:alert`, `:plan_limit` and `:stuck` are ITEM-ONLY: no chat
+    card behind them, the item is the whole record (`item_only?/1`).
   * `status` — `:open` until settled; then `:settled` (acted on — answered,
     approved, submitted, kept going), `:dismissed` (a human waved it away), or
     `:retracted` (an agent withdrew it as moot). `outcome` keeps the detail
@@ -25,7 +28,7 @@ defmodule Loopyard.Notifications.Item do
 
   alias Loopyard.{ProjectRegistry, WorkspaceRegistry}
 
-  @type kind :: :question | :approval | :secret | :finished | :alert | :plan_limit
+  @type kind :: :question | :approval | :secret | :finished | :alert | :plan_limit | :stuck
   @type status :: :open | :settled | :dismissed | :retracted
 
   @type t :: %__MODULE__{
@@ -79,13 +82,30 @@ defmodule Loopyard.Notifications.Item do
   def decision_kinds, do: [:question, :approval, :secret]
 
   @doc """
-  Every kind that waits on a human: the decisions, system alerts, and an agent
-  stuck at its plan limit with nowhere to go (the badge).
+  Every kind that waits on a human: the decisions, system alerts, an agent
+  stuck at its plan limit with nowhere to go, and one stopped without asking
+  (the badge).
   """
-  def needs_human_kinds, do: decision_kinds() ++ [:alert, :plan_limit]
+  def needs_human_kinds, do: decision_kinds() ++ [:alert, :plan_limit, :stuck]
 
   @doc "Kinds with no chat card behind them: the item is the whole record."
-  defguard item_only?(kind) when kind in [:finished, :alert, :plan_limit]
+  defguard item_only?(kind) when kind in [:finished, :alert, :plan_limit, :stuck]
+
+  @doc """
+  The item for an agent that stopped without asking (`Loopyard.Fleet.Watch`).
+  One per agent + condition (`Fleet.Conditions.item_id/2`); its slide marker is
+  the msg_id, so the permalink names the condition. `label` is the decisive
+  sentence; `meta` carries the condition, the one action and the account.
+  """
+  @spec stuck(String.t(), atom(), String.t(), map()) :: t()
+  def stuck(agent_id, condition, label, meta) when is_binary(agent_id) do
+    %{
+      plan_limit(agent_id, label, Map.put(meta, :condition, condition))
+      | id: Loopyard.Fleet.Conditions.item_id(agent_id, condition),
+        kind: :stuck,
+        msg_id: Loopyard.Fleet.Conditions.msg_id(condition)
+    }
+  end
 
   @doc """
   The item for an agent stuck at its plan limit with nowhere permitted to go.
