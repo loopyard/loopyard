@@ -151,7 +151,10 @@ defmodule Loopyard.Harness.ACP do
 
   `launch_opts`: `:brief` (the agent brief, for harnesses that take it via env)
   and `:identity` (the workstation id whose `~/.loopyard/env.<id>` the launch
-  sources after `~/.profile` — per-agent account; never the token itself).
+  sources after `~/.profile` — per-agent account; never the token itself), and
+  `:subagent_model` (the model the harness's own sub-agents run on, delivered
+  however `Catalog.subagent_model_env/2` says; nothing for a harness without
+  the knob).
   """
   # Handshake budget (must stay in sync with @resume_ready_timeout above): the
   # longest a legitimate in-flight adapter can still be handshaking. The orphan
@@ -220,8 +223,12 @@ defmodule Loopyard.Harness.ACP do
     # Harness-specific env (e.g. NO_BROWSER=1 so Codex doesn't offer a browser
     # login no one can complete in a headless container). Exported inside the
     # container, after ~/.profile so it wins over anything sourced there.
+    subagent_env = Catalog.subagent_model_env(spec.id, Keyword.get(launch_opts, :subagent_model))
+
     exports =
-      Enum.map_join(extra_env, "", fn {key, value} -> env_export(key, value) end) <>
+      Enum.map_join(Enum.to_list(extra_env) ++ subagent_env, "", fn {key, value} ->
+        env_export(key, value)
+      end) <>
         brief_export(spec, Keyword.get(launch_opts, :brief))
 
     inner =
@@ -384,7 +391,9 @@ defmodule Loopyard.Harness.ACP do
                   # The account this agent runs under (see identity_source/1).
                   identity: Keyword.get(opts, :workstation_identity),
                   # Whose process tree this is — scopes the orphan sweep.
-                  agent: Keyword.get(opts, :agent_id)
+                  agent: Keyword.get(opts, :agent_id),
+                  # What the harness's own sub-agents run on (nil = its default).
+                  subagent_model: Keyword.get(opts, :subagent_model)
                 )
             )
 

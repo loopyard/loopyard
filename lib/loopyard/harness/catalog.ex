@@ -34,6 +34,16 @@ defmodule Loopyard.Harness.Catalog do
   """
   @type brief :: :cwd_file | {:config_env, String.t(), String.t()}
 
+  @typedoc """
+  How the harness takes a per-agent SUB-AGENT model (the model its own
+  `Task`/`Agent` delegations run on), or nil when it has no such knob — then
+  the sidebar offers no Sub-agents control for it.
+
+    * `{:env, var, extra}` — export the model id as env `var` at launch
+      (`Harness.ACP.docker_exec_cmd/3`), plus the fixed `extra` env alongside.
+  """
+  @type subagent_model :: {:env, String.t(), %{String.t() => String.t()}} | nil
+
   @type t :: %{
           id: id(),
           label: String.t(),
@@ -43,7 +53,8 @@ defmodule Loopyard.Harness.Catalog do
           env: %{String.t() => String.t()},
           brief: brief(),
           config: map(),
-          models: [{String.t(), String.t()}]
+          models: [{String.t(), String.t()}],
+          subagent_model: subagent_model()
         }
 
   # Offered in the Claude picker, as full ids rather than the adapter's
@@ -90,7 +101,17 @@ defmodule Loopyard.Harness.Catalog do
       # the brief there.
       brief: :cwd_file,
       config: %{},
-      models: @claude_models
+      models: @claude_models,
+      # Claude Code's own knob, read by the bundled CLI (2.1.257 in adapter
+      # 0.76.0; see docs/ARCHITECTURE.md "Sub-agents inside the harness"):
+      # CLAUDE_CODE_SUBAGENT_MODEL is the DEFAULT sub-agent model, and an agent
+      # definition's `model:` or the parent's per-call `model` beat it. FORCE
+      # makes it win over both (and drops `model` from the Agent tool's schema)
+      # — the control promises "sub-agents run on X", so it has to be the rule,
+      # not a hint. The adapter hands the CLI its own process env, so a launch
+      # export reaches it; nothing is written into the user's repository.
+      subagent_model:
+        {:env, "CLAUDE_CODE_SUBAGENT_MODEL", %{"CLAUDE_CODE_SUBAGENT_MODEL_FORCE" => "1"}}
     },
     %{
       id: :codex,
@@ -122,7 +143,11 @@ defmodule Loopyard.Harness.Catalog do
       # the agent would fail to start on a model the picker offered. Selecting
       # Codex runs the adapter's own current default; the live model list from
       # the session is the right long-term source (see plans/multi-agent-harnesses.md).
-      models: []
+      models: [],
+      # codex 0.148 has a `default_subagent_model` setting for its spawn_agent
+      # sub-agents, but with no pinned Codex model vocabulary (above) there is
+      # nothing truthful to offer, so no control. Revisit with the live list.
+      subagent_model: nil
     }
   ]
 
@@ -205,6 +230,56 @@ defmodule Loopyard.Harness.Catalog do
 
     Enum.map(harness.models, fn {model, label} -> {"#{key}:#{model}", label} end) ++
       [{"#{key}:default", "Adapter default"}]
+  end
+
+  @doc """
+  Whether a harness takes a per-agent sub-agent model AND we have models to
+  offer for it. A false here means the sidebar shows no Sub-agents control.
+  """
+  @spec subagent_model?(id() | String.t() | nil) :: boolean()
+  def subagent_model?(id) do
+    harness = fetch(id)
+    harness.subagent_model != nil and harness.models != []
+  end
+
+  @doc """
+  The Sub-agents control's `{value, label}` options: "Same as the agent" (the
+  empty value — nothing set, the harness's own behaviour) first, then the
+  harness's model list, the same one the model picker offers. Empty when the
+  harness has no such knob (`subagent_model?/1`).
+  """
+  @spec subagent_model_options(id() | String.t() | nil) :: [{String.t(), String.t()}]
+  def subagent_model_options(id) do
+    if subagent_model?(id),
+      do: [{"", "Same as the agent"} | fetch(id).models],
+      else: []
+  end
+
+  @doc "Whether `model` is one this harness's Sub-agents control offers."
+  @spec subagent_model_valid?(id() | String.t() | nil, String.t()) :: boolean()
+  def subagent_model_valid?(id, model) when is_binary(model),
+    do: subagent_model?(id) and List.keymember?(fetch(id).models, model, 0)
+
+  def subagent_model_valid?(_id, _model), do: false
+
+  @doc """
+  The launch env that delivers `model` as the harness's sub-agent model:
+  `[{var, value}]`, or `[]` for nil / a harness with no knob / a model the
+  harness doesn't list (never hand an adapter an id it can't run).
+  """
+  @spec subagent_model_env(id() | String.t() | nil, String.t() | nil) :: [
+          {String.t(), String.t()}
+        ]
+  def subagent_model_env(id, model) do
+    case fetch(id).subagent_model do
+      {:env, var, extra} ->
+        if subagent_model_valid?(id, model),
+          do: [{var, model} | Enum.sort(extra)],
+          else: []
+
+      nil ->
+        []
+    end
   end
 
   @doc """

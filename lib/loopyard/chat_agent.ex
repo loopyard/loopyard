@@ -27,6 +27,7 @@ defmodule Loopyard.ChatAgent do
     Restart,
     SendGuards,
     SessionManager,
+    SubagentControl,
     Summary,
     StreamHandler,
     Thread,
@@ -307,6 +308,7 @@ defmodule Loopyard.ChatAgent do
   @doc "Switch the agent's harness / account (see `ChatAgent.HarnessControl` / `WorkstationControl`)."
   defdelegate set_harness(id, harness_id, model \\ nil), to: Client
   defdelegate set_workstation(id, workstation_id), to: Client
+  defdelegate set_subagent_model(id, model), to: Client
 
   @doc "Start a stopped/crashed agent — starts a new GenServer and resumes from saved state"
   defdelegate start_agent(id), to: Lifecycle
@@ -597,6 +599,8 @@ defmodule Loopyard.ChatAgent do
 
   def handle_cast({:set_workstation, workstation_id}, state),
     do: Loopyard.ChatAgent.WorkstationControl.handle_switch(state, workstation_id)
+
+  def handle_cast({:set_subagent_model, m}, state), do: SubagentControl.handle_cast(m, state)
 
   @impl true
   # Internal recovery paths cast the bare atom — they ARE crash recoveries.

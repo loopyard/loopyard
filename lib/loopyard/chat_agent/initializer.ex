@@ -100,6 +100,7 @@ defmodule Loopyard.ChatAgent.Initializer do
     :harness,
     :container,
     :workstation_identity,
+    :subagent_model,
     :name
   ]
 
@@ -162,6 +163,14 @@ defmodule Loopyard.ChatAgent.Initializer do
       case Map.get(state, :workstation_identity) do
         id when is_binary(id) -> Keyword.put(opts, :workstation_identity, id)
         _ -> opts
+      end
+
+    # And the Sub-agents setting (`SubagentControl`): it lives in session_opts
+    # like the harness, so a rebuild from the boot opts alone would revert it.
+    opts =
+      case Keyword.get(state.session_opts || [], :subagent_model) do
+        model when is_binary(model) -> Keyword.put(opts, :subagent_model, model)
+        _ -> Keyword.delete(opts, :subagent_model)
       end
 
     params = [
@@ -382,6 +391,14 @@ defmodule Loopyard.ChatAgent.Initializer do
         _ -> session_opts
       end
 
+    # The model the harness's OWN sub-agents run on (nil = the harness default);
+    # Harness.ACP delivers it at launch per Catalog.subagent_model_env/2.
+    session_opts =
+      case Keyword.get(opts, :subagent_model) do
+        model when is_binary(model) -> Keyword.put(session_opts, :subagent_model, model)
+        _ -> session_opts
+      end
+
     {session_opts, backend, system_prompt}
   end
 
@@ -523,6 +540,7 @@ defmodule Loopyard.ChatAgent.Initializer do
       |> put_new_binary(:container, saved[:container])
       |> put_new_binary(:workstation_identity, saved[:workstation_identity])
       |> put_new_binary(:name, saved[:name])
+      |> put_new_binary(:subagent_model, saved[:subagent_model])
       # A Discuss agent resumes still discussing: the saved plan-mode id goes
       # out as the session's boot mode (ModeControl / Connection.maybe_set_mode).
       |> put_new_binary(:mode, (saved[:mode] == :discuss && saved[:plan_mode_id]) || nil)
