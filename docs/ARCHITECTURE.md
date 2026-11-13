@@ -520,6 +520,7 @@ All owned by `StateKeeper`. Created once in `init/1`. Regenerated from `StateKee
 | `:saga_recorder` | set | `Saga.Recorder` last 100 saga runs (drives `/system/sagas`) |
 | `:log_buffer` | set | `LogBuffer` rolling log tail surfaced on `/system` |
 | `:window_views` | set | `WindowViews` per-window "where was I" keyed `{transport_pid, workspace_id}` |
+| `:account_limits` | set | `AccountLimits` plan limits per ACCOUNT, keyed `{workstation_identity, harness}` — "limited until", learned from any agent on it |
 
 ## What an agent is — the template
 
@@ -565,6 +566,31 @@ decorated with the live card from the agent's ETS summary. It used to be a
 derived query that copied every agent's whole message list out of ETS on every
 render of the dashboard, the rail and the deck, and inside every push payload.
 
+## Plan limits and account failover
+
+A plan limit belongs to the account (`workstation_identity` + harness), so it
+lives in `Loopyard.AccountLimits` rather than on one agent. The flow, all in
+the agent's own process (`ChatAgent.PlanLimit`):
+
+```
+RateLimitStatus :rejected ──► AccountLimits.mark ──► first refusal of the outage?
+   (Translator / Connection)                          │
+                                 permitted fallback? ─┼─ yes ─► {:plan_limit_failover}
+                                 (Workstation.Failover │          WorkstationControl.switch
+                                  + credentialed       │          + :credentials restart,
+                                  + not limited)       │          interrupted turn re-queued once
+                                                       └─ no ──► stay :rate_limited + ONE
+                                                                 :plan_limit inbox item
+send_message while the account is limited ──► PlanLimit.hold (park, no turn)
+:rate_limit_retry ──► PlanLimit.retry (adopt a sibling's later reset / clear + drain)
+{:plan_limit_return} ──► move home once the origin's window resets, idle only
+```
+
+The ETS rows are not persisted: after a restart the first refused turn
+re-learns the limit (one turn per account) instead of a stale row stranding
+every agent. The fallback lists are on disk, per workstation
+(`workstations/<id>/failover.json`).
+
 ## Agent persistence
 
 Agents and messages are persisted to an append-only ETF log at `~/.loopyard/workspaces/{id}/.loopyard/workspace/agents.log`.
@@ -587,6 +613,7 @@ Key operations emit telemetry spans:
 | `[:loopyard, :compose, :up]` | `Compose.up/2` | `%{workspace_id: id}` |
 | `[:loopyard, :compose, :down]` | `Compose.down/2` | `%{workspace_id: id}` |
 | `[:loopyard, :agent, :message]` | `ChatAgent` | `%{agent_id: id, role: :user}` |
+| `[:loopyard, :agent, :account_failover]` | `ChatAgent.PlanLimit` | `%{agent_id, direction: :failover \| :return, from, to, harness}` — one per account move |
 
 Two handlers attach at boot: `Saga.Recorder` (the `[:loopyard, :saga, *]` events → `:saga_recorder` ETS for `/system/sagas`) and `LoopyardWeb.SlowMountLogger.attach()` (Phoenix LiveView mount/handle_params/handle_event `:stop` events, warns past 500ms). Attach your own handlers for anything else.
 

@@ -358,6 +358,37 @@ a second account to sign it in re-pointed everything). Each workspace's
 (`Onboarding.persist/1` / `restore/0`); a fork inherits its source's. Never
 re-derive a workspace's identity from the default at boot.
 
+**Account failover (#118): a plan limit is the ACCOUNT's, and an agent at it
+may move — only where it was permitted.** `Loopyard.AccountLimits` (ETS
+`:account_limits`, not persisted) holds "limited until" per
+`{workstation_identity, harness}`; every refusal any agent hears is recorded
+there (`ChatAgent.PlanLimit.note_rejection/2`, from `StreamHandler.RateLimit`),
+and a send to an agent whose account is known to be spent is HELD
+(`PlanLimit.hold/2`: parked, `:rate_limited` until the account's reset) instead
+of burning a turn to rediscover it. Failover is OPT-IN per account: a
+workstation's ordered "when this account is at its limit, its agents may
+continue on" list (`Workstation.Failover`, `workstations/<id>/failover.json`,
+the workstation page's "When its plan runs out" section), empty by default.
+On the FIRST refusal of an outage, plain code picks the first listed account
+that holds a credential for the agent's harness and is not itself limited, and
+moves the agent through the SAME `WorkstationControl.switch/2` +
+`restart_session(:credentials)` the Account picker uses; the interrupted turn
+(`Restart.pending_user_prompts/1`) goes back at the head of `pending_sends`
+exactly once, and the chat gets ONE quiet line ("Moved to X — Y is at its plan
+limit until 14:05."). Never onto an account nobody named — whose plan pays
+matters. Ping-pong is impossible on one refusal: a failover runs only while
+the agent is `:rate_limited` (the switch flips it to `:backoff`) and a limited
+account is never a target. Nowhere to go → the agent stays limited as before
+and ONE inbox item (`kind: :plan_limit`, id `"limit:" <> agent_id`, item-only
+like `:finished`) names the one action (open the account to sign in or permit
+another); it settles when the limit clears. After a failover the agent goes
+home once the original window resets — idle with nothing queued only
+(`:account_failover_return`, default on). `overview` shows each account's
+limit and fallbacks; `[:loopyard, :agent, :account_failover]` fires per move.
+The adapter signals relied on are `_claude/rateLimit` in `usage_update`
+(`Translator`) and the "rate limit" error text (`Connection`); a refusal
+without a reset time is assumed to last `:account_limit_unknown_reset_ms`.
+
 **Signing an account in is guided, in-app (`Workstation.SignIn`).** The Claude
 integration page (`/workstations/:id/claude`) leads with **Sign in to Claude**:
 `SignIn.begin/2` runs the vendor's own headless login (`claude setup-token`, the
