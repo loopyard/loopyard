@@ -23,6 +23,7 @@ Read at runtime, overriding defaults baked into code.
 | `ANTHROPIC_API_KEY` / Claude Code auth token | — | Consumed by the Claude Code SDK subprocess. Not read directly by Loopyard. |
 | `LOOPYARD_MCP_PORT` | `4030` | Port for the dedicated ACP MCP bridge listener (`LoopyardWeb.MCP.Listener`) — a separate `0.0.0.0` Bandit endpoint so in-container ACP harnesses can reach Loopyard's control-plane tools via `host.docker.internal`. |
 | `LOOPYARD_MCP_URL` | derived | Override the base URL a container uses to reach the MCP bridge (default `http://host.docker.internal:<LOOPYARD_MCP_PORT>`). Set this when the Docker-host alias isn't `host.docker.internal`. |
+| `LOOPYARD_LOG_FILE` | unset | When set, `mix loopyard.server` logs to this file through OTP's rotating `logger_std_h` (5 files of 10 MB) instead of stdout. `mix loopyard.service install` sets it to `${LOOPYARD_HOME}/logs/server.log` — see [HOSTING.md](HOSTING.md). |
 
 ## Application config (`config/*.exs`)
 
@@ -38,7 +39,7 @@ Read via `Application.get_env(:loopyard, key)`. Overridable at runtime in `confi
 | `:agent_model` | `"sonnet"` | Model new coding agents run on (`Initializer`): an alias (`sonnet`/`opus`/`haiku`/`fable`) or full model id. Dev sets `"claude-fable-5"`. Change + restart to switch the whole instance. |
 | `:agent_reconciler_interval_ms` | `30_000` | How often `Agent.Reconciler` diffs ETS against the registry for drift (`/system/reconcilers`). |
 | `:agent_idle_reap_hours` | `4` | `ChatAgent.IdleReaper` stops the CLI subprocess of an agent idle this long (the conversation resumes on the next send). |
-| `:autostart_workspaces_on_boot` | `true` | Whether `Application` boots every registered workspace's supervisor tree at startup. |
+| `:autostart_workspaces_on_boot` | `true` | Whether `Workspace.Autostart` starts the workspaces in use (restored agents + an existing work container) — at boot and again on every Docker down→up transition. |
 | `:max_consecutive_crashes` | `5` | Unexpected CLI deaths in a row before the restart loop gives up and the user is told (`ChatAgent.Restart`). |
 | `:max_message_bytes` | `1_048_576` (1 MB) | Cap on one chat message's payload (`ChatAgent`). **Compile-time** (`Application.compile_env`) — a change needs a recompile. |
 | `:docker_enabled` | `true` | The daemon gate: `false` makes every Docker shell-out short-circuit (`Docker.daemon_disabled?/0`). Test env derives it from `LOOPYARD_DOCKER_TESTS`. |
@@ -55,9 +56,10 @@ Read via `Application.get_env(:loopyard, key)`. Overridable at runtime in `confi
 | `:container_io` | `Loopyard.ContainerIO` | Injection seam for by-container file I/O (`copy_in/3`, `write_file/3`, `read_file/2` against an absolute path in a running container) — the operator's attachment store. Tests use `Loopyard.Test.FakeContainerIO`. |
 | `:attachment_writer` | `Loopyard.VolumeIO` | Injection seam for chat attachments' write path (`copy_in/3` + `write_file/3` into the code volume). Tests use `Loopyard.Test.FakeAttachmentWriter` (on-disk fake volumes). Limits live as module attributes on `LoopyardWeb.Live.WorkspaceLive.Attachments`: 10 files per message, 25 MB each. |
 | `:container_ready_check` | `nil` | Injection seam for SyncMonitor's "is the destination container up" probe. Tests override; production uses the real Docker check. |
+| `Loopyard.Hosting` / `Hosting.Checkout` / `Hosting.Addresses` `:runner` opt | `&System.cmd/3` | Fake recording `launchctl`/`systemctl`/git/mix calls (see `test/loopyard/hosting_test.exs`); `:port_open?`, `:ifaddrs`, `:find_executable`, `:file_read` likewise. Tests never touch the real service manager. |
 | `:crash_backoff_base_ms` | `2_000` | Base backoff for the CLI auto-restart loop in `ChatAgent`. Exponential from here up to a cap. |
 | `:docker_probe_ms` | `10_000` | DockerDaemon probe interval (`docker version`, 5s guard). `nil` disables probing entirely (test env). |
-| `:docker_probe_fun` / `:docker_heal_fun` / `:docker_restore_fun` | real probe / colima restart / `Onboarding.restore/0` | Injection seams for DockerDaemon tests — same pattern as `:mutagen_runner`. The real heal is `colima stop -f` + `colima start`, userland only; the restore re-registers the canonical projects a daemon-down boot skipped, on every down→up transition. |
+| `:docker_probe_fun` / `:docker_heal_fun` / `:docker_restore_fun` | real probe / colima restart / `Onboarding.restore/0` | Injection seams for DockerDaemon tests — same pattern as `:mutagen_runner`. The real heal is `colima stop -f` + `colima start`, userland only; the restore re-registers the canonical projects a daemon-down boot skipped, then runs `Workspace.Autostart.run/0` (replay unloaded agent logs, start the workspaces in use), on every down→up transition. |
 | `:sign_in_transport` | Docker (`docker run --rm -i` of the base image) | Injection seam for `Workstation.SignIn` tests: a map of `open`/`write`/`close` funs standing in for the vendor CLI's pseudo-terminal. |
 | `:agent_turn_retries` | `3` | Auto-retries for a turn that fails on a transient upstream error (529/overload/execution). The SYSTEM is the retry loop — one quiet chat note on the first attempt, EventLog after; only when all fail does the text return to the composer with a clear error. `0` opts out (tests use this to exercise the give-up path). |
 | `:sync_ready_probe_ms` | `200` (module default) | Delay between SyncMonitor container-readiness probes (5 attempts). Tests set `5`. |
@@ -153,6 +155,10 @@ Lives at `${LOOPYARD_HOME}/workspaces/<workspace_id>/` (the "compose dir") and i
 | `~/.loopyard/env.<identity>` (in a home volume) | **Per-agent account.** One identity's env as a file another identity's home can hold: a harness launch exports `LOOPYARD_IDENTITY=<id>` and sources this file AFTER `~/.profile`, so an agent stamped with `<identity>` runs under that account inside a work container mounting a different identity's `$HOME`. The body `unset`s every harness credential key first (no silent inheritance of the host identity's token), then exports the identity's own. Written by `Env.sync_identity_into/2` from `Harness.Identity` before every ACP session start (and by `sync_home/1` for the identity's own home). Only the NAME crosses the `docker exec` command line. |
 | `${LOOPYARD_HOME}/workstations/<id>/Dockerfile` | The workstation identity's image recipe (`Loopyard.Workstation`) — built as `loopyard-ws-<id>`, home volume `loopyard-ws-<id>-home`. |
 | `${LOOPYARD_HOME}/ssh/ssh_host_*_key` | SSH host keys for the built-in server. |
+| `${LOOPYARD_HOME}/service.json` | What `mix loopyard.service install` installed (checkout, port, bind, PATH, label, platform) — `status`/`restart`/`update`/`logs`/`uninstall` act on this, not on the current directory (`Loopyard.Hosting.installed/1`). |
+| `${LOOPYARD_HOME}/service/run.sh` | The service's launch script (`Loopyard.Hosting.Unit.script/1`): rotates `service.log`, then `exec`s `mix loopyard.server` in the checkout. Rewritten by every install. |
+| `${LOOPYARD_HOME}/logs/` | Service logs: `service.log` (stdout/stderr, moved to `.1` past 1 MB at start), `server.log` (+ rotations, see `LOOPYARD_LOG_FILE`), `launchd.log` (macOS). Kept by uninstall. |
+| `~/Library/LaunchAgents/ai.loopyard.server.plist` / `~/.config/systemd/user/loopyard.service` | The service definition `mix loopyard.service install` writes (`Loopyard.Hosting.Unit`). World-readable — never put a secret in its environment. |
 | `<project>/.loopyard/repo/workspace.json` | Human-facing metadata: project name, system prompt. Can be committed to git. |
 
 ## Tunables worth documenting

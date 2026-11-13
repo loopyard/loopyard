@@ -687,7 +687,7 @@ answer). `LoopyardWeb.Components.FocusedView` is the shared full-screen shell
 - **[docs/SOURCE_ADAPTERS.md](docs/SOURCE_ADAPTERS.md)** — Source adapter rules (Local, GitHub)
 - **[docs/GIT.md](docs/GIT.md)** — Git hygiene: atomic commits, sane messages, branch discipline
 - **[docs/EVALS.md](docs/EVALS.md)** — Eval runner, integrity rules, how to fix failures
-- **[docs/HOSTING.md](docs/HOSTING.md)** — Running Loopyard as an always-on local server: macOS power management, keeping it reachable over LAN
+- **[docs/HOSTING.md](docs/HOSTING.md)** — Running Loopyard as an always-on service (`mix loopyard.service`): install, update, logs, a stable phone address (Tailscale / named tunnel), macOS power management
 - **[docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md)** — Prioritized backlog of scoped improvements. Add entries when you find something worth doing but not shipping today.
 - **[plans/](plans/)** — Scoped design plans for features in flight. Read the relevant plan before implementing; update it when the plan evolves during implementation.
 - **[packages/aural/README.md](packages/aural/README.md)** — The `:aural` audio package (lives in this repo, also consumed by the marketing site via git+sparse). API surface, channel model, telemetry, DOM contract.
@@ -706,6 +706,7 @@ Docs that silently drift are worse than no docs. The commit that ships the behav
 ```bash
 mix loopyard.setup     # installs deps, fixes Docker config, builds assets
 mix loopyard.server    # starts the server with distributed node for remote access
+mix loopyard.service install --checkout ~/loopyard-server  # always-on service from a dedicated checkout (docs/HOSTING.md)
 ```
 
 Launch from any project directory: `open "http://localhost:4000/launch/SECRET?path=$(pwd)"`

@@ -178,12 +178,15 @@ defmodule Loopyard.DockerDaemon do
     _ -> :error
   end
 
-  # Re-register what a daemon-down boot skipped. Injection seam for tests,
+  # Re-register what a daemon-down boot skipped, then resume what was in use:
+  # after a reboot the server is usually up before the runtime, so the boot
+  # pass started nothing (Workspace.Autostart). Injection seam for tests,
   # same pattern as the probe/heal fns.
   defp restore_fun do
     Application.get_env(:loopyard, :docker_restore_fun, fn ->
       try do
         Loopyard.Onboarding.restore()
+        Loopyard.Workspace.Autostart.run()
       rescue
         e ->
           Loopyard.EventLog.warning(

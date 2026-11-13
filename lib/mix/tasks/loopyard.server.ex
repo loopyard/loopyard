@@ -20,6 +20,10 @@ defmodule Mix.Tasks.Loopyard.Server do
 
   @impl Mix.Task
   def run(_args) do
+    # Under `mix loopyard.service` the server logs to a size-capped, rotating
+    # file instead of stdout (which the service manager would grow forever).
+    log_to_file(System.get_env("LOOPYARD_LOG_FILE"))
+
     # Cookie always lives at ~/.loopyard/cookie so loopyard.rpc can find it
     cookie = ensure_cookie()
 
@@ -46,6 +50,38 @@ defmodule Mix.Tasks.Loopyard.Server do
     # Start the Phoenix endpoint
     Application.put_env(:phoenix, :serve_endpoints, true)
     Mix.Tasks.Run.run(["--no-halt"])
+  end
+
+  @log_max_bytes 10_485_760
+  @log_max_files 5
+
+  # Swap the default stdout handler for OTP's own rotating file handler
+  # (`logger_std_h`, @log_max_files files of @log_max_bytes each), keeping the
+  # console formatter so the file reads like the terminal did. Public for tests.
+  @doc false
+  def log_to_file(path) when path in [nil, ""], do: :ok
+
+  def log_to_file(path) do
+    File.mkdir_p!(Path.dirname(path))
+
+    formatter =
+      case :logger.get_handler_config(:default) do
+        {:ok, %{formatter: f}} -> f
+        _ -> Logger.Formatter.new()
+      end
+
+    :ok =
+      :logger.add_handler(:loopyard_file, :logger_std_h, %{
+        config: %{
+          file: String.to_charlist(path),
+          max_no_bytes: @log_max_bytes,
+          max_no_files: @log_max_files
+        },
+        formatter: formatter
+      })
+
+    _ = :logger.remove_handler(:default)
+    :ok
   end
 
   # Boot EPMD if it isn't already up. `epmd -daemon` is idempotent (a no-op
