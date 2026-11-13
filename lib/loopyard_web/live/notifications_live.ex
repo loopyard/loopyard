@@ -32,6 +32,8 @@ defmodule LoopyardWeb.NotificationsLive do
   alias Loopyard.{ChatAgent, Events}
   alias Loopyard.ChatAgent.Thread
   alias LoopyardWeb.NotificationsLive.{Deck, Slide}
+  alias Loopyard.Notifications.Item
+  require Item
   alias LoopyardWeb.Components.AppShell
 
   @tick_ms 3_000
@@ -353,11 +355,18 @@ defmodule LoopyardWeb.NotificationsLive do
         {:reply, %{ok: false, note: "The agent couldn't start — your text is kept; try again."},
          socket}
 
-      # A finished-turn slide's composer is "what's next" for THAT agent.
+      # A finished-turn slide's composer is "what's next" for THAT agent; a
+      # plan-limit slide's goes to the agent too (it queues until the limit
+      # clears or someone permits another account).
       true ->
-        {:ok, {aid, _}} = parse_ref(params["re"])
+        {:ok, {aid, mid}} = parse_ref(params["re"])
 
-        case Loopyard.Notifications.keep_going("fin:" <> aid, text) do
+        delivered =
+          if mid == Deck.limit_msg_id(),
+            do: ChatAgent.enqueue_message(aid, text),
+            else: Loopyard.Notifications.keep_going("fin:" <> aid, text)
+
+        case delivered do
           :ok ->
             {:reply, %{ok: true}, socket}
 
@@ -370,7 +379,7 @@ defmodule LoopyardWeb.NotificationsLive do
     end
   end
 
-  defp finished_ref?({_aid, mid}), do: mid == Deck.finished_msg_id()
+  defp finished_ref?({_aid, mid}), do: mid in [Deck.finished_msg_id(), Deck.limit_msg_id()]
 
   defp parse_ref(re) when is_binary(re) do
     case String.split(re, ":", parts: 2) do
@@ -408,7 +417,7 @@ defmodule LoopyardWeb.NotificationsLive do
   defp pending_keys(slides) do
     slides
     |> Enum.filter(fn
-      %{kind: :finished, item_id: id} ->
+      %{kind: kind, item_id: id} when Item.item_only?(kind) ->
         match?(%{status: :open}, Loopyard.Notifications.get(id))
 
       slide ->
@@ -593,7 +602,7 @@ defmodule LoopyardWeb.NotificationsLive do
   # A slide plus its LIVE message and (for a multi-question ask) the one
   # question this card is. Nil when the message has gone — a deleted agent
   # shouldn't leave a hole that crashes the deck.
-  defp resolve_card(%{kind: :finished, item_id: id} = slide) do
+  defp resolve_card(%{kind: kind, item_id: id} = slide) when Item.item_only?(kind) do
     case Loopyard.Notifications.get(id) do
       %{} = item -> %{slide: slide, msg: nil, q: nil, item: item, dom_id: Deck.dom_id(slide)}
       _ -> nil

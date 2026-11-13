@@ -61,9 +61,12 @@ defmodule Loopyard.Notifications.Push do
   def title(%Item{kind: :finished} = item), do: "Finished — " <> where(item)
   def title(%Item{kind: :approval} = item), do: "Approval — " <> where(item)
   def title(%Item{kind: :secret} = item), do: "Secret needed — " <> where(item)
+  def title(%Item{kind: :plan_limit} = item), do: "Plan limit — " <> where(item)
   def title(%Item{} = item), do: "Decision — " <> where(item)
 
   @doc "The item's slide."
+  def url(%Item{kind: :plan_limit, agent_id: aid}), do: "/notifications/#{aid}/limit"
+
   def url(%Item{agent_id: aid, msg_id: mid}),
     do: "/notifications/#{aid}/#{mid || "fin"}"
 

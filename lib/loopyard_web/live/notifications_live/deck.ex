@@ -12,6 +12,7 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
   alias Loopyard.ChatAgent
   alias Loopyard.Notifications
   alias Loopyard.Notifications.Item
+  require Item
 
   @typedoc "A slide: one item's identity + provenance. Key is `{agent_id, msg_id, q_id}`."
   @type slide :: %{
@@ -36,6 +37,13 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
 
   @doc "The msg_id a finished-turn slide carries."
   def finished_msg_id, do: @finished_msg_id
+
+  # A plan-limit item has no card either; its own marker keeps its slide key
+  # apart from the same agent's finished item.
+  @limit_msg_id "limit"
+
+  @doc "The msg_id a plan-limit slide carries."
+  def limit_msg_id, do: @limit_msg_id
 
   @doc """
   Every open item, in inbox order (`Notifications.Priority`): the store's
@@ -124,7 +132,7 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
   already done. Ask the QUESTION.
   """
   @spec pending_card?(map()) :: boolean()
-  def pending_card?(%{slide: %{kind: :finished}, item: item}),
+  def pending_card?(%{slide: %{kind: kind}, item: item}) when Item.item_only?(kind),
     do: match?(%{status: :open}, item)
 
   def pending_card?(%{msg: %{status: :pending} = msg, q: %{id: q_id}}),
@@ -210,7 +218,8 @@ defmodule LoopyardWeb.NotificationsLive.Deck do
   defp item_slides(%Item{} = item), do: [slide(item, nil)]
 
   defp slide(%Item{} = item, q_id) do
-    msg_id = item.msg_id || @finished_msg_id
+    msg_id =
+      item.msg_id || if(item.kind == :plan_limit, do: @limit_msg_id, else: @finished_msg_id)
 
     %{
       key: {item.agent_id, msg_id, q_id},
