@@ -121,7 +121,11 @@ defmodule Loopyard.StateKeeper do
     # browser window was on in each workspace, so the switcher resumes there.
     # Keyed by {transport_pid, workspace_id} — per LiveView connection (window),
     # so two windows don't clobber each other. Server-side, node-local.
-    {:window_views, [:named_table, :public, :set, {:read_concurrency, true}]}
+    {:window_views, [:named_table, :public, :set, {:read_concurrency, true}]},
+    # Loopyard.AccountLimits — plan limits per ACCOUNT, keyed by
+    # {workstation_identity, harness}: "limited until", learned from whichever
+    # agent heard the refusal, read before every turn and by failover.
+    {:account_limits, [:named_table, :public, :set, {:read_concurrency, true}]}
   ]
 
   def start_link(_opts) do

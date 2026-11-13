@@ -99,6 +99,7 @@ defmodule Loopyard.Workstation do
 
       true ->
         File.rename!(dir(old), dir(new))
+        Loopyard.Workstation.Failover.rename_references(old, new)
         rename_docker(old, new)
         if current() == old, do: set_current(new)
         :ok

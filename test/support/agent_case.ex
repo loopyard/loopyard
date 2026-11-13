@@ -47,6 +47,11 @@ defmodule Loopyard.AgentCase do
     # per-test teardown for it.
     Process.put(:loopyard_test_workspace_path, path)
     Process.put(:loopyard_test_module_workspace_id, workspace_id)
+
+    # Plan limits are per ACCOUNT and every test agent bills the same default
+    # identity: a refusal one test provokes must not hold the next test's sends.
+    Loopyard.AccountLimits.clear_all()
+    ExUnit.Callbacks.on_exit(&Loopyard.AccountLimits.clear_all/0)
     :ok
   end
 

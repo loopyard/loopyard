@@ -23,7 +23,7 @@ defmodule LoopyardWeb.WorkstationLive do
   import LoopyardWeb.Components.Workstation
 
   alias Loopyard.Terminal
-  alias Loopyard.Workstation.{Container, Env, Integration}
+  alias Loopyard.Workstation.{Container, Env, Failover, Integration}
 
   @impl true
   def mount(%{"id" => ws}, _session, socket) do
@@ -78,6 +78,7 @@ defmodule LoopyardWeb.WorkstationLive do
       |> assign(:integrations, Integration.all())
       |> assign(:integration_status, Map.new(Integration.all(), &{&1.id, :checking}))
       |> assign_env()
+      |> assign_failover()
 
     # Boot only what THIS page uses (off the LV process — these block on
     # container create). The calm hub no longer spins up the console on every
@@ -171,6 +172,23 @@ defmodule LoopyardWeb.WorkstationLive do
      |> put_flash(:info, "Removed #{key} — Restart the machine to apply.")}
   end
 
+  # Failover: which accounts this one's agents may continue on at its plan
+  # limit. Opt-in, ordered; every change is a whole-list write.
+  def handle_event("add_fallback", %{"account" => other}, socket) do
+    _ = Failover.add(socket.assigns.current_id, other)
+    {:noreply, assign_failover(socket)}
+  end
+
+  def handle_event("remove_fallback", %{"account" => other}, socket) do
+    _ = Failover.remove(socket.assigns.current_id, other)
+    {:noreply, assign_failover(socket)}
+  end
+
+  def handle_event("raise_fallback", %{"account" => other}, socket) do
+    _ = Failover.raise_priority(socket.assigns.current_id, other)
+    {:noreply, assign_failover(socket)}
+  end
+
   def handle_event("make_default", _params, socket) do
     ws = socket.assigns.current_id
     _ = Loopyard.Workstation.set_current(ws)
@@ -208,6 +226,24 @@ defmodule LoopyardWeb.WorkstationLive do
     socket
     |> assign(:env_keys, keys)
     |> assign(:other_env_keys, keys -- integration_keys)
+  end
+
+  # The failover list, the accounts that could join it, and this account's
+  # live plan limits — computed here, never in render.
+  defp assign_failover(socket) do
+    ws = socket.assigns.current_id
+    fallbacks = Failover.fallbacks(ws)
+
+    limits =
+      for r <- Loopyard.AccountLimits.for_identity(ws),
+          do:
+            "#{Loopyard.Harness.Catalog.label(r.harness)} until " <>
+              Loopyard.AccountLimits.clock(r.until_ms)
+
+    socket
+    |> assign(:fallbacks, fallbacks)
+    |> assign(:fallback_options, Loopyard.Workstation.list() -- [ws | fallbacks])
+    |> assign(:plan_limits, limits)
   end
 
   @impl true
@@ -323,6 +359,13 @@ defmodule LoopyardWeb.WorkstationLive do
             </.nav_row>
           </.nav_list>
         </.section>
+
+        <.failover_section
+          current_id={@current_id}
+          fallbacks={@fallbacks}
+          options={@fallback_options}
+          plan_limits={@plan_limits}
+        />
 
         <.section title="Configure">
           <.nav_list>
@@ -486,6 +529,83 @@ defmodule LoopyardWeb.WorkstationLive do
         </.section>
       </div>
     </.page_shell>
+    """
+  end
+
+  # "When this account is at its plan limit, its agents may continue on: …" —
+  # an ordered, opt-in list. Empty = they wait for the reset (the default).
+  attr :current_id, :string, required: true
+  attr :fallbacks, :list, required: true
+  attr :options, :list, required: true
+  attr :plan_limits, :list, required: true
+
+  defp failover_section(assigns) do
+    ~H"""
+    <.section
+      title="When its plan runs out"
+      hint={"At a plan limit, #{@current_id}'s agents may carry on under these accounts — the first that is signed in and not limited itself. Their plans pay for that work, so list only accounts you may bill. Empty: agents wait for the reset."}
+    >
+      <p
+        :if={@plan_limits != []}
+        id="ws-plan-limits"
+        class="text-body text-orange-600 dark:text-orange-400"
+      >
+        At its plan limit now: {Enum.join(@plan_limits, ", ")}
+      </p>
+      <ol
+        :if={@fallbacks != []}
+        id="ws-fallbacks"
+        class="divide-y divide-zinc-100 dark:divide-zinc-800 rounded-sm border border-zinc-200 dark:border-zinc-800 px-3"
+      >
+        <li :for={{acct, i} <- Enum.with_index(@fallbacks)} class="flex items-center gap-3 py-2">
+          <span class="text-meta tabular-nums text-zinc-400">{i + 1}</span>
+          <.link
+            navigate={"/workstations/#{acct}"}
+            class="text-body font-medium text-zinc-700 dark:text-zinc-200 hover:underline"
+          >
+            {acct}
+          </.link>
+          <span class="ml-auto flex items-center gap-4">
+            <button
+              :if={i > 0}
+              phx-click="raise_fallback"
+              phx-value-account={acct}
+              class="tap-target text-meta text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+            >
+              Move up
+            </button>
+            <button
+              phx-click="remove_fallback"
+              phx-value-account={acct}
+              class="tap-target text-meta text-zinc-400 hover:text-red-500 transition-colors"
+            >
+              Remove
+            </button>
+          </span>
+        </li>
+      </ol>
+      <form
+        :if={@options != []}
+        id="ws-add-fallback"
+        phx-submit="add_fallback"
+        class="flex items-center gap-2"
+      >
+        <select
+          name="account"
+          aria-label="Account to fall back to"
+          class="flex-1 rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-body focus-ring"
+        >
+          <option :for={acct <- @options} value={acct}>{acct}</option>
+        </select>
+        <.button type="submit" class="flex-none">Allow</.button>
+      </form>
+      <p
+        :if={@options == [] and @fallbacks == []}
+        class="text-meta text-zinc-500 dark:text-zinc-400"
+      >
+        No other workstation to fall back to yet — create one under All workstations.
+      </p>
+    </.section>
     """
   end
 
