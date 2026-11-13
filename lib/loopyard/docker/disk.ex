@@ -174,8 +174,10 @@ defmodule Loopyard.Docker.Disk do
 
   @doc "The one action, in words."
   def action do
-    "Run `mix loopyard.gc` to see what Loopyard can reclaim (then `--apply`); " <>
-      "it also lists what else is large. `docker system df -v` shows the rest."
+    # Plain text: the inbox card prints it as written, so backticks would show.
+    "Free space in the Docker VM. In a terminal, run mix loopyard.gc: it shows what " <>
+      "Loopyard can remove itself, then lists the largest volumes and images, which " <>
+      "are yours to delete."
   end
 
   @doc "The line an agent's chat shows when a turn or launch failed on a full disk."
