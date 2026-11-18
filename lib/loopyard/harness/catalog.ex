@@ -20,6 +20,8 @@ defmodule Loopyard.Harness.Catalog do
   a `case` at the call site.
   """
 
+  alias Loopyard.Harness.Models
+
   @type id :: :claude | :codex
 
   @typedoc """
@@ -55,6 +57,8 @@ defmodule Loopyard.Harness.Catalog do
           brief: brief(),
           config: map(),
           models: [{String.t(), String.t()}],
+          model_alias: String.t() | nil,
+          home_mode: String.t() | nil,
           subagent_model: subagent_model()
         }
 
@@ -68,19 +72,17 @@ defmodule Loopyard.Harness.Catalog do
   """
   @type credential_file :: %{home_env: String.t(), name: String.t()}
 
-  # Offered in the Claude picker, as full ids rather than the adapter's
-  # default/opus/haiku aliases.
-  # Before listing a new id, run it on the adapter's BUNDLED Claude Code
-  # (claude-agent-sdk-linux-*/claude in the image), not the global `claude`
-  # — that bundle is what the harness execs, and a model newer than it is a
-  # 400 on the first turn ("version X or newer is required"). Fable 5.1
-  # needs 2.1.251+; adapter 0.76.0 bundles 2.1.257 (verified).
+  # What the Claude pickers offer BEFORE any Claude session has reported its
+  # own list since boot (`Loopyard.Harness.Models` — the live list wins from
+  # then on, labels and all). Aliases only: Claude Code resolves each to its
+  # current release, so nothing here names a version and nothing here goes
+  # stale. A pinned id ("claude-opus-5") was a table that needed an edit per
+  # release and offered last quarter's models until someone made it.
   @claude_models [
-    {"claude-opus-5", "Opus 5"},
-    {"claude-fable-5-1", "Fable 5.1"},
-    {"claude-opus-4-8", "Opus 4.8"},
-    {"claude-sonnet-5", "Sonnet 5"},
-    {"claude-haiku-4-5-20251001", "Haiku 4.5"}
+    {"opus", "Opus"},
+    {"fable", "Fable"},
+    {"sonnet", "Sonnet"},
+    {"haiku", "Haiku"}
   ]
 
   # Order is display order in the harness picker.
@@ -96,18 +98,22 @@ defmodule Loopyard.Harness.Catalog do
       # `Workstation.Env` provisions; an API key is the BYO-key path.
       credential_keys: ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"],
       # claude-agent-acp only switches to a model in the session's own list
-      # (anything else is "Internal error"), and that list is Claude Code's
-      # picker: default/sonnet/opus/haiku. Our ids resolve onto an alias where
-      # one matches (claude-opus-5 → opus); the rest need adding.
-      # CLAUDE_MODEL_CONFIG's availableModels makes Claude Code list the ones
-      # it knows (Opus 4.8, dated Haiku). It drops ids it doesn't know, and
-      # ANTHROPIC_CUSTOM_MODEL_OPTION is its one slot for those — Fable 5.1 on
-      # 2.1.257. Probed on the v5 image: every id below switches and runs.
-      env: %{
-        "CLAUDE_MODEL_CONFIG" =>
-          Jason.encode!(%{"availableModels" => Enum.map(@claude_models, &elem(&1, 0))}),
-        "ANTHROPIC_CUSTOM_MODEL_OPTION" => "claude-fable-5-1"
-      },
+      # (anything else is "Internal error"). From adapter 0.108 that list is
+      # default/sonnet/fable/opus/haiku, each named for what it resolves to —
+      # so no CLAUDE_MODEL_CONFIG / ANTHROPIC_CUSTOM_MODEL_OPTION to make it
+      # list pinned ids (what 0.76 needed).
+      env: %{},
+      # A stored model from before aliases — an id ("claude-opus-5") or its
+      # display name ("Opus 5") — moves to its family's alias
+      # (`Harness.Models.float/2`). First capture = the family.
+      model_alias: "^(?:claude-)?([A-Za-z]+)[- ]\\d",
+      # The ACP session mode an agent works in. Adapter 0.108 boots a session
+      # in Claude Code's `auto` mode, where a classifier decides which tool
+      # calls run. Loopyard's model is the container as the boundary with every
+      # permission request answered by us (`Connection`'s :auto_allow), which
+      # is the `default` mode — what 0.76 booted in. The Connection puts a
+      # fresh session there; Discuss still moves it to the plan mode.
+      home_mode: "default",
       # Claude Code reads CLAUDE.local.md in its cwd; the Initializer installs
       # the brief there.
       brief: :cwd_file,
@@ -156,12 +162,13 @@ defmodule Loopyard.Harness.Catalog do
       # this is Codex's own fallback list for exactly that (AGENTS.md still
       # wins where it exists).
       config: %{"project_doc_fallback_filenames" => ["CLAUDE.md"]},
-      # Deliberately empty: Codex model ids move faster than this file, and a
-      # stale id here is not a cosmetic bug — set_model REJECTS an unknown id, so
-      # the agent would fail to start on a model the picker offered. Selecting
-      # Codex runs the adapter's own current default; the live model list from
-      # the session is the right long-term source (see plans/multi-agent-harnesses.md).
+      # No seed: Codex model ids move faster than this file, and set_model
+      # REJECTS an unknown id. Until a Codex session has reported its list
+      # (`Harness.Models`), the picker offers the adapter default only.
       models: [],
+      model_alias: nil,
+      # Whatever codex-acp boots in.
+      home_mode: nil,
       # codex 0.148 has a `default_subagent_model` setting for its spawn_agent
       # sub-agents, but with no pinned Codex model vocabulary (above) there is
       # nothing truthful to offer, so no control. Revisit with the live list.
@@ -257,7 +264,7 @@ defmodule Loopyard.Harness.Catalog do
     harness = fetch(id)
     key = Atom.to_string(harness.id)
 
-    Enum.map(harness.models, fn {model, label} -> {"#{key}:#{model}", label} end) ++
+    Enum.map(Models.list(harness.id), fn {model, label} -> {"#{key}:#{model}", label} end) ++
       [{"#{key}:default", "Adapter default"}]
   end
 
@@ -268,7 +275,7 @@ defmodule Loopyard.Harness.Catalog do
   @spec subagent_model?(id() | String.t() | nil) :: boolean()
   def subagent_model?(id) do
     harness = fetch(id)
-    harness.subagent_model != nil and harness.models != []
+    harness.subagent_model != nil and Models.list(harness.id) != []
   end
 
   @doc """
@@ -280,14 +287,14 @@ defmodule Loopyard.Harness.Catalog do
   @spec subagent_model_options(id() | String.t() | nil) :: [{String.t(), String.t()}]
   def subagent_model_options(id) do
     if subagent_model?(id),
-      do: [{"", "Same as the agent"} | fetch(id).models],
+      do: [{"", "Same as the agent"} | Models.list(id)],
       else: []
   end
 
   @doc "Whether `model` is one this harness's Sub-agents control offers."
   @spec subagent_model_valid?(id() | String.t() | nil, String.t()) :: boolean()
   def subagent_model_valid?(id, model) when is_binary(model),
-    do: subagent_model?(id) and List.keymember?(fetch(id).models, model, 0)
+    do: subagent_model?(id) and Models.member?(id, model)
 
   def subagent_model_valid?(_id, _model), do: false
 

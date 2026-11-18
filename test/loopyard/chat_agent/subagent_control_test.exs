@@ -92,19 +92,19 @@ defmodule Loopyard.ChatAgent.SubagentControlTest do
     :sys.replace_state(pid, &Map.put(&1, :claude_session_id, "sess-keep"))
     RecordingBackend.reset()
 
-    state = set_and_settle(id, "claude-haiku-4-5-20251001")
+    state = set_and_settle(id, "haiku")
 
-    assert Keyword.get(state.session_opts, :subagent_model) == "claude-haiku-4-5-20251001"
+    assert Keyword.get(state.session_opts, :subagent_model) == "haiku"
     [{^id, summary}] = :ets.lookup(:chat_agents, id)
-    assert summary.subagent_model == "claude-haiku-4-5-20251001"
+    assert summary.subagent_model == "haiku"
 
     # The persisted `{:agent, …}` record is the summary minus messages.
     path = Loopyard.ChatAgent.Persistence.log_path_for(state)
     assert is_binary(path)
-    assert eventually_logged?(path, id, &(&1[:subagent_model] == "claude-haiku-4-5-20251001"))
+    assert eventually_logged?(path, id, &(&1[:subagent_model] == "haiku"))
 
     [opts] = RecordingBackend.starts()
-    assert Keyword.get(opts, :subagent_model) == "claude-haiku-4-5-20251001"
+    assert Keyword.get(opts, :subagent_model) == "haiku"
     assert Keyword.get(opts, :resume) == "sess-keep", "same harness + account → resume"
 
     # Silent: no chat line for a deliberate setting change.
@@ -112,20 +112,20 @@ defmodule Loopyard.ChatAgent.SubagentControlTest do
   end
 
   test "survives a full Restart agent (:reload) — the rebuild must not revert it", %{id: id} do
-    set_and_settle(id, "claude-sonnet-5")
+    set_and_settle(id, "sonnet")
     RecordingBackend.reset()
 
     ChatAgent.restart_session(id, :reload)
     assert_receive %Loopyard.Events.ChatAgent.StatusChanged{id: ^id, status: :idle}, 1_000
 
     state = :sys.get_state(agent_pid(id))
-    assert Keyword.get(state.session_opts, :subagent_model) == "claude-sonnet-5"
+    assert Keyword.get(state.session_opts, :subagent_model) == "sonnet"
     [opts] = RecordingBackend.starts()
-    assert Keyword.get(opts, :subagent_model) == "claude-sonnet-5"
+    assert Keyword.get(opts, :subagent_model) == "sonnet"
   end
 
   test "clearing it survives a :reload too (the boot opts must not restore it)", %{id: id} do
-    set_and_settle(id, "claude-sonnet-5")
+    set_and_settle(id, "sonnet")
     set_and_settle(id, "")
     RecordingBackend.reset()
 
@@ -137,7 +137,7 @@ defmodule Loopyard.ChatAgent.SubagentControlTest do
   end
 
   test "survives a server-restart resume", %{id: id} do
-    state = set_and_settle(id, "claude-sonnet-5")
+    state = set_and_settle(id, "sonnet")
     :ets.insert(:chat_agents, {id, ChatAgent.summary(state)})
     ChatAgent.stop_agent(id)
     Process.sleep(50)
@@ -153,9 +153,9 @@ defmodule Loopyard.ChatAgent.SubagentControlTest do
       )
 
     [{^id, summary}] = :ets.lookup(:chat_agents, id)
-    assert summary.subagent_model == "claude-sonnet-5"
+    assert summary.subagent_model == "sonnet"
     [opts | _] = RecordingBackend.starts()
-    assert Keyword.get(opts, :subagent_model) == "claude-sonnet-5"
+    assert Keyword.get(opts, :subagent_model) == "sonnet"
   end
 
   test "the harness and the model survive a server-restart resume too", %{id: id} do
@@ -203,7 +203,7 @@ defmodule Loopyard.ChatAgent.SubagentControlTest do
 
     opts = :sys.get_state(agent_pid(id)).init_opts
     assert Keyword.get(opts, :harness) == :claude
-    assert Keyword.get(opts, :model) == "claude-sonnet-5"
+    assert Keyword.get(opts, :model) == "sonnet"
   end
 
   test "the same value is a no-op; an unknown model is refused", %{id: id} do
@@ -223,9 +223,9 @@ defmodule Loopyard.ChatAgent.SubagentControlTest do
     :sys.replace_state(pid, &%{&1 | status: :thinking})
     RecordingBackend.reset()
 
-    ChatAgent.set_subagent_model(id, "claude-sonnet-5")
+    ChatAgent.set_subagent_model(id, "sonnet")
     state = :sys.get_state(pid)
-    assert Keyword.get(state.session_opts, :subagent_model) == "claude-sonnet-5"
+    assert Keyword.get(state.session_opts, :subagent_model) == "sonnet"
     assert RecordingBackend.starts() == [], "never kill a busy harness for a setting"
     flush_status(id)
 
@@ -233,16 +233,16 @@ defmodule Loopyard.ChatAgent.SubagentControlTest do
     assert_receive %Loopyard.Events.ChatAgent.StatusChanged{id: ^id, status: :backoff}, 3_500
     assert_receive %Loopyard.Events.ChatAgent.StatusChanged{id: ^id, status: :idle}, 1_000
     assert [opts] = RecordingBackend.starts()
-    assert Keyword.get(opts, :subagent_model) == "claude-sonnet-5"
+    assert Keyword.get(opts, :subagent_model) == "sonnet"
   end
 
   test "a harness without the knob refuses it" do
     state = %{id: "x", name: "x", session_opts: [harness: :codex], status: :idle}
-    assert {^state, {:error, :unsupported}} = SubagentControl.switch(state, "claude-sonnet-5")
+    assert {^state, {:error, :unsupported}} = SubagentControl.switch(state, "sonnet")
   end
 
   test "a harness switch drops it — a Claude id means nothing to Codex", %{id: id} do
-    set_and_settle(id, "claude-sonnet-5")
+    set_and_settle(id, "sonnet")
     ChatAgent.set_harness(id, :codex)
     assert_receive %Loopyard.Events.ChatAgent.StatusChanged{id: ^id, status: :idle}, 1_000
     state = :sys.get_state(agent_pid(id))

@@ -311,9 +311,9 @@ defmodule Loopyard.ChatAgent.Initializer do
     #   * operator (explicit :container, no workspace) → its workstation container,
     #     home volume, $HOME, operator tools
     # The model ACP sessions run on. The adapter boots on the CLI's "default"
-    # alias (Sonnet) unless told otherwise — we want the STRONGEST model on
-    # agent work, so default to Opus 5 by full id (the adapter resolves it onto
-    # its "opus" entry). Applied via session/set_config_option once the session
+    # alias (Sonnet) unless told otherwise — default to the "opus" alias, which
+    # Claude Code resolves to the current Opus, so the default moves with the
+    # adapter. Applied via session/set_config_option once the session
     # is ready. Overridable per-agent (opts) or globally
     # (config :loopyard, :acp_model).
     # Which harness drives this agent. Every one speaks ACP, so only the adapter
@@ -328,9 +328,15 @@ defmodule Loopyard.ChatAgent.Initializer do
     # adapter boot on its own default; the picker sets one from the live list.
     acp_model =
       cond do
-        model = Keyword.get(opts, :model) -> model
-        Catalog.fetch(harness).id == :claude -> acp_default_model()
-        true -> nil
+        # A pin from an older release moves to its family's current alias.
+        model = Keyword.get(opts, :model) ->
+          Loopyard.Harness.Models.float(harness, model) || model
+
+        Catalog.fetch(harness).id == :claude ->
+          acp_default_model()
+
+        true ->
+          nil
       end
 
     session_opts =
@@ -394,7 +400,7 @@ defmodule Loopyard.ChatAgent.Initializer do
     # The model the harness's OWN sub-agents run on (nil = the harness default);
     # Harness.ACP delivers it at launch per Catalog.subagent_model_env/2.
     session_opts =
-      case Keyword.get(opts, :subagent_model) do
+      case Loopyard.Harness.Models.float(harness, Keyword.get(opts, :subagent_model)) do
         model when is_binary(model) -> Keyword.put(session_opts, :subagent_model, model)
         _ -> session_opts
       end
@@ -405,7 +411,7 @@ defmodule Loopyard.ChatAgent.Initializer do
   # --- Private helpers ---
 
   defp acp_default_model,
-    do: Application.get_env(:loopyard, :acp_model, "claude-opus-5")
+    do: Application.get_env(:loopyard, :acp_model, "opus")
 
   defp maybe_put_model(session_opts, nil), do: session_opts
   defp maybe_put_model(session_opts, model), do: Keyword.put(session_opts, :model, model)
@@ -541,8 +547,8 @@ defmodule Loopyard.ChatAgent.Initializer do
   defp put_saved_model(opts, harness, model) when is_binary(model) do
     harness = Keyword.get(opts, :harness, harness)
 
-    case Enum.find(Catalog.fetch(harness).models, fn {id, label} -> model in [id, label] end) do
-      {id, _label} -> Keyword.put_new(opts, :model, id)
+    case Loopyard.Harness.Models.float(harness, model) do
+      id when is_binary(id) -> Keyword.put_new(opts, :model, id)
       nil -> opts
     end
   rescue

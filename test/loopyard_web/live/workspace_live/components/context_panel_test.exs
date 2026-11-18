@@ -83,18 +83,24 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanelTest do
   end
 
   describe "short_model/1" do
-    test "known frontier ids map to marketing names" do
+    test "a Claude id reads as its marketing name, with no table to keep current" do
+      assert ContextPanel.short_model("claude-fable-5-2") == "Fable 5.2"
+      assert ContextPanel.short_model("claude-opus-5-5") == "Opus 5.5"
+      assert ContextPanel.short_model("claude-sonnet-5-5") == "Sonnet 5.5"
+      assert ContextPanel.short_model("claude-haiku-5-5") == "Haiku 5.5"
       assert ContextPanel.short_model("claude-opus-5") == "Opus 5"
       assert ContextPanel.short_model("claude-opus-4-8") == "Opus 4.8"
-      assert ContextPanel.short_model("claude-fable-5-1") == "Fable 5.1"
-      assert ContextPanel.short_model("claude-fable-5") == "Fable 5"
-      assert ContextPanel.short_model("claude-sonnet-5") == "Sonnet 5"
       assert ContextPanel.short_model("claude-haiku-4-5-20251001") == "Haiku 4.5"
+      assert ContextPanel.short_model("claude-sonnet-4-20250514") == "Sonnet 4"
+      # A release that does not exist yet needs no code change.
+      assert ContextPanel.short_model("claude-opus-6") == "Opus 6"
     end
 
-    test "unmapped dated ids fall back to a shortened form" do
-      assert ContextPanel.short_model("claude-sonnet-4-20250514") == "sonnet-4"
-      assert ContextPanel.short_model("claude-opus-4-6-20250605") == "opus-4-6"
+    test "anything else passes through, minus the prefix and a trailing date" do
+      assert ContextPanel.short_model("claude-3-5-sonnet-20241022") == "3-5-sonnet"
+      assert ContextPanel.short_model("Sonnet 4.5") == "Sonnet 4.5"
+      assert ContextPanel.short_model("gpt-5.6") == "gpt-5.6"
+      assert ContextPanel.short_model("default") == "Adapter default"
     end
 
     test "handles nil" do

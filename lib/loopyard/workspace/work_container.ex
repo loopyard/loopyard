@@ -35,9 +35,11 @@ defmodule Loopyard.Workspace.WorkContainer do
 
   # Version-tagged, NOT :latest — ensure_image only builds when the tag is
   # absent, so bumping this tag is what makes an existing install rebuild after
-  # a Dockerfile change (e.g. an adapter bump). Old containers keep their old
-  # image until re-stamped (recreate/up).
-  @image "loopyard-workspace-base:v5"
+  # a Dockerfile change (e.g. an adapter bump). A STOPPED container on an old
+  # tag is recreated on its next start (`on_current_image?/1`); a RUNNING one
+  # keeps its old image until someone takes it down — harnesses and terminals
+  # live in it, so that is never done behind an agent's back.
+  @image "loopyard-workspace-base:v6"
   @workdir "/workspace"
 
   # CONTAINMENT: hard memory ceiling on the work container. The Claude Code
@@ -62,6 +64,19 @@ defmodule Loopyard.Workspace.WorkContainer do
   @doc "The stock base image tag the work container runs."
   @spec image() :: String.t()
   def image, do: @image
+
+  @doc """
+  Whether a container was created from the current base image. A container we
+  cannot inspect counts as current: the caller's next step is `docker start`,
+  which reports the real problem.
+  """
+  @spec on_current_image?(String.t()) :: boolean()
+  def on_current_image?(name) do
+    case Docker.docker(["inspect", "-f", "{{.Config.Image}}", name], retry: false) do
+      {:ok, out} -> String.trim(out) == @image
+      _ -> true
+    end
+  end
 
   @doc "Is the work container running?"
   @spec running?(String.t()) :: boolean()
@@ -99,10 +114,14 @@ defmodule Loopyard.Workspace.WorkContainer do
           {:ok, name}
 
         Docker.container_exists?(name) ->
-          # Stopped leftover (e.g. across a daemon restart) — start it back up.
-          case Docker.docker(["start", name]) do
-            {:ok, _} -> {:ok, name}
-            {:error, _} -> recreate(workspace_id, name)
+          # Stopped leftover (e.g. across a daemon restart) — start it back up,
+          # unless it was built from a superseded base image: nothing runs in a
+          # stopped container, so that is the free moment to move it.
+          with true <- on_current_image?(name),
+               {:ok, _} <- Docker.docker(["start", name]) do
+            {:ok, name}
+          else
+            _ -> recreate(workspace_id, name)
           end
 
         true ->

@@ -53,11 +53,11 @@ defmodule Loopyard.Tools.ControlPlane.Agent do
       model:
         {:string,
          description:
-           "For action=switch/new: a `harness:model` selection, e.g. `claude:claude-sonnet-5` or `codex:default`."},
+           "For action=switch/new: a `harness:model` selection, e.g. `claude:opus` or `codex:default`."},
       subagent_model:
         {:string,
          description:
-           "For action=switch: the model id the agent's own sub-agents run on, e.g. `claude-sonnet-5`, or `same` for the agent's own model."}
+           "For action=switch: the model id the agent's own sub-agents run on, e.g. `sonnet`, or `same` for the agent's own model."}
     ]
 
   alias Loopyard.{ChatAgent, Tools.ControlPlane, Workstation}
@@ -245,7 +245,7 @@ defmodule Loopyard.Tools.ControlPlane.Agent do
 
       :error ->
         {:error,
-         "model must be a `harness:model` selection (e.g. claude:claude-sonnet-5, " <>
+         "model must be a `harness:model` selection (e.g. claude:opus, " <>
            "codex:default) — got '#{value}'."}
     end
   end

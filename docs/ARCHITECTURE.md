@@ -190,7 +190,13 @@ never sees a second process, session, or connection: everything the sub-agent
 does arrives as ordinary `session/update` frames on the parent's turn. Captured
 live against `claude-agent-acp` 0.76.0 / Claude Code 2.1.268 (2026-10-21; the
 fixtures in `test/loopyard/harness/acp/subagent_test.exs` are trimmed from
-that capture):
+that capture). The v6 image runs adapter 0.108.0 / Claude Code 2.1.326, which
+differs in three ways the Translator handles (fixtures from a 2026-11-17
+capture sit beside the older ones): a delegation is no longer marked
+`subagent: true` (its tool KIND decides), the frame that completes ANY tool's
+arguments echoes the call's description as `content` (not a result — only a
+frame with a status settles a call), and a session boots in the `auto` mode
+(the Connection moves it to the Catalog's `home_mode`, `default`):
 
 **How it spawns.** The parent emits a `tool_call` whose
 `_meta.claudeCode` is `{toolName: "Agent", subagent: true}` (ACP `title`

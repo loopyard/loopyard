@@ -179,9 +179,11 @@ defmodule Loopyard.Harness.ACP.Connection do
           # caller wants the session in (the sidebar's Discuss = the plan
           # mode) — requested once the session is ready, exactly like
           # `desired_model`; `mode` is what the session is in now; `boot_mode`
-          # is what it came up in (what Build returns to); `fallback_mode`
-          # restores the display if a switch is refused.
+          # is what Build returns to: `home_mode` (the harness's Catalog entry)
+          # when the session offers it, else what it came up in;
+          # `fallback_mode` restores the display if a switch is refused.
           desired_mode: Keyword.get(opts, :mode),
+          home_mode: Keyword.get(opts, :home_mode),
           mode: nil,
           boot_mode: nil,
           available_modes: [],
@@ -753,6 +755,7 @@ defmodule Loopyard.Harness.ACP.Connection do
     {models, current, dialect} = Models.extract_models(result)
     name = Models.model_name(models, current) || current || state.model
     {modes, current_mode, mode_dialect} = Modes.extract_modes(result)
+    home = Modes.home(modes, current_mode, state.home_mode)
 
     state
     |> Map.put(:model_dialect, dialect)
@@ -764,7 +767,8 @@ defmodule Loopyard.Harness.ACP.Connection do
       model: name,
       available_modes: modes,
       mode: current_mode,
-      boot_mode: current_mode
+      boot_mode: home,
+      desired_mode: state.desired_mode || home
     })
   end
 

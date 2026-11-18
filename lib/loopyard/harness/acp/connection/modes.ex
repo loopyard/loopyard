@@ -90,6 +90,16 @@ defmodule Loopyard.Harness.ACP.Connection.Modes do
 
   def available?(_modes, _mode_id), do: false
 
+  @doc """
+  The mode a session sits in when nobody asked for another: the harness's
+  `home_mode` when the session advertises it, else the one it came up in.
+  claude-agent-acp 0.108 boots a session in Claude Code's classifier-gated
+  `auto` mode; Loopyard's permission model is "the container is the boundary,
+  every request is answered by us", which is the `default` mode.
+  """
+  @spec home([mode()], String.t() | nil, String.t() | nil) :: String.t() | nil
+  def home(modes, current, home), do: if(available?(modes, home), do: home, else: current)
+
   # The dialect-appropriate mode-switch request. Response handling is shared
   # (pending tag :set_mode): success needs nothing, error reverts the display.
   def request_mode_switch(%{mode_dialect: :config_option} = state, mode_id) do

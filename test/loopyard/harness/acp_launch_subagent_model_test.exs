@@ -10,9 +10,9 @@ defmodule Loopyard.Harness.ACPLaunchSubagentModelTest do
   alias Loopyard.Harness.{ACP, Catalog}
 
   test "Claude: exports the model and FORCE, after ~/.profile" do
-    cmd = ACP.docker_exec_cmd("work-1", :claude, subagent_model: "claude-sonnet-5")
+    cmd = ACP.docker_exec_cmd("work-1", :claude, subagent_model: "sonnet")
 
-    assert cmd =~ ~s(export CLAUDE_CODE_SUBAGENT_MODEL="claude-sonnet-5";)
+    assert cmd =~ ~s(export CLAUDE_CODE_SUBAGENT_MODEL="sonnet";)
     assert cmd =~ ~s(export CLAUDE_CODE_SUBAGENT_MODEL_FORCE="1";)
 
     {profile_at, _} = :binary.match(cmd, ~S(. "$HOME/.profile"))
@@ -26,7 +26,7 @@ defmodule Loopyard.Harness.ACPLaunchSubagentModelTest do
   end
 
   test "a harness with no knob exports nothing" do
-    refute ACP.docker_exec_cmd("work-1", :codex, subagent_model: "claude-sonnet-5") =~ "SUBAGENT"
+    refute ACP.docker_exec_cmd("work-1", :codex, subagent_model: "sonnet") =~ "SUBAGENT"
   end
 
   test "an id the harness doesn't list never reaches the launch script" do
@@ -42,7 +42,7 @@ defmodule Loopyard.Harness.ACPLaunchSubagentModelTest do
     test "Codex offers no control" do
       refute Catalog.subagent_model?(:codex)
       assert Catalog.subagent_model_options(:codex) == []
-      assert Catalog.subagent_model_env(:codex, "claude-sonnet-5") == []
+      assert Catalog.subagent_model_env(:codex, "sonnet") == []
     end
   end
 end

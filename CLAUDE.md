@@ -284,6 +284,26 @@ its adapter in `priv/workspace-base/Dockerfile` (bump the `WorkContainer`
 `@image` tag). Never `case` on a harness id anywhere else; a per-vendor
 difference that isn't launch/credentials/brief belongs in the struct.
 
+**The models offered are the harness's own list, never a table here.**
+`Loopyard.Harness.Models` keeps the newest list any session of a harness
+reported (`Connection.available_models/1`, recorded where every new session
+lands, `SessionManager.track_os_pid/1`); the model picker, the Sub-agents
+control and the chief of staff's `agent action=switch` all read it. Bumping the
+adapter in the work image is therefore the whole of "getting the new models".
+Claude's list is ALIASES (`opus`, `fable`, `sonnet`, `haiku`) that Claude Code
+resolves to the current release and labels with it ("Opus 5.5"); the Catalog
+holds only an unversioned alias seed for before the first session, the default
+for a new agent is `opus`, and a stored pin from an older release
+(`claude-opus-5`, or the display name "Opus 5") moves to its family's alias on
+the next start (`Models.float/2`, driven by the Catalog's `model_alias`). Never
+write a versioned model id into Loopyard: the hardcoded list is what offered
+last quarter's models. `ContextPanel.short_model/1` names an id from its shape,
+not a table. The Catalog's `home_mode` is the ACP session mode an agent works
+in (`default` for Claude: adapter 0.108 boots in the classifier-gated `auto`,
+and Loopyard's model is "the container is the boundary, we answer every
+permission request"); the Connection moves a fresh session there and Build
+returns to it.
+
 **Codex is `codex app-server` behind an ACP shim.** The adapter
 (`@agentclientprotocol/codex-acp`, the ACP org's TypeScript package — the old
 Zed Rust `@zed-industries/codex-acp` is archived) spawns `codex app-server`,

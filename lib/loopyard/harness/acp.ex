@@ -84,6 +84,8 @@ defmodule Loopyard.Harness.ACP do
       ]
       |> Keyword.merge(runtime)
       |> maybe_put(:model, Keyword.get(opts, :model))
+      # The mode a session sits in unless Discuss asks for the plan mode.
+      |> maybe_put(:home_mode, Catalog.fetch(Keyword.get(opts, :harness)).home_mode)
       # With an agent_id the Connection can route the harness's native
       # AskUserQuestion (ACP form elicitation) to that agent's question card.
       |> maybe_put(:agent_id, Keyword.get(opts, :agent_id))

@@ -636,21 +636,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   @doc "Human display name for a model id/name."
   def short_model(nil), do: nil
 
-  # Known frontier ids → their marketing names (the adapter's list doesn't
-  # carry these full ids, so map them ourselves). Anything already resolved to
-  # a human name upstream (e.g. "Sonnet 4.5" from the adapter) passes through.
-  def short_model("claude-opus-5"), do: "Opus 5"
-  def short_model("claude-opus-4-8"), do: "Opus 4.8"
-  def short_model("claude-fable-5-1"), do: "Fable 5.1"
-  def short_model("claude-fable-5"), do: "Fable 5"
-  def short_model("claude-sonnet-5"), do: "Sonnet 5"
-  def short_model("claude-haiku-4-5" <> _), do: "Haiku 4.5"
   def short_model("default"), do: "Adapter default"
 
+  # "claude-opus-5-5" → "Opus 5.5", "claude-haiku-4-5-20251001" → "Haiku 4.5".
+  # Derived from the id's own shape (family, major, optional minor, optional
+  # date), not a table of known ids: a table needed an edit for every release
+  # and showed "fable-5-2" until someone made it. Anything else — a name the
+  # adapter already made human ("Sonnet 4.5"), another vendor's id — passes
+  # through, minus a "claude-" prefix and a trailing date.
   def short_model(model) when is_binary(model) do
-    model
-    |> String.replace("claude-", "")
-    |> String.replace(~r/-\d{8}$/, "")
+    case Regex.run(~r/^claude-([a-z]+)-(\d{1,2})(?:-(\d{1,2}))?(?:-\d{8})?$/, model) do
+      [_, family, major] -> "#{String.capitalize(family)} #{major}"
+      [_, family, major, minor] -> "#{String.capitalize(family)} #{major}.#{minor}"
+      _ -> model |> String.replace("claude-", "") |> String.replace(~r/-\d{8}$/, "")
+    end
   end
 
   @doc "Format a number with K/M suffixes for compact display."

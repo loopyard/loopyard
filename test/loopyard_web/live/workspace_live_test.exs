@@ -244,21 +244,21 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
 
       render_change(view, "set_subagents", %{
         "agent-id" => id,
-        "subagent_model" => "claude-sonnet-5"
+        "subagent_model" => "sonnet"
       })
 
       assert wait_for(fn ->
-               Loopyard.ChatAgent.get_state(id)[:subagent_model] == "claude-sonnet-5"
+               Loopyard.ChatAgent.get_state(id)[:subagent_model] == "sonnet"
              end)
 
       assert wait_for(fn ->
-               has_element?(other, ~s(option[value="claude-sonnet-5"][selected]))
+               has_element?(other, ~s(option[value="sonnet"][selected]))
              end)
 
       # A bogus value is refused by the agent, never a crash.
       render_change(view, "set_subagents", %{"agent-id" => id, "subagent_model" => "nope"})
       assert render(view) =~ "Test Agent"
-      assert Loopyard.ChatAgent.get_state(id)[:subagent_model] == "claude-sonnet-5"
+      assert Loopyard.ChatAgent.get_state(id)[:subagent_model] == "sonnet"
     end
 
     test "a bogus mode value is ignored, not a crash",

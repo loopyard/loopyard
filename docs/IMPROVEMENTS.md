@@ -39,14 +39,15 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 0. **System agents share one workstation container.** The owner-scoped sweep covers them, but `MemoryMonitor` only measures work containers; two system agents (Operator + a chief of staff) get no memory safety valve.
 
 
-0. **An image bump never reaches a running container.** `WorkContainer.@image`
-   (and the workstation container, same image) only applies at `docker run`;
-   `ensure_up` `docker start`s a stopped leftover and leaves a running one alone,
-   so a `sleep infinity` box stays on its old adapter indefinitely. The v4→v5
-   bump (claude-agent-acp 0.60→0.76, Fable 5.1) was re-stamped by hand. Fix:
-   when the container's image ≠ `@image`, recreate on the stopped path, and
-   re-stamp a running one only while every agent on it is idle (recreating
-   kills the in-container harness — and any background command).
+0. **An image bump never reaches a RUNNING container by itself.** A stopped
+   work or workstation container on a superseded base image is recreated on its
+   next start (`WorkContainer.on_current_image?/1`), but a running one keeps
+   its old adapter until someone takes it down: `mix loopyard.rpc
+   "Loopyard.Workspace.WorkContainer.down(ws_id)"` then restart its agents (the
+   v5→v6 bump, Nov 2026, was rolled onto the three running containers that
+   way). Fix: re-stamp a running one at boot, before any agent's harness starts
+   in it, or while every agent on it is idle (recreating kills the in-container
+   harness and any background command).
 
 0. **Take the context window from the harness, not a table.** claude-agent-acp's
    `usage_update` carries `size` (Claude Code's own `modelUsage.contextWindow`);

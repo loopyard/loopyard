@@ -228,6 +228,14 @@ defmodule Loopyard.Harness.ACP.Translator do
         entry.subagent and is_nil(update["status"]) ->
           {state, []}
 
+        # The same for any tool since adapter 0.108: the frame that completes
+        # a call's ARGUMENTS (it carries `rawInput`, no status) echoes the
+        # call's description as `content` — Bash's "Print hi" for `echo hi`.
+        # Taken as the result, the card showed the description and the real
+        # output, which arrives with a status, was locked out.
+        is_nil(update["status"]) and is_map(update["rawInput"]) ->
+          {state, []}
+
         true ->
           entry = %{entry | result: true}
           {content, wrapped_error?} = clean_result(raw)
@@ -266,7 +274,7 @@ defmodule Loopyard.Harness.ACP.Translator do
   # Fires on every assistant-usage change with {used, size}; when the CLI
   # reports a rate_limit_event, the same update additionally carries the full
   # rate_limit_info (camelCase) in _meta["_claude/rateLimit"] — status,
-  # resetsAt (ms), utilization, rateLimitType. That's the event-driven signal
+  # resetsAt (epoch seconds), utilization, rateLimitType. That's the event-driven signal
   # that replaces blind nil-reset polling: a :rejected here parks the agent
   # with a PRECISELY timed retry.
   #
@@ -432,14 +440,26 @@ defmodule Loopyard.Harness.ACP.Translator do
         _ -> :allowed
       end
 
+    type = info["rateLimitType"]
+
     %Event.RateLimitStatus{
       status: status,
-      resets_at_ms: if(is_integer(info["resetsAt"]), do: info["resetsAt"]),
-      utilization: info["utilization"],
-      rate_limit_type: info["rateLimitType"],
+      resets_at_ms: epoch_ms(info["resetsAt"]),
+      # Claude Code 2.1.3xx reports the figure per window, not at the top.
+      utilization: info["utilization"] || get_in(info, ["unifiedWindows", type, "utilization"]),
+      rate_limit_type: type,
       is_using_overage: info["isUsingOverage"]
     }
   end
+
+  # Claude Code reports `resetsAt` in epoch SECONDS (1795161600); everything
+  # downstream counts in milliseconds. Read as ms, a reset time in seconds is
+  # January 1970 — a limit that has always already lifted, so an agent at its
+  # plan limit was never held. Anything below 1e11 cannot be a ms timestamp
+  # from this century.
+  defp epoch_ms(t) when is_integer(t) and t > 0 and t < 100_000_000_000, do: t * 1000
+  defp epoch_ms(t) when is_integer(t) and t > 0, do: t
+  defp epoch_ms(_), do: nil
 
   # claude-code-acp wraps EVERY tool result for display: the whole thing in a
   # markdown code fence (```…```), and errors additionally in
@@ -507,12 +527,18 @@ defmodule Loopyard.Harness.ACP.Translator do
     input = update["rawInput"] || %{}
     meta = get_in(update, ["_meta", "claudeCode"]) || %{}
 
+    name = tool_name(update) || entry.name
+
     entry = %{
       entry
-      | name: tool_name(update) || entry.name,
+      | name: name,
         input: Map.merge(entry.input, input),
         parent_id: entry.parent_id || meta["parentToolUseId"],
-        subagent: entry.subagent or meta["subagent"] == true,
+        # Adapter 0.76 marked a delegation (`subagent: true`); 0.108 does not,
+        # so the tool's kind decides too (ToolKind owns that vocabulary).
+        subagent:
+          entry.subagent or meta["subagent"] == true or
+            Loopyard.Agent.ToolKind.classify(name) == :agent,
         async: entry.async or async_launch?(meta["toolResponse"]),
         model: reported_model(meta["toolResponse"]) || entry.model
     }

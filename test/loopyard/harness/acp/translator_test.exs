@@ -809,6 +809,41 @@ defmodule Loopyard.Harness.ACP.TranslatorTest do
       assert %Event.SessionResult{input_tokens: 50_000} = List.last(finish_events)
     end
 
+    # Verbatim from claude-agent-acp 0.108.0 / Claude Code 2.1.326 (2026-11-17).
+    test "the reset time arrives in epoch seconds, the percentage per window" do
+      {_state, events} =
+        Translator.step(Translator.new(), %{
+          "sessionUpdate" => "usage_update",
+          "used" => 17_185,
+          "size" => 1_000_000,
+          "_meta" => %{
+            "_claude/rateLimit" => %{
+              "status" => "allowed",
+              "resetsAt" => 1_795_161_600,
+              "rateLimitType" => "seven_day",
+              "overageStatus" => "allowed",
+              "isUsingOverage" => false,
+              "unifiedWindows" => %{
+                "seven_day" => %{
+                  "utilization" => 0.21,
+                  "resetsAt" => 1_795_161_600,
+                  "status" => "allowed"
+                }
+              }
+            },
+            "_claude/model" => "claude-haiku-5-5"
+          }
+        })
+
+      assert [%Event.RateLimitStatus{} = rl] =
+               Enum.filter(events, &match?(%Event.RateLimitStatus{}, &1))
+
+      assert rl.resets_at_ms == 1_795_161_600_000
+      assert DateTime.from_unix!(rl.resets_at_ms, :millisecond).year == 2026
+      assert rl.utilization == 0.21
+      assert rl.rate_limit_type == "seven_day"
+    end
+
     test "rate-limit _meta emits a full RateLimitStatus event" do
       {_state, events} =
         Translator.step(Translator.new(), %{
@@ -865,6 +900,81 @@ defmodule Loopyard.Harness.ACP.TranslatorTest do
 
       {_state, finish_events} = Translator.finish(state)
       assert %Event.SessionResult{input_tokens: 10_000} = List.last(finish_events)
+    end
+  end
+
+  describe "an argument frame that echoes the description (adapter 0.108)" do
+    # Trimmed verbatim from a live capture: claude-agent-acp 0.108.0 / bundled
+    # Claude Code 2.1.326, `echo hi` (2026-11-17).
+    @bash "toolu_01SMYYBrwquFK8tsxVVxNaFz"
+    @frames [
+      %{
+        "sessionUpdate" => "tool_call",
+        "toolCallId" => @bash,
+        "_meta" => %{"claudeCode" => %{"toolName" => "Bash"}},
+        "name" => "Bash",
+        "rawInput" => %{},
+        "status" => "pending",
+        "title" => "Terminal",
+        "kind" => "execute",
+        "content" => []
+      },
+      %{
+        "sessionUpdate" => "tool_call_update",
+        "toolCallId" => @bash,
+        "_meta" => %{"claudeCode" => %{"toolName" => "Bash"}},
+        "rawInput" => %{"command" => "echo hi"},
+        "title" => "echo hi"
+      },
+      %{
+        "sessionUpdate" => "tool_call_update",
+        "toolCallId" => @bash,
+        "_meta" => %{"claudeCode" => %{"toolName" => "Bash"}},
+        "rawInput" => %{"command" => "echo hi", "description" => "Print hi"},
+        "content" => [
+          %{"type" => "content", "content" => %{"type" => "text", "text" => "Print hi"}}
+        ]
+      },
+      %{
+        "sessionUpdate" => "tool_call_update",
+        "toolCallId" => @bash,
+        "_meta" => %{
+          "claudeCode" => %{
+            "toolName" => "Bash",
+            "toolResponse" => %{"stdout" => "hi", "stderr" => "", "interrupted" => false}
+          }
+        }
+      },
+      %{
+        "sessionUpdate" => "tool_call_update",
+        "toolCallId" => @bash,
+        "_meta" => %{"claudeCode" => %{"toolName" => "Bash"}},
+        "status" => "completed",
+        "rawOutput" => "hi",
+        "content" => [
+          %{
+            "type" => "content",
+            "content" => %{"type" => "text", "text" => "```console\nhi\n```"}
+          }
+        ]
+      }
+    ]
+
+    test "the description is not the result; the output is" do
+      {_state, events} =
+        Enum.reduce(@frames, {Translator.new(), []}, fn frame, {state, acc} ->
+          {state, events} = Translator.step(state, frame)
+          {state, acc ++ events}
+        end)
+
+      assert [%Event.ToolResult{id: @bash, content: content, is_error: false}] =
+               Enum.filter(events, &match?(%Event.ToolResult{}, &1))
+
+      assert content =~ "hi"
+      refute content =~ "Print hi"
+
+      assert %Event.ToolCall{input: %{"command" => "echo hi", "description" => "Print hi"}} =
+               events |> Enum.filter(&match?(%Event.ToolCall{}, &1)) |> List.last()
     end
   end
 end

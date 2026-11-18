@@ -112,6 +112,51 @@ defmodule Loopyard.Harness.ACP.ConnectionModesTest do
     end
   end
 
+  # claude-agent-acp 0.108 boots a session in `auto` (a classifier decides
+  # which tool calls run). Loopyard answers every permission request itself,
+  # which is the `default` mode — the harness's home (Catalog `home_mode`).
+  describe "home mode" do
+    @auto_modes put_in(@modes["currentModeId"], "auto")
+                |> update_in(["availableModes"], &(&1 ++ [%{"id" => "auto", "name" => "Auto"}]))
+
+    test "a session that boots elsewhere is moved home, and home is what Build returns to" do
+      conn = start_conn(home_mode: "default")
+      handshake(conn, %{"modes" => @auto_modes})
+
+      assert_receive {:sent, %{"method" => "session/set_mode", "params" => params}}
+      assert params == %{"sessionId" => "s-1", "modeId" => "default"}
+      assert %{current: "default", boot: "default", plan: "plan"} = Connection.modes(conn)
+    end
+
+    test "a session already home is left alone" do
+      conn = start_conn(home_mode: "default")
+      handshake(conn, %{"modes" => @modes})
+
+      refute_receive {:sent, %{"method" => "session/set_mode"}}, 50
+      assert %{current: "default", boot: "default"} = Connection.modes(conn)
+    end
+
+    test "Discuss wins over home, and Build still means home" do
+      conn = start_conn(home_mode: "default", mode: "plan")
+      handshake(conn, %{"modes" => @auto_modes})
+
+      assert_receive {:sent, %{"method" => "session/set_mode", "params" => %{"modeId" => "plan"}}}
+      assert %{current: "plan", boot: "default"} = Connection.modes(conn)
+    end
+
+    test "a home the session does not offer changes nothing; nor does having none" do
+      conn = start_conn(home_mode: "manual")
+      handshake(conn, %{"modes" => @auto_modes})
+      refute_receive {:sent, %{"method" => "session/set_mode"}}, 50
+      assert %{current: "auto", boot: "auto"} = Connection.modes(conn)
+
+      conn = start_conn()
+      handshake(conn, %{"modes" => @auto_modes})
+      refute_receive {:sent, %{"method" => "session/set_mode"}}, 50
+      assert %{current: "auto", boot: "auto"} = Connection.modes(conn)
+    end
+  end
+
   describe "set_mode/2" do
     test "sends session/set_mode and shows the new mode optimistically" do
       conn = start_conn()

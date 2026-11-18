@@ -41,9 +41,13 @@ defmodule Loopyard.Workstation.Container do
         {:ok, n}
 
       Docker.container_exists?(n) ->
-        case Docker.docker(["start", n]) do
-          {:ok, _} -> {:ok, n}
-          {:error, _} -> recreate(id)
+        # A stopped container on a superseded base image is recreated, not
+        # started (see WorkContainer.on_current_image?/1).
+        with true <- Loopyard.Workspace.WorkContainer.on_current_image?(n),
+             {:ok, _} <- Docker.docker(["start", n]) do
+          {:ok, n}
+        else
+          _ -> recreate(id)
         end
 
       true ->

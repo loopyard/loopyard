@@ -327,4 +327,88 @@ defmodule Loopyard.Harness.ACP.SubagentTest do
       assert [%Event.ToolCall{model: nil}, %Event.ToolResult{}] = events
     end
   end
+
+  describe "adapter 0.108: a delegation carries no `subagent` marker" do
+    # Trimmed verbatim from a live capture: claude-agent-acp 0.108.0 / bundled
+    # Claude Code 2.1.326 (2026-11-17). The session ran on Haiku 5.5.
+    @id "toolu_015TUWmPmXAH9EEWp6WC5PpR"
+    @meta %{"claudeCode" => %{"toolName" => "Agent"}}
+    @frames [
+      %{
+        "sessionUpdate" => "tool_call",
+        "toolCallId" => @id,
+        "_meta" => @meta,
+        "name" => "Agent",
+        "rawInput" => %{},
+        "status" => "pending",
+        "title" => "Task",
+        "kind" => "think",
+        "content" => []
+      },
+      %{
+        "sessionUpdate" => "tool_call_update",
+        "toolCallId" => @id,
+        "_meta" => @meta,
+        "rawInput" => %{"description" => "Reply with ok"},
+        "title" => "Reply with ok"
+      },
+      %{
+        "sessionUpdate" => "tool_call_update",
+        "toolCallId" => @id,
+        "_meta" => @meta,
+        "rawInput" => %{
+          "description" => "Reply with ok",
+          "prompt" => "Reply with exactly the word ok.",
+          "subagent_type" => "general-purpose"
+        },
+        "content" => [
+          %{
+            "type" => "content",
+            "content" => %{"type" => "text", "text" => "Reply with exactly the word ok."}
+          }
+        ]
+      },
+      %{
+        "sessionUpdate" => "tool_call_update",
+        "toolCallId" => @id,
+        "_meta" => %{
+          "claudeCode" => %{
+            "toolName" => "Agent",
+            "toolResponse" => %{
+              "isAsync" => true,
+              "status" => "async_launched",
+              "agentId" => "a8a7929a4911f9e2d",
+              "description" => "Reply with ok",
+              "resolvedModel" => "claude-haiku-5-5",
+              "prompt" => "Reply with exactly the word ok."
+            }
+          }
+        }
+      },
+      %{
+        "sessionUpdate" => "tool_call_update",
+        "toolCallId" => @id,
+        "_meta" => @meta,
+        "status" => "completed",
+        "rawOutput" => [%{"type" => "text", "text" => "Async agent launched successfully."}],
+        "content" => [
+          %{
+            "type" => "content",
+            "content" => %{"type" => "text", "text" => "Async agent launched successfully."}
+          }
+        ]
+      }
+    ]
+
+    test "it is still a delegation: stamped, named for its model, and held open" do
+      {_state, events} = run(Translator.new(), @frames)
+
+      calls = Enum.filter(events, &match?(%Event.ToolCall{}, &1))
+      assert Enum.all?(calls, &(&1.kind == :agent))
+      assert %Event.ToolCall{id: @id, model: "claude-haiku-5-5"} = List.last(calls)
+
+      # Neither the echoed prompt nor the launch receipt is its report.
+      refute Enum.any?(events, &match?(%Event.ToolResult{}, &1))
+    end
+  end
 end
