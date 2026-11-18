@@ -118,7 +118,7 @@ defmodule Loopyard.ChatAgent.SessionManager do
     # sidebar's Discuss switch — ModeControl.capture/1).
     state = Loopyard.ChatAgent.ModeControl.capture(state)
     # …and the models it offers, which is what the pickers list.
-    Loopyard.Harness.Models.capture(state)
+    state = Loopyard.Harness.Models.capture(state)
 
     case state.session && state.backend && Loopyard.ChatAgent.OSProcess.pid_of(state.session) do
       os_pid when is_integer(os_pid) ->

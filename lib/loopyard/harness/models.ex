@@ -51,23 +51,37 @@ defmodule Loopyard.Harness.Models do
   def record(_harness, _models), do: :ok
 
   @doc """
-  Record what an agent's live session advertises. Called where every new
-  session lands (`SessionManager.track_os_pid/1`); never raises.
+  Record what an agent's live session advertises, and name the agent's model
+  the way that session does ("opus" → "Opus 5.5") so the sidebar is right
+  before the first turn ends. Called where every new session lands
+  (`SessionManager.track_os_pid/1`); returns the state, never raises.
   """
-  @spec capture(map()) :: :ok
+  @spec capture(map()) :: map()
   def capture(%{session: session, backend: backend} = state) when not is_nil(session) do
-    if function_exported?(backend, :available_models, 1) do
-      record(Keyword.get(state[:session_opts] || [], :harness), backend.available_models(session))
-    end
+    opts = Map.get(state, :session_opts) || []
+    harness = Keyword.get(opts, :harness)
 
-    :ok
+    # Only a backend that lists models: for any other, `session_opts[:model]`
+    # is not something this session was asked to run.
+    if function_exported?(backend, :available_models, 1) do
+      models = backend.available_models(session)
+      record(harness, models)
+      named = Enum.find(models, &(is_map(&1) and &1[:id] == Keyword.get(opts, :model)))
+
+      case named && label(named) do
+        label when is_binary(label) and is_map_key(state, :model) -> %{state | model: label}
+        _ -> state
+      end
+    else
+      state
+    end
   rescue
-    _ -> :ok
+    _ -> state
   catch
-    _, _ -> :ok
+    _, _ -> state
   end
 
-  def capture(_state), do: :ok
+  def capture(state), do: state
 
   @doc "Whether `id` is a model this harness offers."
   @spec member?(Catalog.id() | String.t() | nil, term()) :: boolean()

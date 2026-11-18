@@ -105,19 +105,45 @@ defmodule Loopyard.Harness.ModelsTest do
     end
   end
 
-  test "capture/1 records what an agent's live session advertises and never raises" do
+  describe "capture/1" do
     defmodule Backend do
       def available_models(:live), do: [%{id: "opus", label: "Opus 9"}]
       def available_models(:down), do: exit(:noproc)
     end
 
-    assert :ok =
-             Models.capture(%{session: :live, backend: Backend, session_opts: [harness: :claude]})
+    # The agent's state is a STRUCT: `state[:session_opts]` raises on one, and
+    # a rescue around it once made this function a silent no-op in production.
+    defmodule State do
+      defstruct [:session, :backend, :model, session_opts: []]
+    end
 
-    assert Models.list(:claude) == [{"opus", "Opus 9"}]
+    test "records the live session's list and names the agent's model from it" do
+      state = %State{
+        session: :live,
+        backend: Backend,
+        model: "claude-opus-5",
+        session_opts: [harness: :claude, model: "opus"]
+      }
 
-    assert :ok = Models.capture(%{session: :down, backend: Backend, session_opts: []})
-    assert :ok = Models.capture(%{session: nil, backend: Backend})
-    assert :ok = Models.capture(%{session: :live, backend: Loopyard.Harness.Fake})
+      assert %State{model: "Opus 9"} = Models.capture(state)
+      assert Models.list(:claude) == [{"opus", "Opus 9"}]
+    end
+
+    test "a model the session does not list keeps its name" do
+      state = %State{session: :live, backend: Backend, model: "Custom", session_opts: []}
+      assert Models.capture(state) == state
+    end
+
+    test "never raises: a dead session, no session, a backend without a list" do
+      down = %State{session: :down, backend: Backend, session_opts: [harness: :claude]}
+      assert Models.capture(down) == down
+
+      none = %State{session: nil, backend: Backend}
+      assert Models.capture(none) == none
+
+      fake = %State{session: :live, backend: Loopyard.Harness.Fake}
+      assert Models.capture(fake) == fake
+      assert Models.list(:claude) == Catalog.fetch(:claude).models
+    end
   end
 end
