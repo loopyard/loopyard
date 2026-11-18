@@ -137,7 +137,7 @@ defmodule Loopyard.ChatAgent.Initializer do
         _ -> opts
       end
 
-    # And the composer's Discuss setting (session_opts[:mode] = the plan mode
+    # And the sidebar's Discuss setting (session_opts[:mode] = the plan mode
     # id, set by ModeControl) — a reload must come back still discussing.
     opts =
       case Keyword.get(state.session_opts || [], :mode) do
@@ -383,7 +383,7 @@ defmodule Loopyard.ChatAgent.Initializer do
           session_opts
       end
 
-    # The composer's Discuss setting rides along as the harness mode to boot
+    # The sidebar's Discuss setting rides along as the harness mode to boot
     # into (the plan mode id, see ModeControl); absent → the harness default.
     session_opts =
       case Keyword.get(opts, :mode) do

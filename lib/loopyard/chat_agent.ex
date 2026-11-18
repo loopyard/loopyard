@@ -88,7 +88,7 @@ defmodule Loopyard.ChatAgent do
     # persisted.
     stream_task_pid: nil,
     model: nil,
-    # The composer's Discuss / Build switch + the live harness's plan-mode id
+    # The sidebar's Discuss / Build mode + the live harness's plan-mode id
     # (nil = none advertised → switch hidden). See ChatAgent.ModeControl.
     mode: :build,
     plan_mode_id: nil,
@@ -304,7 +304,7 @@ defmodule Loopyard.ChatAgent do
   @doc "Switch the agent's model (Usage-panel Model row); see ChatAgent.ModelControl."
   defdelegate set_model(id, model_id), to: Client
 
-  @doc "Flip the composer's Discuss / Build switch; see ChatAgent.ModeControl."
+  @doc "Set the agent's Discuss / Build mode (the sidebar's Mode row); see ChatAgent.ModeControl."
   defdelegate set_mode(id, setting), to: Client
 
   @doc "Switch the agent's harness / account (see `ChatAgent.HarnessControl` / `WorkstationControl`)."

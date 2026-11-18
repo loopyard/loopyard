@@ -176,7 +176,7 @@ defmodule Loopyard.Harness.ACP.Connection do
           available_models: [],
           fallback_model: nil,
           # Session modes (Connection.Modes). `desired_mode` is the mode the
-          # caller wants the session in (the composer's Discuss = the plan
+          # caller wants the session in (the sidebar's Discuss = the plan
           # mode) — requested once the session is ready, exactly like
           # `desired_model`; `mode` is what the session is in now; `boot_mode`
           # is what it came up in (what Build returns to); `fallback_mode`
@@ -382,7 +382,7 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   def handle_cast({:set_model, _model_id}, state), do: {:noreply, state}
 
-  # Live mode switch (the composer's Discuss/Build). Optimistic display; the
+  # Live mode switch (the sidebar's Discuss/Build). Optimistic display; the
   # :set_mode error path reverts. `desired_mode` tracks the request too, so a
   # Discuss session that later needs to decide an ExitPlanMode permission
   # knows the human asked for planning (see decide_permission/3).
@@ -590,7 +590,7 @@ defmodule Loopyard.Harness.ACP.Connection do
   end
 
   # Request the DESIRED mode when the session advertises it and isn't in it —
-  # the composer's Discuss setting re-applied to every fresh/resumed session,
+  # the sidebar's Discuss setting re-applied to every fresh/resumed session,
   # exactly like `maybe_set_model/2`. A mode the session doesn't advertise is
   # left alone (no spurious request, no error to revert).
   @doc false

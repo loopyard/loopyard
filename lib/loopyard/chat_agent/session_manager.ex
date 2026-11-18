@@ -115,7 +115,7 @@ defmodule Loopyard.ChatAgent.SessionManager do
 
     # Every path that adopts a new session lands here, so this is also where
     # the agent learns what that session advertises (its plan mode, for the
-    # composer's Discuss switch — ModeControl.capture/1).
+    # sidebar's Discuss switch — ModeControl.capture/1).
     state = Loopyard.ChatAgent.ModeControl.capture(state)
 
     case state.session && state.backend && Loopyard.ChatAgent.OSProcess.pid_of(state.session) do

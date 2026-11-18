@@ -14,7 +14,7 @@ defmodule Loopyard.Harness.ACP.Connection.Modes do
   the spec'd one.
 
   Loopyard uses exactly one of these modes: the PLAN mode behind the
-  composer's Discuss switch. `plan_mode_id/1` is the one place that
+  sidebar's Discuss switch. `plan_mode_id/1` is the one place that
   vocabulary is known — a harness that names it differently is handled here,
   never in the UI.
   """

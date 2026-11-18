@@ -38,20 +38,15 @@ defmodule LoopyardWeb.AgentLiveTest do
     assert Process.alive?(view.pid)
   end
 
-  test "the composer's Discuss/Build switch renders off the row and its event is wired",
+  test "a system agent's chat has no Discuss/Build control, whatever its row says",
        %{conn: conn, id: id} do
-    # No plan mode advertised → no switch.
+    :ets.update_element(:chat_agents, id, {2, row(id, %{plan_mode_id: "plan", mode: :build})})
     {:ok, view, html} = live(conn, "/agents/#{id}")
     refute html =~ "Agent mode"
+    refute has_element?(view, "[phx-click=set_agent_mode]")
 
-    # A row that advertises one gets the switch, showing the persisted setting.
-    :ets.update_element(:chat_agents, id, {2, row(id, %{plan_mode_id: "plan", mode: :discuss})})
-    send(view.pid, %Loopyard.Events.ChatAgent.StatusChanged{id: id, status: :idle})
-    assert has_element?(view, "button[phx-value-mode=discuss][aria-pressed=true]")
-
-    # The event reaches the agent API without a live GenServer crashing the LV.
-    render_click(view, "set_agent_mode", %{"id" => id, "mode" => "build"})
-    render_click(view, "set_agent_mode", %{"id" => id, "mode" => "bogus"})
+    # A stale client's event is ignored, not a crash.
+    render_click(view, "set_agent_mode", %{"agent-id" => id, "mode" => "discuss"})
     assert Process.alive?(view.pid)
   end
 

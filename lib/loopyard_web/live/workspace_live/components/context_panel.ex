@@ -436,26 +436,22 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     picking another harness restarts onto that adapter and carries the
     conversation over. Values are `harness:model` tokens — see
     Harness.Catalog.parse_selection/1. --%>
-      <div class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-5 text-body">
-        <span class="text-zinc-500 dark:text-zinc-400 flex-none">Agent</span>
-        <form phx-change="set_agent_model" class="flex-none">
-          <input type="hidden" name="agent-id" value={@agent.id} />
-          <select
-            name="model"
-            aria-label="Agent harness and model"
-            class="focus-ring rounded-sm border-0 bg-transparent py-0 pl-1 pr-6 min-h-11 md:min-h-5 text-body text-right font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400"
-          >
-            <option value="" disabled selected={true}>
-              {current_harness_model(@agent)}
-            </option>
-            <optgroup :for={harness <- Catalog.all()} label={harness.label}>
-              <option :for={{value, label} <- Catalog.model_options(harness.id)} value={value}>
-                {label}
-              </option>
-            </optgroup>
-          </select>
-        </form>
-      </div>
+      <.picker_row
+        label="Agent"
+        event="set_agent_model"
+        name="model"
+        aria_label="Agent harness and model"
+        agent_id={@agent.id}
+      >
+        <option value="" disabled selected={true}>
+          {current_harness_model(@agent)}
+        </option>
+        <optgroup :for={harness <- Catalog.all()} label={harness.label}>
+          <option :for={{value, label} <- Catalog.model_options(harness.id)} value={value}>
+            {label}
+          </option>
+        </optgroup>
+      </.picker_row>
       <%!-- The ACCOUNT the agent runs under — which workstation's credentials
     sign the harness in, i.e. who pays for its tokens. Per agent: two agents
     in one workspace can bill two accounts. Picking another restarts the
@@ -463,58 +459,65 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     carried over from Loopyard's durable log, the native session is not). The
     options are the workstations holding a credential for this harness, plus
     the current one so the control always shows where the agent is. --%>
-      <div
+      <.picker_row
         :if={@account_options != []}
-        class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-5 text-body"
+        label="Account"
+        event="set_agent_workstation"
+        name="workstation"
+        aria_label="Agent account (workstation)"
+        agent_id={@agent.id}
       >
-        <span class="text-zinc-500 dark:text-zinc-400 flex-none">Account</span>
-        <form phx-change="set_agent_workstation" class="flex-none">
-          <input type="hidden" name="agent-id" value={@agent.id} />
-          <select
-            name="workstation"
-            aria-label="Agent account (workstation)"
-            class="focus-ring rounded-sm border-0 bg-transparent py-0 pl-1 pr-6 min-h-11 md:min-h-5 text-body text-right font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400"
-          >
-            <option
-              :for={{id, label} <- @account_options}
-              value={id}
-              selected={id == @agent[:workstation_identity]}
-            >
-              {label}
-            </option>
-            <%!-- The way IN to a second account lives where you pick one:
-            it opens the workstations page (create an identity, sign it in). --%>
-            <option value={AgentPicker.add_account_value()}>Add an account…</option>
-          </select>
-        </form>
-      </div>
+        <option
+          :for={{id, label} <- @account_options}
+          value={id}
+          selected={id == @agent[:workstation_identity]}
+        >
+          {label}
+        </option>
+        <%!-- The way IN to a second account lives where you pick one:
+      it opens the workstations page (create an identity, sign it in). --%>
+        <option value={AgentPicker.add_account_value()}>Add an account…</option>
+      </.picker_row>
       <%!-- What the harness's OWN sub-agents (Task/Agent delegations) run on —
     a capable main model directing cheaper workers. "Same as the agent" sets
     nothing. Only for a harness that takes the setting (Catalog); a change
     relaunches the harness when idle and resumes the conversation. Phone: the
     select is the 44px tap target; the row grows to hold it. --%>
-      <div
+      <.picker_row
         :if={@subagent_options != []}
-        class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-5 text-body"
+        label="Sub-agents"
+        event="set_subagents"
+        name="subagent_model"
+        aria_label="Model the agent's sub-agents run on"
+        agent_id={@agent.id}
       >
-        <span class="text-zinc-500 dark:text-zinc-400 flex-none">Sub-agents</span>
-        <form phx-change="set_subagents" class="flex-none">
-          <input type="hidden" name="agent-id" value={@agent.id} />
-          <select
-            name="subagent_model"
-            aria-label="Model the agent's sub-agents run on"
-            class="focus-ring rounded-sm border-0 bg-transparent py-0 pl-1 pr-6 min-h-11 md:min-h-5 text-body text-right font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400"
-          >
-            <option
-              :for={{value, label} <- @subagent_options}
-              value={value}
-              selected={value == (@agent[:subagent_model] || "")}
-            >
-              {label}
-            </option>
-          </select>
-        </form>
-      </div>
+        <option
+          :for={{value, label} <- @subagent_options}
+          value={value}
+          selected={value == (@agent[:subagent_model] || "")}
+        >
+          {label}
+        </option>
+      </.picker_row>
+      <%!-- The harness's PLAN mode, when it advertises one: Discuss reads, thinks
+    and talks and cannot edit; Build is the mode the session booted in. Server
+    state on the agent (ChatAgent.ModeControl), so a reload and every viewer
+    agree. It lived as a two-button row above the composer; a setting flipped
+    this rarely does not get a permanent row over the input. The hero's facts
+    line says "· Discuss" while it is on. --%>
+      <.picker_row
+        :if={@agent[:plan_mode_id]}
+        label="Mode"
+        event="set_agent_mode"
+        name="mode"
+        aria_label="Agent mode"
+        agent_id={@agent.id}
+      >
+        <option value="build" selected={@agent[:mode] != :discuss}>Build</option>
+        <option value="discuss" selected={@agent[:mode] == :discuss}>
+          Discuss (plans, no edits)
+        </option>
+      </.picker_row>
       <.info_row
         label="Total tokens"
         value={"#{if @estimating?, do: "~"}#{compact_number(@total_tokens)}"}
@@ -535,6 +538,35 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
         value={compact_number(@agent[:total_cache_read_tokens])}
       />
     </.section>
+    """
+  end
+
+  # One per-agent setting in the sidebar: a label and a select that submits on
+  # change. The ONE rendering of that row, so harness/model, account, sub-agents
+  # and mode cannot drift apart. Phone: the select is the 44px tap target and
+  # the row grows to hold it.
+  attr :label, :string, required: true
+  attr :event, :string, required: true
+  attr :name, :string, required: true
+  attr :aria_label, :string, required: true
+  attr :agent_id, :string, required: true
+  slot :inner_block, required: true
+
+  defp picker_row(assigns) do
+    ~H"""
+    <div class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-5 text-body">
+      <span class="text-zinc-500 dark:text-zinc-400 flex-none">{@label}</span>
+      <form phx-change={@event} class="flex-none">
+        <input type="hidden" name="agent-id" value={@agent_id} />
+        <select
+          name={@name}
+          aria-label={@aria_label}
+          class="focus-ring rounded-sm border-0 bg-transparent py-0 pl-1 pr-6 min-h-11 md:min-h-5 text-body text-right font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400"
+        >
+          {render_slot(@inner_block)}
+        </select>
+      </form>
+    </div>
     """
   end
 

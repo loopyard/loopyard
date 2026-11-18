@@ -191,40 +191,41 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
       assert render(view) =~ "Test Agent"
     end
 
-    test "the composer's Discuss/Build switch persists on the agent and reaches every viewer",
+    test "the sidebar's Mode row persists on the agent and reaches every viewer; nothing sits above the composer",
          %{conn: conn, workspace: ws, setup_agent_id: id} do
       {:ok, view, html} = live(conn, ws_chat_path(ws, id))
       {:ok, other, _} = live(conn, ws_chat_path(ws, id))
 
-      # The fake harness advertises a plan mode, so the switch renders — on Build.
-      assert html =~ "Agent mode"
-      assert has_element?(view, "button[phx-value-mode=discuss][aria-pressed=false]")
-      assert has_element?(view, "button[phx-value-mode=build][aria-pressed=true]")
+      # The fake harness advertises a plan mode, so the row renders — on Build.
+      assert html =~ ~s|aria-label="Agent mode"|
+      assert has_element?(view, ~s(select[name=mode] option[value=build][selected]))
+      refute has_element?(view, ~s(select[name=mode] option[value=discuss][selected]))
+      # It is a sidebar setting, not a control over the input.
+      refute has_element?(view, "button[phx-click=set_agent_mode]")
 
-      render_click(view, "set_agent_mode", %{"id" => id, "mode" => "discuss"})
+      render_change(view, "set_agent_mode", %{"agent-id" => id, "mode" => "discuss"})
 
       # Server state: the agent's summary (ETS) carries the setting…
       assert wait_for(fn -> Loopyard.ChatAgent.get_state(id)[:mode] == :discuss end)
       [{^id, %{mode: :discuss, plan_mode_id: "plan"}}] = :ets.lookup(:chat_agents, id)
 
-      # …and the broadcast flips BOTH views, the clicker and the bystander.
+      # …and the broadcast flips BOTH views, the one that changed it and the bystander.
       assert wait_for(fn ->
-               has_element?(other, "button[phx-value-mode=discuss][aria-pressed=true]")
+               has_element?(other, ~s(select[name=mode] option[value=discuss][selected]))
              end)
 
-      assert has_element?(view, "button[phx-value-mode=discuss][aria-pressed=true]")
-      assert render(view) =~ "Plans and talks"
+      assert has_element?(view, ~s(select[name=mode] option[value=discuss][selected]))
       assert render(view) =~ "· Discuss"
 
-      # Back to Build, and the consequence line goes with it.
-      render_click(view, "set_agent_mode", %{"id" => id, "mode" => "build"})
+      # Back to Build, and the hero's note goes with it.
+      render_change(view, "set_agent_mode", %{"agent-id" => id, "mode" => "build"})
       assert wait_for(fn -> Loopyard.ChatAgent.get_state(id)[:mode] == :build end)
 
       assert wait_for(fn ->
-               has_element?(other, "button[phx-value-mode=build][aria-pressed=true]")
+               has_element?(other, ~s(select[name=mode] option[value=build][selected]))
              end)
 
-      refute render(view) =~ "Plans and talks"
+      refute render(view) =~ "· Discuss"
     end
 
     test "the Sub-agents control sets the agent's sub-agent model and every viewer sees it",
@@ -263,7 +264,7 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
     test "a bogus mode value is ignored, not a crash",
          %{conn: conn, workspace: ws, setup_agent_id: id} do
       {:ok, view, _html} = live(conn, ws_chat_path(ws, id))
-      render_click(view, "set_agent_mode", %{"id" => id, "mode" => "plan"})
+      render_change(view, "set_agent_mode", %{"agent-id" => id, "mode" => "plan"})
       assert render(view) =~ "Test Agent"
       assert Loopyard.ChatAgent.get_state(id)[:mode] == :build
     end

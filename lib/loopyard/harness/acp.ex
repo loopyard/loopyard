@@ -33,7 +33,7 @@ defmodule Loopyard.Harness.ACP do
   Session modes: `session/new`/`session/load` advertise the harness's modes
   (`modes.availableModes`), `session/set_mode` switches them (`set_mode/2`),
   and `current_mode_update` reports the harness changing mode on its own —
-  all closed; the composer's Discuss/Build switch rides on them (plan mode =
+  all closed; the sidebar's Mode row rides on them (plan mode =
   Discuss). While Discuss is on, an ExitPlanMode permission request is
   answered "keep planning" (`Connection`'s `decide_permission`), so leaving
   plan mode is the human's flip, never the model's.
@@ -471,7 +471,7 @@ defmodule Loopyard.Harness.ACP do
   @doc """
   The live session's modes: `%{current, boot, plan, available}` (see
   `Connection.modes/1`). `plan` nil means the harness advertises no plan mode
-  and the composer hides the Discuss switch.
+  and the sidebar hides the Mode row.
   """
   def modes(conn) when is_pid(conn), do: Connection.modes(conn)
   def modes(_conn), do: %{current: nil, boot: nil, plan: nil, available: []}

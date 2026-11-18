@@ -137,7 +137,7 @@ defmodule Loopyard.ChatAgent.Client do
   def set_model(id, model_id) when is_binary(model_id),
     do: GenServer.cast(via(id), {:set_model, model_id})
 
-  @doc "Flip the composer's Discuss / Build switch; see ChatAgent.ModeControl."
+  @doc "Set the agent's Discuss / Build mode (the sidebar's Mode row); see ChatAgent.ModeControl."
   def set_mode(id, setting) when setting in [:discuss, :build],
     do: GenServer.cast(via(id), {:set_mode, setting})
 

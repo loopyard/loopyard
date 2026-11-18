@@ -140,7 +140,7 @@ defmodule Loopyard.Harness.ACP.Connection.AgentRequests do
   defp decide_permission(%{permission_mode: :auto_allow} = state, id, params, options) do
     # DISCUSS keeps planning. The harness's ExitPlanMode arrives as a permission
     # request whose tool call is `kind: "switch_mode"` (ACP's own vocabulary —
-    # never the tool's name). While the human has the composer on Discuss
+    # never the tool's name). While the human has the agent on Discuss
     # (`desired_mode` is the plan mode), leaving plan mode is THEIR call, not
     # the model's: pick the reject option ("No, keep planning"), so the plan
     # stays a plan until they flip to Build. Every other request is

@@ -51,7 +51,7 @@ defmodule Loopyard.Harness.Fake do
   def session_id(_session), do: nil
 
   # The optional mode surface (what `Harness.ACP` exposes): a fake session
-  # advertises a plan mode so the composer's Discuss/Build switch renders and
+  # advertises a plan mode so the sidebar's Mode row renders and
   # its LiveView path is exercised; switching is a no-op.
   def modes(_session) do
     %{

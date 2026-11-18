@@ -16,7 +16,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentPicker do
       (`ChatAgent.SubagentControl`); "" is "Same as the agent". Relaunches the
       harness when idle, conversation resumed.
 
-  Plus the composer's **Discuss / Build** switch (`set_mode/2`) — the same
+  Plus the sidebar's **Mode** row (Discuss / Build) (`set_mode/2`) — the same
   shape: server state on the agent (`ChatAgent.ModeControl`), persisted.
 
   All are casts; the `StatusChanged` broadcast refreshes every viewer's
@@ -74,9 +74,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentPicker do
 
   def set_subagents(_params, socket), do: {:noreply, socket}
 
-  @doc ~S(`set_agent_mode` event: `%{"mode" => "discuss" or "build", "id" => id}`.)
+  @doc ~S(`set_agent_mode` event: `%{"mode" => "discuss" or "build", "agent-id" => id}`.)
   def set_mode(%{"mode" => mode} = params, socket) do
-    agent_id = params["id"] || socket.assigns.selected_id
+    agent_id = params["agent-id"] || socket.assigns.selected_id
 
     with true <- is_binary(agent_id),
          {:ok, setting} <- ChatAgent.ModeControl.parse(mode) do

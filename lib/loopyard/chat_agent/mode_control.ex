@@ -1,6 +1,6 @@
 defmodule Loopyard.ChatAgent.ModeControl do
   @moduledoc """
-  The composer's Discuss / Build switch, agent-side.
+  The sidebar's Discuss / Build mode, agent-side.
 
   Two settings, one harness mechanism: **Discuss** puts the live session in
   the harness's PLAN mode (it reads, thinks and talks — it cannot edit);
@@ -12,7 +12,7 @@ defmodule Loopyard.ChatAgent.ModeControl do
   The harness's vocabulary for "plan mode" never leaves the backend:
   `capture/1` asks it after each session start (`backend.modes/1`) and keeps
   the advertised plan mode's id on the agent as `plan_mode_id` (nil = this
-  harness has no plan mode, and the composer hides the switch).
+  harness has no plan mode, and the sidebar hides the Mode row).
   """
 
   alias Loopyard.ChatAgent.Persistence
