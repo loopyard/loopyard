@@ -57,6 +57,24 @@ defmodule Loopyard.Harness.ModelsTest do
     refute Catalog.subagent_model_valid?(:claude, "claude-opus-5")
   end
 
+  # What a session in a real, signed-in home reported on the v6 image: the
+  # aliases, then the pinned releases the account can still reach.
+  test "pinned older releases are left out when the harness offers aliases" do
+    pinned = [
+      %{id: "claude-fable-5-1", name: "Fable 5.1", label: "Fable 5.1"},
+      %{id: "claude-haiku-4-5-20251001", name: "Haiku 4.5", label: "Haiku 4.5"},
+      %{id: "claude-opus-5", name: "Opus 5", label: "Opus 5"},
+      %{id: "claude-opus-4-8", name: "Opus 4.8", label: "Opus 4.8"}
+    ]
+
+    Models.record(:claude, @live ++ pinned)
+
+    assert Models.list(:claude) |> Enum.map(&elem(&1, 0)) == ~w(sonnet fable opus haiku)
+    # So an agent pinned to one of them moves to the current release.
+    assert Models.float(:claude, "claude-opus-5") == "opus"
+    assert Models.float(:claude, "Opus 4.8") == "opus"
+  end
+
   test "a release the adapter starts listing shows up with no code change" do
     Models.record(:claude, @live ++ [%{id: "saga", name: "Saga 1", label: "Saga 1"}])
     assert {"claude:saga", "Saga 1"} in Catalog.model_options(:claude)

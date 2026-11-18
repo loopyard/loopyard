@@ -10,8 +10,10 @@ defmodule Loopyard.Harness.Models do
 
   Claude's list is aliases (`opus`, `fable`, `sonnet`, `haiku`) that Claude
   Code resolves to the current release, each labelled with what it resolves to
-  ("Opus 5.5"). `float/2` moves a stored pin from an older release
-  (`claude-opus-5`, or its display name "Opus 5") onto the alias of its family.
+  ("Opus 5.5"), followed by the pinned older releases the account can still
+  reach. Only the aliases are kept when a harness has any (`current/1`), and
+  `float/2` moves a stored pin from an older release (`claude-opus-5`, or its
+  display name "Opus 5") onto the alias of its family.
 
   Held in `:persistent_term`: a handful of small lists, written only when a
   session reports one that differs, read on every sidebar render.
@@ -43,6 +45,7 @@ defmodule Loopyard.Harness.Models do
         {id, label(m) || id}
       end
 
+    live = current(live)
     key = key(Catalog.fetch(harness).id)
     if live != [] and :persistent_term.get(key, nil) != live, do: :persistent_term.put(key, live)
     :ok
@@ -114,6 +117,19 @@ defmodule Loopyard.Harness.Models do
   @spec reset() :: :ok
   def reset do
     Enum.each(Catalog.all(), &:persistent_term.erase(key(&1.id)))
+  end
+
+  # A harness that offers floating aliases is offered BY alias. Claude Code
+  # also lists the pinned releases an account can still reach ("claude-opus-5",
+  # "claude-opus-4-8", nine of them in Nov 2026); offering those is how an agent
+  # stays on last year's model. An alias has no version in its id, a pinned
+  # release does — the same test `Connection.Models` uses. A harness with no
+  # aliases (every id pinned) is offered whole.
+  defp current(entries) do
+    case Enum.reject(entries, fn {id, _label} -> id =~ ~r/\d/ end) do
+      [] -> entries
+      aliases -> aliases
+    end
   end
 
   defp family(%{model_alias: pattern}, model) when is_binary(pattern) do
